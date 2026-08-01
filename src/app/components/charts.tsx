@@ -33,7 +33,7 @@ function TT({ active, payload, label }: any) {
 export function ReceitaDespesaChart({ data }: { data: { mes: string; receita: number; despesa: number }[] }) {
   const d = data.map((x) => ({ ...x, label: mesLabel(x.mes) }));
   return (
-    <ResponsiveContainer width="100%" height={260}>
+    <div className="money"><ResponsiveContainer width="100%" height={260}>
       <BarChart data={d} margin={{ top: 8, right: 4, left: -10, bottom: 0 }} barGap={4}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
@@ -42,14 +42,14 @@ export function ReceitaDespesaChart({ data }: { data: { mes: string; receita: nu
         <Bar dataKey="receita" name="Receita" fill="#2ee6a0" radius={[5, 5, 0, 0]} />
         <Bar dataKey="despesa" name="Despesa" fill="#ff6b6b" radius={[5, 5, 0, 0]} />
       </BarChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></div>
   );
 }
 
 export function SaldoAreaChart({ data }: { data: { mes: string; receita: number; despesa: number }[] }) {
   const d = data.map((x) => ({ label: mesLabel(x.mes), saldo: x.receita - x.despesa }));
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <div className="money"><ResponsiveContainer width="100%" height={200}>
       <AreaChart data={d} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
         <defs>
           <linearGradient id="gsaldo" x1="0" y1="0" x2="0" y2="1">
@@ -63,14 +63,14 @@ export function SaldoAreaChart({ data }: { data: { mes: string; receita: number;
         <Tooltip content={<TT />} cursor={{ stroke: '#ffffff14' }} />
         <Area type="monotone" dataKey="saldo" name="Saldo" stroke="#2ee6a0" strokeWidth={2} fill="url(#gsaldo)" />
       </AreaChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></div>
   );
 }
 
 export function AportesChart({ data }: { data: { mes: string; valor: number }[] }) {
   const d = data.map((x) => ({ label: mesLabel(x.mes), valor: x.valor }));
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <div className="money"><ResponsiveContainer width="100%" height={220}>
       <BarChart data={d} margin={{ top: 8, right: 4, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
@@ -80,14 +80,14 @@ export function AportesChart({ data }: { data: { mes: string; valor: number }[] 
           {d.map((x, i) => <Cell key={i} fill={x.valor >= 0 ? '#2ee6a0' : '#ff6b6b'} />)}
         </Bar>
       </BarChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></div>
   );
 }
 
 export function CasaChart({ data }: { data: { mes: string; despesa: number }[] }) {
   const d = data.map((x) => ({ label: mesLabel(x.mes), valor: x.despesa }));
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <div className="money"><ResponsiveContainer width="100%" height={220}>
       <BarChart data={d} margin={{ top: 8, right: 4, left: -10, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
@@ -95,14 +95,14 @@ export function CasaChart({ data }: { data: { mes: string; despesa: number }[] }
         <Tooltip content={<TT />} cursor={{ fill: '#ffffff08' }} />
         <Bar dataKey="valor" name="Gasto com a casa" fill="#f5b642" radius={[5, 5, 0, 0]} />
       </BarChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></div>
   );
 }
 
 export function PatrimonioChart({ data }: { data: { data: string; valor: number }[] }) {
   const d = data.map((x) => ({ label: x.data.slice(5).split('-').reverse().join('/'), valor: x.valor }));
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <div className="money"><ResponsiveContainer width="100%" height={220}>
       <AreaChart data={d} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
         <defs>
           <linearGradient id="gpat" x1="0" y1="0" x2="0" y2="1">
@@ -116,7 +116,7 @@ export function PatrimonioChart({ data }: { data: { data: string; valor: number 
         <Tooltip content={<TT />} cursor={{ stroke: '#ffffff14' }} />
         <Area type="monotone" dataKey="valor" name="Patrimônio" stroke="#2ee6a0" strokeWidth={2} fill="url(#gpat)" dot={{ r: 3 }} />
       </AreaChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></div>
   );
 }
 
@@ -125,13 +125,13 @@ export function CategoriaDonut({ data }: { data: { categoria: string; total: num
   const resto = data.slice(8).reduce((s, x) => s + x.total, 0);
   const d = resto > 0 ? [...top, { categoria: 'Outros', total: resto }] : top;
   return (
-    <ResponsiveContainer width="100%" height={230}>
+    <div className="money"><ResponsiveContainer width="100%" height={230}>
       <PieChart>
         <Pie data={d} dataKey="total" nameKey="categoria" cx="50%" cy="50%" innerRadius={58} outerRadius={92} paddingAngle={2} stroke="none">
           {d.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
         </Pie>
         <Tooltip content={<TT />} />
       </PieChart>
-    </ResponsiveContainer>
+    </ResponsiveContainer></div>
   );
 }

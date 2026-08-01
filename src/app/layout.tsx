@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import './globals.css';
 import { NavLinks, RespToggle, MobileNav } from './components/Nav';
 import { PeriodPicker } from './components/PeriodPicker';
+import { PrivacyToggle } from './components/PrivacyToggle';
 import { Wallet } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -14,6 +15,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body className="min-h-screen bg-base text-text antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('hideMoney')==='1'){document.documentElement.setAttribute('data-hide-money','')}}catch(e){}`,
+          }}
+        />
         <div className="flex min-h-screen">
           {/* sidebar desktop */}
           <aside className="hidden md:flex w-60 shrink-0 flex-col gap-7 border-r border-border bg-surface/30 px-4 py-6">
@@ -37,9 +43,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Suspense fallback={<div className="h-10 w-40" />}>
                   <PeriodPicker />
                 </Suspense>
-                <Suspense fallback={<div className="h-9 w-56" />}>
-                  <RespToggle />
-                </Suspense>
+                <div className="flex items-center gap-2">
+                  <Suspense fallback={<div className="h-9 w-56" />}>
+                    <RespToggle />
+                  </Suspense>
+                  <PrivacyToggle />
+                </div>
               </div>
             </header>
             <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">{children}</div>

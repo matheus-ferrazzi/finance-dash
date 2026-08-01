@@ -1,0 +1,112 @@
+import { getKpis, getSerie, getOrcamento, getFaturas, getRecentes, resolvePeriodo, Resp } from '@/lib/queries';
+import { brl, pct, dataBR, diasAte, traduzCategoria } from '@/lib/format';
+import { PageTitle, KpiCard, SectionTitle, Progress, respBadge } from './components/ui';
+import { ReceitaDespesaChart, SaldoAreaChart } from './components/charts';
+import { TrendingUp, TrendingDown, Wallet, PiggyBank } from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
+
+function resolveResp(v?: string): Resp {
+  return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
+}
+
+export default async function Home({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string } }) {
+  const resp = resolveResp(searchParams.resp);
+  const per = resolvePeriodo(searchParams.p, searchParams.mes);
+
+  const [kpis, serie, orc, faturas, recentes] = await Promise.all([
+    getKpis(resp, per), getSerie(resp, per, 6), getOrcamento(resp, per), getFaturas(resp), getRecentes(resp, per, 8),
+  ]);
+
+  const dRec = kpis.receita_ant ? pct(kpis.receita - kpis.receita_ant, kpis.receita_ant) : null;
+  const dDes = kpis.despesa_ant ? pct(kpis.despesa - kpis.despesa_ant, kpis.despesa_ant) : null;
+  const cmp = per.kind === 'mes' ? 'vs mês ant.' : 'vs período ant.';
+
+  const alertas = orc
+    .map((o) => ({ ...o, p: o.teto ? (o.gasto / o.teto) * 100 : 0 }))
+    .filter((o) => o.p >= 70).sort((a, b) => b.p - a.p).slice(0, 4);
+
+  const proximas = [...faturas].filter((f) => f.vencimento).sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : 1)).slice(0, 3);
+
+  return (
+    <div>
+      <PageTitle title="Visão geral" subtitle={`${per.label} · receitas e despesas reais (sem transferências internas nem fatura).`} />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Receita" value={kpis.receita} tone="up" delta={dRec} deltaLabel={cmp} icon={TrendingUp} />
+        <KpiCard label="Despesa" value={kpis.despesa} tone="down" delta={dDes} deltaLabel={cmp} icon={TrendingDown} />
+        <KpiCard label="Saldo" value={kpis.saldo} tone={kpis.saldo >= 0 ? 'up' : 'down'} hint={kpis.saldo >= 0 ? 'sobrou' : 'no vermelho'} icon={Wallet} />
+        <KpiCard label="Investido" value={kpis.patrimonio} hint="patrimônio atual" icon={PiggyBank} />
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="card lg:col-span-2">
+          <SectionTitle>Receita vs. Despesa (6 meses)</SectionTitle>
+          <ReceitaDespesaChart data={serie} />
+        </div>
+        <div className="card">
+          <SectionTitle>Evolução do saldo</SectionTitle>
+          <SaldoAreaChart data={serie} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="card">
+          <SectionTitle>Orçamento — atenção</SectionTitle>
+          {alertas.length === 0 && <p className="text-sm text-muted">Tudo dentro do teto. 👍</p>}
+          <div className="space-y-3">
+            {alertas.map((o) => (
+              <div key={o.item}>
+                <div className="flex items-center justify-between text-sm">
+                  <span>{o.emoji} {o.item}</span>
+                  <span className="tnum text-muted">{brl(o.gasto)} <span className="opacity-60">/ {brl(o.teto)}</span></span>
+                </div>
+                <div className="mt-1.5"><Progress value={o.gasto} teto={o.teto} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <SectionTitle>Próximas faturas</SectionTitle>
+          {proximas.length === 0 && <p className="text-sm text-muted">Sem faturas cadastradas.</p>}
+          <div className="space-y-2">
+            {proximas.map((f) => {
+              const d = diasAte(f.vencimento);
+              return (
+                <div key={f.id} className="card-2 flex items-center justify-between px-3 py-2.5">
+                  <div className="flex items-center gap-2 text-sm"><span>{f.banco}</span>{respBadge(f.responsavel)}</div>
+                  <div className="text-right">
+                    <div className="tnum text-sm font-medium">{brl(f.valor)}</div>
+                    <div className="text-xs text-muted">vence {dataBR(f.vencimento)}{d != null && d >= 0 ? ` · ${d}d` : ''}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 card">
+        <SectionTitle>Lançamentos recentes</SectionTitle>
+        {recentes.length === 0 && <p className="text-sm text-muted">Nada neste período ainda.</p>}
+        <div className="divide-y divide-border">
+          {recentes.map((l) => (
+            <div key={l.id} className="flex items-center justify-between py-2.5 text-sm">
+              <div className="min-w-0">
+                <div className="truncate">{l.descricao || traduzCategoria(l.categoria)}</div>
+                <div className="text-xs text-faint">{dataBR(l.data)} · {traduzCategoria(l.categoria)} · {l.banco}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {respBadge(l.responsavel)}
+                <span className={`tnum font-medium ${l.classe === 'receita' ? 'text-accent' : 'text-despesa'}`}>
+                  {l.classe === 'receita' ? '+' : '−'}{brl(l.valor)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

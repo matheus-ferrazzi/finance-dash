@@ -1,0 +1,21 @@
+# dependências
+/node_modules
+
+# build do Next
+/.next
+/out
+/build
+next-env.d.ts
+
+# ambiente (NUNCA commitar segredos)
+.env
+.env.local
+.env*.local
+
+# logs / sistema
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.pem
+.vercel

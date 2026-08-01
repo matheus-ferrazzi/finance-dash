@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+html, body {
+  background: #0a0b0d;
+  color: #e9ecf1;
+}
+
+.card {
+  @apply bg-surface border border-border rounded-2xl p-5 shadow-card;
+}
+.card-2 {
+  @apply bg-surface-2 border border-border rounded-xl;
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.fadein { animation: fadein .25s ease both; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #2a2e35; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #3a404a; }
+::-webkit-scrollbar-track { background: transparent; }

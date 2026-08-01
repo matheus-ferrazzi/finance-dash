@@ -63,7 +63,7 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted">Categorias</span><span className="tnum">{grupos.length}</span></div>
             <div className="flex justify-between"><span className="text-muted">Lançamentos</span><span className="tnum">{despesas.length}</span></div>
-            <div className="flex justify-between"><span className="text-muted">Maior categoria</span><span>{grupos[0] ? traduzCategoria(grupos[0].categoria) : '—'}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Maior categoria</span><span className="money">{grupos[0] ? traduzCategoria(grupos[0].categoria) : '—'}</span></div>
             <div className="flex justify-between"><span className="text-muted">Ticket médio</span><span className="tnum">{brl(despesas.length ? totalMes / despesas.length : 0)}</span></div>
           </div>
         </div>

@@ -1,6 +1,7 @@
-import { getFaturas, Resp } from '@/lib/queries';
-import { brl, dataBR, diasAte } from '@/lib/format';
-import { PageTitle, SectionTitle, Progress, respBadge } from '../components/ui';
+import { getFaturas, getCreditoDespesas, currentDateSP, Resp } from '@/lib/queries';
+import { brl } from '@/lib/format';
+import { PageTitle } from '../components/ui';
+import { FaturaCard, FaturaView } from '../components/FaturaCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,14 +9,50 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
+function ddmm(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** ciclo de fatura que contém hoje, a partir do dia de fechamento */
+function cicloAtual(fechamento: string | null, hojeMs: number) {
+  const hoje = new Date(hojeMs);
+  const y = hoje.getUTCFullYear(), m = hoje.getUTCMonth();
+  const closeDay = fechamento ? new Date(fechamento + 'T00:00:00Z').getUTCDate() : 1;
+  const dThis = Date.UTC(y, m, closeDay);
+  if (dThis <= hojeMs) return { start: dThis, end: Date.UTC(y, m + 1, closeDay) };
+  return { start: Date.UTC(y, m - 1, closeDay), end: dThis };
+}
+
 export default async function Faturas({ searchParams }: { searchParams: { resp?: string } }) {
   const resp = resolveResp(searchParams.resp);
-  const faturas = await getFaturas(resp);
+  const [faturas, creditos] = await Promise.all([getFaturas(resp), getCreditoDespesas(resp)]);
+
+  const [hy, hm, hd] = currentDateSP().split('-').map(Number);
+  const hojeMs = Date.UTC(hy, hm - 1, hd);
+
+  const views: FaturaView[] = faturas.map((f) => {
+    const { start, end } = cicloAtual(f.fechamento, hojeMs);
+    const items = creditos
+      .filter((c) => c.banco === f.banco && c.responsavel === f.responsavel)
+      .filter((c) => {
+        const t = new Date(c.data + 'T00:00:00Z').getTime();
+        return t >= start && t < end;
+      })
+      .map((c) => ({ id: c.id, data: c.data, valor: c.valor, descricao: c.descricao, categoria: c.categoria }));
+    const soma = items.reduce((s, i) => s + i.valor, 0);
+    return {
+      id: f.id, banco: f.banco, responsavel: f.responsavel, valor: f.valor,
+      limite: f.limite, disponivel: f.disponivel, vencimento: f.vencimento, fechamento: f.fechamento,
+      cicloLabel: `${ddmm(start)} a ${ddmm(end - 86400000)}`, soma, items,
+    };
+  });
+
   const totalAberto = faturas.reduce((s, f) => s + f.valor, 0);
 
   return (
     <div>
-      <PageTitle title="Faturas" subtitle="Cartões de crédito — fatura atual, vencimento e limite." />
+      <PageTitle title="Faturas" subtitle="Cartões de crédito — toque em cada um pra ver as compras do ciclo." />
 
       <div className="card mb-4">
         <div className="text-xs text-muted">Total em faturas abertas</div>
@@ -23,36 +60,11 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {faturas.map((f) => {
-          const usado = f.limite > 0 ? f.limite - f.disponivel : 0;
-          const d = diasAte(f.vencimento);
-          return (
-            <div key={f.id} className="card">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{f.banco}</span>{respBadge(f.responsavel)}
-                </div>
-                <span className="text-xs text-muted">
-                  {f.vencimento ? `vence ${dataBR(f.vencimento)}` : 'sem venc.'}{d != null && d >= 0 ? ` · ${d}d` : ''}
-                </span>
-              </div>
-              <div className="mt-3 text-2xl font-semibold tnum">{brl(f.valor)}</div>
-              <div className="text-xs text-muted">fatura atual</div>
-              {f.limite > 0 && (
-                <div className="mt-4">
-                  <div className="flex justify-between text-xs text-muted mb-1.5">
-                    <span>Limite usado</span><span className="tnum">{brl(usado)} / {brl(f.limite)}</span>
-                  </div>
-                  <Progress value={usado} teto={f.limite} />
-                  <div className="mt-1 text-xs text-faint">disponível {brl(f.disponivel)}</div>
-                </div>
-              )}
-              {f.fechamento && <div className="mt-3 text-xs text-faint">fecha em {dataBR(f.fechamento)}</div>}
-            </div>
-          );
-        })}
+        {views.map((v) => <FaturaCard key={v.id} f={v} />)}
       </div>
-      {faturas.length === 0 && <div className="card"><p className="text-sm text-muted">Nenhuma fatura cadastrada.</p></div>}
+      {views.length === 0 && (
+        <div className="card"><p className="text-sm text-muted">Nenhuma fatura cadastrada.</p></div>
+      )}
     </div>
   );
 }

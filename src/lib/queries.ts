@@ -191,7 +191,8 @@ export async function getFaturas(resp: Resp): Promise<Fatura[]> {
   const rows = await q<any>(
     `SELECT id_conta AS id, COALESCE(banco,'—') AS banco, responsavel,
             COALESCE(valor_fatura_atual,0) AS valor, COALESCE(limite_total,0) AS limite,
-            COALESCE(limite_disponivel,0) AS disponivel, data_vencimento AS vencimento, data_fechamento AS fechamento
+            COALESCE(limite_disponivel,0) AS disponivel,
+            to_char(data_vencimento,'YYYY-MM-DD') AS vencimento, to_char(data_fechamento,'YYYY-MM-DD') AS fechamento
      FROM financas_faturas WHERE 1=1${r.sql} ORDER BY data_vencimento NULLS LAST`,
     r.p,
   );
@@ -259,6 +260,38 @@ export async function getCasaSerie(resp: Resp, per: Periodo, meses = 6): Promise
     [`${per.mesAnchor}-01`, CASA_CATS, ...r.p],
   );
   return rows.map((x) => ({ mes: x.mes, receita: 0, despesa: Number(x.despesa) }));
+}
+
+export interface SyncConn { banco: string; responsavel: string; lastSync: string; horas: number; }
+export interface SyncStatus { oldestH: number; conns: SyncConn[] }
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  const rows = await q<any>(
+    `SELECT banco, responsavel, to_char(last_sync,'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_sync,
+            ROUND(EXTRACT(EPOCH FROM (now()-last_sync))/3600, 1) AS horas
+     FROM financas_sync ORDER BY last_sync ASC`,
+  );
+  const conns: SyncConn[] = rows.map((r) => ({
+    banco: r.banco, responsavel: r.responsavel, lastSync: r.last_sync, horas: Number(r.horas),
+  }));
+  const oldestH = conns.length ? Math.max(...conns.map((c) => c.horas)) : 0;
+  return { oldestH, conns };
+}
+
+/** compras de crédito (despesa) numa janela ampla, pra montar a composição da fatura por cartão */
+export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
+  const r = rf(resp, 1);
+  const rows = await q<any>(
+    `SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor, descricao,
+            COALESCE(categoria,'Outros') AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND forma_pagamento='Crédito'
+       AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - 75
+       AND data_lancamento <  (now() AT TIME ZONE 'America/Sao_Paulo')::date + 50${r.sql}
+     ORDER BY data_lancamento DESC, valor DESC`,
+    r.p,
+  );
+  return mapLanc(rows);
 }
 
 export interface PatrimonioPonto { data: string; valor: number; }

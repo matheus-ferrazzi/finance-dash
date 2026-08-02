@@ -4,6 +4,8 @@ import './globals.css';
 import { NavLinks, RespToggle, MobileNav } from './components/Nav';
 import { PeriodPicker } from './components/PeriodPicker';
 import { PrivacyToggle } from './components/PrivacyToggle';
+import { SyncBadge } from './components/SyncBadge';
+import { getSyncStatus } from '@/lib/queries';
 import { Wallet } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -11,7 +13,9 @@ export const metadata: Metadata = {
   description: 'Painel financeiro Matheus & Ariane',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  let sync = { oldestH: 0, conns: [] as any[] };
+  try { sync = await getSyncStatus(); } catch {}
   return (
     <html lang="pt-BR">
       <body className="min-h-screen bg-base text-text antialiased">
@@ -44,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <PeriodPicker />
                 </Suspense>
                 <div className="flex items-center gap-2">
+                  <SyncBadge status={sync} />
                   <Suspense fallback={<div className="h-9 w-56" />}>
                     <RespToggle />
                   </Suspense>

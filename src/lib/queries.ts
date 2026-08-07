@@ -56,7 +56,9 @@ function rf(resp: Resp, idx: number): { sql: string; p: string[] } {
   if (resp === 'Matheus' || resp === 'Ariane') return { sql: ` AND responsavel = $${idx}`, p: [resp] };
   return { sql: '', p: [] };
 }
-const RANGE = 'data_lancamento >= $1::date AND data_lancamento < $2::date';
+// regra única: nunca contar lançamento com data no futuro (parcela agendada)
+const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
+const RANGE = `data_lancamento >= $1::date AND data_lancamento < $2::date AND data_lancamento <= ${HOJE}`;
 
 export interface Kpis {
   receita: number; despesa: number; saldo: number; aporte: number; patrimonio: number;
@@ -73,7 +75,7 @@ export async function getKpis(resp: Resp, per: Periodo): Promise<Kpis> {
        COALESCE(SUM(valor) FILTER (WHERE classe='receita' AND data_lancamento >= $3::date AND data_lancamento < $4::date),0) AS receita_ant,
        COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND data_lancamento >= $3::date AND data_lancamento < $4::date),0) AS despesa_ant
      FROM financas_lancamentos
-     WHERE data_lancamento >= $3::date AND data_lancamento < $2::date${r.sql}`,
+     WHERE data_lancamento >= $3::date AND data_lancamento < $2::date AND data_lancamento <= ${HOJE}${r.sql}`,
     [per.start, per.endExcl, per.prevStart, per.prevEndExcl, ...r.p],
   );
   const x = rows[0];
@@ -105,7 +107,8 @@ export async function getSerie(resp: Resp, per: Periodo, meses = 6): Promise<Ser
             COALESCE(SUM(valor) FILTER (WHERE classe='despesa'),0) AS despesa
      FROM financas_lancamentos
      WHERE data_lancamento >= (date_trunc('month',$1::date) - interval '${meses - 1} months')
-       AND data_lancamento < (date_trunc('month',$1::date) + interval '1 month')${r.sql}
+       AND data_lancamento < (date_trunc('month',$1::date) + interval '1 month')
+       AND data_lancamento <= ${HOJE}${r.sql}
      GROUP BY 1 ORDER BY 1`,
     [`${per.mesAnchor}-01`, ...r.p],
   );
@@ -122,6 +125,7 @@ export async function getOrcamento(resp: Resp, per: Periodo): Promise<OrcItem[]>
               SELECT SUM(l.valor) FROM financas_lancamentos l
               WHERE l.classe='despesa'
                 AND l.data_lancamento >= $1::date AND l.data_lancamento < (date_trunc('month',$1::date) + interval '1 month')
+                AND l.data_lancamento <= ${HOJE}
                 AND l.categoria = ANY(o.categorias)${r.sql.replace('responsavel', 'l.responsavel')}
             ),0) AS gasto
      FROM financas_orcamento o WHERE o.ativo = true ORDER BY o.item`,
@@ -255,7 +259,8 @@ export async function getCasaSerie(resp: Resp, per: Periodo, meses = 6): Promise
      FROM financas_lancamentos
      WHERE classe='despesa' AND categoria = ANY($2::text[])
        AND data_lancamento >= (date_trunc('month',$1::date) - interval '${meses - 1} months')
-       AND data_lancamento < (date_trunc('month',$1::date) + interval '1 month')${r.sql}
+       AND data_lancamento < (date_trunc('month',$1::date) + interval '1 month')
+       AND data_lancamento <= ${HOJE}${r.sql}
      GROUP BY 1 ORDER BY 1`,
     [`${per.mesAnchor}-01`, CASA_CATS, ...r.p],
   );

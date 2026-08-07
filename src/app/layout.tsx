@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import './globals.css';
-import { NavLinks, RespToggle, MobileNav } from './components/Nav';
+import { NavLinks, RespToggle, MobileNav, HeaderLinks } from './components/Nav';
 import { PeriodPicker } from './components/PeriodPicker';
 import { PrivacyToggle } from './components/PrivacyToggle';
 import { SyncBadge } from './components/SyncBadge';
@@ -51,6 +51,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <SyncBadge status={sync} />
                   <Suspense fallback={<div className="h-9 w-56" />}>
                     <RespToggle />
+                  </Suspense>
+                  <Suspense fallback={<div className="h-9 w-20" />}>
+                    <HeaderLinks />
                   </Suspense>
                   <PrivacyToggle />
                 </div>

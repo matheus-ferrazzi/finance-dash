@@ -292,9 +292,55 @@ export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
      FROM financas_lancamentos
      WHERE classe='despesa' AND forma_pagamento='Crédito'
        AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - 75
-       AND data_lancamento <  (now() AT TIME ZONE 'America/Sao_Paulo')::date + 50${r.sql}
+       AND data_lancamento <  (now() AT TIME ZONE 'America/Sao_Paulo')::date + 75${r.sql}
      ORDER BY data_lancamento DESC, valor DESC`,
     r.p,
+  );
+  return mapLanc(rows);
+}
+
+export interface Assinatura { nome: string; valorMedio: number; meses: number; categoria: string; banco: string; ultima: string; }
+
+/** gastos recorrentes (aparecem em >= 3 meses distintos) — assinaturas/mensalidades */
+export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
+  const r = rf(resp, 1);
+  const rows = await q<any>(
+    `WITH base AS (
+       SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
+              valor, COALESCE(categoria,'Outros') AS categoria, COALESCE(banco,'—') AS banco,
+              date_trunc('month', data_lancamento) AS mes, data_lancamento
+       FROM financas_lancamentos
+       WHERE classe='despesa'
+         AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - interval '6 months'
+         AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
+     )
+     SELECT chave AS nome, ROUND(AVG(valor),2) AS valor_medio, COUNT(DISTINCT mes) AS meses,
+            mode() WITHIN GROUP (ORDER BY categoria) AS categoria,
+            mode() WITHIN GROUP (ORDER BY banco) AS banco,
+            to_char(MAX(data_lancamento),'YYYY-MM-DD') AS ultima
+     FROM base
+     WHERE length(chave) >= 4
+     GROUP BY chave
+     HAVING COUNT(DISTINCT mes) >= 3 AND ROUND(AVG(valor),2) >= 5
+     ORDER BY valor_medio DESC LIMIT 30`,
+    r.p,
+  );
+  return rows.map((x) => ({
+    nome: x.nome, valorMedio: Number(x.valor_medio), meses: Number(x.meses),
+    categoria: x.categoria, banco: x.banco, ultima: x.ultima,
+  }));
+}
+
+export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {
+  const r = rf(resp, 2);
+  const rows = await q<any>(
+    `SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor, descricao,
+            COALESCE(categoria,'Outros') AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+     FROM financas_lancamentos
+     WHERE descricao ILIKE '%' || $1 || '%'
+       AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
+     ORDER BY data_lancamento DESC LIMIT 80`,
+    [termo, ...r.p],
   );
   return mapLanc(rows);
 }

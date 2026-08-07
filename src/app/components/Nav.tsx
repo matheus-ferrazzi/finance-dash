@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home } from 'lucide-react';
+import { LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search } from 'lucide-react';
 
 const LINKS = [
   { href: '/', label: 'Visão geral', short: 'Visão', icon: LayoutDashboard },
@@ -11,6 +11,12 @@ const LINKS = [
   { href: '/casa', label: 'Casa', short: 'Casa', icon: Home },
   { href: '/faturas', label: 'Faturas', short: 'Faturas', icon: CreditCard },
   { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },
+];
+
+// páginas secundárias — no desktop entram na sidebar, no mobile ficam como ícones no header
+const EXTRA = [
+  { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
+  { href: '/buscar', label: 'Buscar', short: 'Buscar', icon: Search },
 ];
 
 const RESPS = [
@@ -25,7 +31,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const qs = sp.toString();
   return (
     <nav className="flex flex-col gap-1">
-      {LINKS.map(({ href, label, icon: Icon }) => {
+      {[...LINKS, ...EXTRA].map(({ href, label, icon: Icon }) => {
         const active = path === href;
         return (
           <Link
@@ -42,6 +48,33 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         );
       })}
     </nav>
+  );
+}
+
+/** ícones das páginas secundárias no header (acesso rápido no mobile) */
+export function HeaderLinks() {
+  const path = usePathname();
+  const sp = useSearchParams();
+  const qs = sp.toString();
+  return (
+    <div className="flex items-center gap-1">
+      {EXTRA.map(({ href, label, icon: Icon }) => {
+        const active = path === href;
+        return (
+          <Link
+            key={href}
+            href={href + (qs ? `?${qs}` : '')}
+            aria-label={label}
+            title={label}
+            className={`grid h-9 w-9 place-items-center rounded-xl border border-border transition-colors ${
+              active ? 'bg-surface-3 text-accent' : 'bg-surface text-muted hover:text-text'
+            }`}
+          >
+            <Icon size={17} />
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 

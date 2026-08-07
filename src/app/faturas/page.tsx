@@ -33,18 +33,25 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
 
   const views: FaturaView[] = faturas.map((f) => {
     const { start, end } = cicloAtual(f.fechamento, hojeMs);
-    const items = creditos
-      .filter((c) => c.banco === f.banco && c.responsavel === f.responsavel)
+    const meus = creditos.filter((c) => c.banco === f.banco && c.responsavel === f.responsavel);
+    const items = meus
       .filter((c) => {
         const t = new Date(c.data + 'T00:00:00Z').getTime();
         return t >= start && t < end;
       })
       .map((c) => ({ id: c.id, data: c.data, valor: c.valor, descricao: c.descricao, categoria: c.categoria }));
     const soma = items.reduce((s, i) => s + i.valor, 0);
+    // próximo ciclo [end, end+1mês) — soma das parcelas futuras já lançadas
+    const ne = new Date(end);
+    const nextEnd = Date.UTC(ne.getUTCFullYear(), ne.getUTCMonth() + 1, ne.getUTCDate());
+    const proxSoma = meus
+      .filter((c) => { const t = new Date(c.data + 'T00:00:00Z').getTime(); return t >= end && t < nextEnd; })
+      .reduce((s, c) => s + c.valor, 0);
     return {
       id: f.id, banco: f.banco, responsavel: f.responsavel, valor: f.valor,
       limite: f.limite, disponivel: f.disponivel, vencimento: f.vencimento, fechamento: f.fechamento,
       cicloLabel: `${ddmm(start)} a ${ddmm(end - 86400000)}`, soma, items,
+      proxSoma, proxLabel: `${ddmm(end)} a ${ddmm(nextEnd - 86400000)}`,
     };
   });
 

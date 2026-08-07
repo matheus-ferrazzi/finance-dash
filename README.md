@@ -10,8 +10,12 @@ Painel financeiro pessoal em **Next.js 14**, que lê os lançamentos, faturas e 
 - **Gastos** — distribuição por categoria (rosca), por banco, e **drill-down**: clique numa categoria pra ver os lançamentos.
 - **Orçamento** — tetos mensais por categoria com barra de progresso, alerta de estouro e drill-down do que consumiu.
 - **Casa** — gastos fixos do lar (moradia, energia, água, internet, telefone) com evolução.
-- **Faturas** — cartões, vencimento, limite usado.
+- **Faturas** — cartões, vencimento, limite usado, **compras do ciclo** (expandível) e **projeção da próxima fatura** (parcelas futuras já lançadas).
 - **Investimentos** — carteira, lucro real, aportes por mês e evolução do patrimônio.
+- **Assinaturas & recorrentes** — detecta cobranças que se repetem em 3+ meses e estima o gasto mensal fixo.
+- **Buscar** — busca de qualquer lançamento por descrição.
+- **Insights** — faixa de alertas automáticos no topo (teto estourado, fatura vencendo, saldo negativo).
+- **Modo privado** — "olhinho" que borra todos os valores na tela (igual app de banco).
 
 ## 🧱 Stack
 

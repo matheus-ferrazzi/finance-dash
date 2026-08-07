@@ -28,9 +28,34 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
 
   const proximas = [...faturas].filter((f) => f.vencimento).sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : 1)).slice(0, 3);
 
+  // faixa de insights — alertas automáticos a partir dos dados já carregados
+  const insights: { tone: 'danger' | 'warn'; label: string; value?: string }[] = [];
+  orc.filter((o) => o.teto > 0 && o.gasto > o.teto).sort((a, b) => b.gasto - a.gasto).slice(0, 2)
+    .forEach((o) => insights.push({ tone: 'danger', label: `${o.emoji} ${o.item} passou do teto`, value: `${brl(o.gasto)} / ${brl(o.teto)}` }));
+  [...faturas].filter((f) => { const d = diasAte(f.vencimento); return f.valor > 0 && d != null && d >= 0 && d <= 5; })
+    .sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : 1)).slice(0, 2)
+    .forEach((f) => insights.push({ tone: 'warn', label: `💳 ${f.banco} vence em ${diasAte(f.vencimento)}d`, value: brl(f.valor) }));
+  if (kpis.saldo < 0) insights.push({ tone: 'danger', label: '🔴 Saldo negativo no período', value: brl(kpis.saldo) });
+
   return (
     <div>
       <PageTitle title="Visão geral" subtitle={`${per.label} · receitas e despesas reais (sem transferências internas nem fatura).`} />
+
+      {insights.length > 0 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {insights.map((i, k) => (
+            <div
+              key={k}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${
+                i.tone === 'danger' ? 'border-despesa/30 bg-despesa/10 text-despesa' : 'border-warn/30 bg-warn/10 text-warn'
+              }`}
+            >
+              <span>{i.label}</span>
+              {i.value && <span className="tnum money font-medium">{i.value}</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Receita" value={kpis.receita} tone="up" delta={dRec} deltaLabel={cmp} icon={TrendingUp} />

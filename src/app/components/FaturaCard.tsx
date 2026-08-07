@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, Info } from 'lucide-react';
+import { ChevronDown, Info, CalendarClock } from 'lucide-react';
 import { brl, dataBR, diasAte, traduzCategoria } from '@/lib/format';
 import { respBadge, Progress, catIcon } from './ui';
 
@@ -12,6 +12,7 @@ export interface FaturaView {
   id: string; banco: string; responsavel: string; valor: number;
   limite: number; disponivel: number; vencimento: string | null; fechamento: string | null;
   cicloLabel: string; soma: number; items: FaturaItem[];
+  proxSoma: number; proxLabel: string;
 }
 
 export function FaturaCard({ f }: { f: FaturaView }) {
@@ -30,8 +31,18 @@ export function FaturaCard({ f }: { f: FaturaView }) {
         </span>
       </div>
 
-      <div className="mt-3 text-2xl font-semibold tnum">{brl(f.valor)}</div>
+      <div className="mt-3 text-2xl font-semibold tnum money">{brl(f.valor)}</div>
       <div className="text-xs text-muted">fatura atual</div>
+
+      {f.proxSoma > 0 && (
+        <div className="mt-3 flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted">
+            <CalendarClock size={13} className="text-faint" />
+            <span>Próxima fatura (parcial)</span>
+          </div>
+          <span className="tnum money text-sm font-medium">{brl(f.proxSoma)}</span>
+        </div>
+      )}
 
       {f.limite > 0 && (
         <div className="mt-4">

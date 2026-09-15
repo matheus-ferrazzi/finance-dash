@@ -58,6 +58,14 @@ function rf(resp: Resp, idx: number): { sql: string; p: string[] } {
 }
 // regra única: nunca contar lançamento com data no futuro (parcela agendada)
 const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
+
+/**
+ * Lançamentos-espelho do Bradesco: o banco replica a dívida do cartão na conta
+ * corrente ("MORA CARTAO", "PROVISAO"). Não é dinheiro saindo — se entrar na
+ * conta de caixa, inventa saídas de R$ 13 mil que nunca existiram.
+ */
+const SEM_ESPELHO = `descricao NOT ILIKE '%MORA CARTAO%'
+  AND descricao NOT ILIKE '%PROVISAO%' AND descricao NOT ILIKE '%GASTOS CART%'`;
 const RANGE = `data_lancamento >= $1::date AND data_lancamento < $2::date AND data_lancamento <= ${HOJE}`;
 
 export interface Kpis {
@@ -475,7 +483,10 @@ export interface ProjecaoBase {
   patrimonioAtual: number;
   saldoContasAtual: number;
   receitaMediaMensal: number;
+  /** gasto no DÉBITO (fora casa) — o que sai direto da conta */
   despesaVariavelMediaMensal: number;
+  /** compras novas no crédito por mês (fora parcelamentos) — vira fatura */
+  creditoNovoMedio: number;
   /** média mensal por categoria da casa (aluguel/luz/água/internet/telefone/gás) */
   despesaCasaPorCategoria: Record<string, number>;
   despesaFixaPorMes: Record<string, number>; // 'YYYY-MM' -> soma de lançamentos futuros já confirmados pela Pluggy
@@ -484,8 +495,9 @@ export interface ProjecaoBase {
   mesCorrente: {
     receitaJaRecebida: number;
     receitaAgendada: number;
-    variavelJaGasto: number;
-    agendadoRestante: number;              // parcelas já datadas no resto do mês (fora casa)
+    variavelJaGasto: number;               // no débito, fora casa
+    agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
+    faturaJaPaga: number;                  // fatura de cartão já paga neste mês
     casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
   };
 }
@@ -507,8 +519,26 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
     r1.p,
   );
 
+  // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
+  // ela vira fatura e é descontada quando a fatura é paga.
   const r2 = rf(resp, 2);
   const varRows = await q<any>(
+    `SELECT ROUND(AVG(m.total),2) AS media FROM (
+       SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
+       FROM financas_lancamentos l
+       WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
+         AND NOT (l.categoria = ANY($1::text[]))
+         AND ${SEM_ESPELHO}
+         AND l.data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
+         AND l.data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${r2.sql}
+       GROUP BY 1
+     ) m`,
+    [CASA_CATS, ...r2.p],
+  );
+
+  // compras novas no crédito (fora parcelamentos) — é o que vira fatura do mês seguinte
+  const rcn = rf(resp, 1);
+  const creditoRows = await q<any>(
     `WITH chaves_parceladas AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave
        FROM financas_lancamentos
@@ -517,14 +547,13 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
      SELECT ROUND(AVG(m.total),2) AS media FROM (
        SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
        FROM financas_lancamentos l
-       WHERE l.classe='despesa'
-         AND NOT (l.categoria = ANY($1::text[]))
+       WHERE l.classe='despesa' AND l.forma_pagamento='Crédito'
          AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT chave FROM chaves_parceladas)
          AND l.data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
-         AND l.data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${r2.sql}
+         AND l.data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${rcn.sql}
        GROUP BY 1
      ) m`,
-    [CASA_CATS, ...r2.p],
+    rcn.p,
   );
 
   // gastos da casa entram pela média real por categoria (aluguel, luz, água...).
@@ -575,13 +604,19 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
        (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
          WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim${rmc.sql}) AS receita_agendada,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
-         WHERE l.classe='despesa' AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
+         WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
+           AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
            AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
-           AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT ch FROM chaves)
-           ${rmc.sql}) AS variavel_gasto,
+           AND ${SEM_ESPELHO}${rmc.sql}) AS variavel_gasto,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
-         WHERE l.classe='despesa' AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim
-           AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))${rmc.sql}) AS agendado_restante`,
+         WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
+           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim
+           AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
+           AND ${SEM_ESPELHO}${rmc.sql}) AS agendado_restante,
+       (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
+         WHERE l.classe='pagamento_fatura' AND l.forma_pagamento='Débito'
+           AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
+           AND ${SEM_ESPELHO}${rmc.sql}) AS fatura_ja_paga`,
     [...rmc.p, CASA_CATS],
   );
 
@@ -606,10 +641,12 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
+      faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
       casaNoMesPorCategoria,
     },
     receitaMediaMensal: Number(receitaRows[0]?.media ?? 0),
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
+    creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,
     despesaFixaPorMes,
     compromissosManuais,
@@ -618,10 +655,14 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
 
 export interface ProjecaoMes {
   mes: string; mesLabel: string;
-  receita: number; despesaFixa: number; despesaManual: number;
-  despesaCasa: number; despesaVariavel: number;
-  saldo: number;          // fluxo do mês (receita - despesas)
-  saldoProjetado: number; // dinheiro que você teria em conta no fim daquele mês
+  receita: number;
+  despesaFixa: number;     // débito já agendado no mês
+  despesaManual: number;   // fixos cadastrados
+  despesaCasa: number;
+  despesaVariavel: number; // gasto no débito
+  fatura: number;          // fatura de cartão que sai da conta no mês
+  saldo: number;           // fluxo de CAIXA do mês
+  saldoProjetado: number;  // dinheiro em conta no fim daquele mês
   /** no mês em andamento os valores são o que AINDA falta acontecer, não o mês inteiro */
   emAndamento?: boolean;
 }
@@ -630,6 +671,15 @@ function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
   if (mes < c.dataInicio.slice(0, 7)) return false;
   if (c.dataFim && mes > c.dataFim.slice(0, 7)) return false;
   return true;
+}
+
+/**
+ * Fatura que sai da conta no mês: as parcelas já agendadas para ele
+ * (a Pluggy lança as futuras) mais as compras novas no crédito, que você
+ * faz todo mês e caem na fatura seguinte.
+ */
+function faturaDoMes(base: ProjecaoBase, mes: string): number {
+  return (base.despesaFixaPorMes[mes] ?? 0) + base.creditoNovoMedio;
 }
 
 function addMonthsSP(anchorYYYYMM: string, n: number): string {
@@ -666,21 +716,28 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
     const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
       .filter(([cat]) => !cobertas.has(cat))
       .reduce((s, [cat, media]) => s + Math.max(0, media - (mc.casaNoMesPorCategoria[cat] ?? 0)), 0);
-    const despesaVariavel = Math.max(0, base.despesaVariavelMediaMensal - mc.variavelJaGasto);
+    // gasto do dia a dia é diário: proporcional aos dias que faltam, não
+    // "média do mês menos o que já gastou" (que assume recuperar o atraso todo)
+    const [, , diaHojeStr] = currentDateSP().split('-');
+    const diaHoje = Number(diaHojeStr);
+    const [anoA, mesA] = anchor.split('-').map(Number);
+    const diasNoMes = new Date(Date.UTC(anoA, mesA, 0)).getUTCDate();
+    const despesaVariavel = base.despesaVariavelMediaMensal * ((diasNoMes - diaHoje) / diasNoMes);
     const despesaFixa = mc.agendadoRestante;
     const receita = Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida) + mc.receitaAgendada;
+    const fatura = Math.max(0, faturaDoMes(base, anchor) - mc.faturaJaPaga);
 
-    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel;
+    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;
     out.push({
       mes: anchor, mesLabel: mesLabel(anchor), receita, despesaFixa, despesaManual,
-      despesaCasa, despesaVariavel, saldo, saldoProjetado, emAndamento: true,
+      despesaCasa, despesaVariavel, fatura, saldo, saldoProjetado, emAndamento: true,
     });
   }
 
   for (let i = 1; i <= horizonMeses; i++) {
     const mes = addMonthsSP(anchor, i);
-    const despesaFixa = base.despesaFixaPorMes[mes] ?? 0;
+    const despesaFixa = 0; // no caixa, parcela de cartão sai dentro da fatura
     const ativosNoMes = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, mes));
     const despesaManual = ativosNoMes.reduce((s, c) => s + c.valor, 0);
 
@@ -693,9 +750,10 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
 
     const despesaVariavel = base.despesaVariavelMediaMensal;
     const receita = base.receitaMediaMensal;
-    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel;
+    const fatura = faturaDoMes(base, mes);
+    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;
-    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, saldo, saldoProjetado });
+    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, fatura, saldo, saldoProjetado });
   }
   return out;
 }

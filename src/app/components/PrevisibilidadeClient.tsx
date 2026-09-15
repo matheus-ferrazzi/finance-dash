@@ -91,7 +91,7 @@ export function PrevisibilidadeClient({
   const mesAtual = projecao[0];
   // tudo que você vai ter que pagar de qualquer jeito: parcelas + fixos + casa
   const comprometido = useMemo(
-    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual + m.despesaCasa, 0),
+    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual + m.despesaCasa + m.fatura, 0),
     [sliced],
   );
   const sobraMedia = useMemo(
@@ -106,6 +106,7 @@ export function PrevisibilidadeClient({
   const receitaBase = mesCheio?.receita ?? 0;
   const variavelBase = mesCheio?.despesaVariavel ?? 0;
   const casaBase = mesCheio?.despesaCasa ?? 0;
+  const faturaBase = mesCheio?.fatura ?? 0;
 
   const itens: ItemLista[] = useMemo(() => {
     const hojeYM = currentMonthSP();
@@ -251,9 +252,9 @@ export function PrevisibilidadeClient({
             <div className="card-2 px-3 py-2.5">
               <div className="text-[11px] text-muted">Ainda sai</div>
               <div className="mt-1 tnum money text-sm font-medium text-despesa">
-                −{brl(mesAtual.despesaFixa + mesAtual.despesaManual + mesAtual.despesaCasa + mesAtual.despesaVariavel)}
+                −{brl(mesAtual.despesaFixa + mesAtual.despesaManual + mesAtual.despesaCasa + mesAtual.despesaVariavel + mesAtual.fatura)}
               </div>
-              <div className="text-[10px] text-faint">fixos + parcelas + gasto</div>
+              <div className="text-[10px] text-faint">fixos + casa + débito + fatura</div>
             </div>
             <div className="card-2 px-3 py-2.5">
               <div className="text-[11px] text-muted">Fecho o mês com</div>
@@ -265,8 +266,9 @@ export function PrevisibilidadeClient({
           <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
             <span className="rounded bg-surface-2 px-2 py-1">casa que falta <b className="tnum money">{brl(mesAtual.despesaCasa)}</b></span>
             <span className="rounded bg-surface-2 px-2 py-1">fixos cadastrados <b className="tnum money">{brl(mesAtual.despesaManual)}</b></span>
-            <span className="rounded bg-surface-2 px-2 py-1">parcelas agendadas <b className="tnum money">{brl(mesAtual.despesaFixa)}</b></span>
+            <span className="rounded bg-surface-2 px-2 py-1">débito agendado <b className="tnum money">{brl(mesAtual.despesaFixa)}</b></span>
             <span className="rounded bg-surface-2 px-2 py-1">gasto do dia a dia que falta <b className="tnum money">{brl(mesAtual.despesaVariavel)}</b></span>
+            <span className="rounded bg-surface-2 px-2 py-1">fatura a pagar <b className="tnum money text-warn">{brl(mesAtual.fatura)}</b></span>
           </div>
           <p className="mt-2 text-xs text-faint">
             O saldo de hoje já reflete tudo que passou, então aqui só entra o que <b>ainda falta</b> acontecer
@@ -453,6 +455,7 @@ export function PrevisibilidadeClient({
         receitaBase={receitaBase}
         variavelBase={variavelBase}
         casaBase={casaBase}
+        faturaBase={faturaBase}
         patrimonioAtual={patrimonioAtual}
       />
     </div>

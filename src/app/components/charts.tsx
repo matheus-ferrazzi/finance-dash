@@ -133,8 +133,8 @@ export function ProjecaoChart({
       <ComposedChart data={data} margin={{ top: 8, right: 4, left: -10, bottom: 0 }} barCategoryGap="20%">
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="mesLabel" tick={AXIS} axisLine={false} tickLine={false} />
-        <YAxis yAxisId="fluxo" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
-        <YAxis yAxisId="conta" orientation="right" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
+        <YAxis yAxisId="fluxo" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={68} />
+        <YAxis yAxisId="conta" orientation="right" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={68} />
         <ReferenceLine yAxisId="conta" y={0} stroke="#ff6b6b" strokeDasharray="2 4" strokeOpacity={0.5} />
         <Tooltip content={<TT />} cursor={{ fill: '#ffffff08' }} />
         <Bar yAxisId="fluxo" dataKey="saldo" name="Sobra do mês" radius={[5, 5, 0, 0]} maxBarSize={44}>

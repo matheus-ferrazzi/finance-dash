@@ -82,13 +82,16 @@ export function PrevisibilidadeClient({
     [valorSim, parcelasSim, saldoContas.total, projecao],
   );
 
+  // projecao[0] é o mês em andamento; o horizonte conta os meses à frente dele
   const sliced = useMemo(() => {
-    const base = projecao.slice(0, horizonte);
+    const base = projecao.slice(0, horizonte + 1);
     if (!simulacao) return base;
     return base.map((m, i) => ({ ...m, saldoComCompra: simulacao.saldoComCompra[i] }));
   }, [projecao, horizonte, simulacao]);
+  const mesAtual = projecao[0];
+  // tudo que você vai ter que pagar de qualquer jeito: parcelas + fixos + casa
   const comprometido = useMemo(
-    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual, 0),
+    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual + m.despesaCasa, 0),
     [sliced],
   );
   const sobraMedia = useMemo(
@@ -228,6 +231,46 @@ export function PrevisibilidadeClient({
           </div>
         </div>
       </div>
+
+      {mesAtual && (
+        <div className="mt-4 card">
+          <SectionTitle>Fechamento de {mesAtual.mesLabel} (mês em andamento)</SectionTitle>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="card-2 px-3 py-2.5">
+              <div className="text-[11px] text-muted">Tenho hoje</div>
+              <div className="mt-1 tnum money text-sm font-medium">{brl(saldoContas.total)}</div>
+            </div>
+            <div className="card-2 px-3 py-2.5">
+              <div className="text-[11px] text-muted">Ainda entra</div>
+              <div className="mt-1 tnum money text-sm font-medium text-accent">+{brl(mesAtual.receita)}</div>
+              <div className="text-[10px] text-faint">salário a receber</div>
+            </div>
+            <div className="card-2 px-3 py-2.5">
+              <div className="text-[11px] text-muted">Ainda sai</div>
+              <div className="mt-1 tnum money text-sm font-medium text-despesa">
+                −{brl(mesAtual.despesaFixa + mesAtual.despesaManual + mesAtual.despesaCasa + mesAtual.despesaVariavel)}
+              </div>
+              <div className="text-[10px] text-faint">fixos + parcelas + gasto</div>
+            </div>
+            <div className="card-2 px-3 py-2.5">
+              <div className="text-[11px] text-muted">Fecho o mês com</div>
+              <div className={`mt-1 tnum money text-sm font-semibold ${mesAtual.saldoProjetado >= 0 ? 'text-accent' : 'text-despesa'}`}>
+                {brl(mesAtual.saldoProjetado)}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
+            <span className="rounded bg-surface-2 px-2 py-1">casa que falta <b className="tnum money">{brl(mesAtual.despesaCasa)}</b></span>
+            <span className="rounded bg-surface-2 px-2 py-1">fixos cadastrados <b className="tnum money">{brl(mesAtual.despesaManual)}</b></span>
+            <span className="rounded bg-surface-2 px-2 py-1">parcelas agendadas <b className="tnum money">{brl(mesAtual.despesaFixa)}</b></span>
+            <span className="rounded bg-surface-2 px-2 py-1">gasto do dia a dia que falta <b className="tnum money">{brl(mesAtual.despesaVariavel)}</b></span>
+          </div>
+          <p className="mt-2 text-xs text-faint">
+            O saldo de hoje já reflete tudo que passou, então aqui só entra o que <b>ainda falta</b> acontecer
+            até o fim do mês — é isso que faz a conta fechar com o extrato.
+          </p>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card">

@@ -16,9 +16,10 @@ export interface Simulacao {
 }
 
 /**
- * Parcela k (1..n) cai no mês k-1, sendo mês 0 = hoje. O saldo projetado de cada mês
- * já embute receita e gastos, então basta descontar as parcelas pagas até ali.
- * Depois da última parcela o desconto permanece (o dinheiro saiu de vez).
+ * projecao[0] é o mês em andamento, então a parcela k (1..n) cai em projecao[k-1].
+ * O saldo projetado de cada mês já embute receita e gastos, então basta descontar
+ * as parcelas pagas até ali. Depois da última parcela o desconto permanece
+ * (o dinheiro saiu de vez).
  */
 export function simularCompra(
   valorStr: string, parcelasStr: string, saldoAtual: number, projecao: ProjecaoMes[],
@@ -28,10 +29,10 @@ export function simularCompra(
   if (!Number.isFinite(v) || v <= 0) return null;
 
   const valorParcela = v / n;
-  const saldoComCompra = projecao.map((p, i) => p.saldoProjetado - valorParcela * Math.min(i + 2, n));
+  const saldoComCompra = projecao.map((p, i) => p.saldoProjetado - valorParcela * Math.min(i + 1, n));
 
-  const meses: { label: string; depois: number }[] = [{ label: 'hoje', depois: saldoAtual - valorParcela }];
-  const janela = Math.max(n - 1, Math.min(6, projecao.length));
+  const meses: { label: string; depois: number }[] = [{ label: 'agora', depois: saldoAtual - valorParcela }];
+  const janela = Math.max(n, Math.min(6, projecao.length));
   for (let i = 0; i < janela && i < projecao.length; i++) {
     meses.push({ label: projecao[i].mesLabel, depois: saldoComCompra[i] });
   }
@@ -41,7 +42,7 @@ export function simularCompra(
     parcelas: n,
     meses,
     mesesVermelho: meses.filter((m) => m.depois < 0).length,
-    ultimaParcela: n > 1 ? (projecao[n - 2]?.mesLabel ?? '—') : 'hoje',
+    ultimaParcela: projecao[n - 1]?.mesLabel ?? '—',
     saldoComCompra,
   };
 }

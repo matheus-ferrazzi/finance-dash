@@ -480,6 +480,14 @@ export interface ProjecaoBase {
   despesaCasaPorCategoria: Record<string, number>;
   despesaFixaPorMes: Record<string, number>; // 'YYYY-MM' -> soma de lançamentos futuros já confirmados pela Pluggy
   compromissosManuais: CompromissoManual[];
+  /** o que já aconteceu no mês em andamento — usado pra fechar o mês corrente */
+  mesCorrente: {
+    receitaJaRecebida: number;
+    receitaAgendada: number;
+    variavelJaGasto: number;
+    agendadoRestante: number;              // parcelas já datadas no resto do mês (fora casa)
+    casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
+  };
 }
 
 export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
@@ -550,9 +558,56 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
 
   const compromissosManuais = await getCompromissosManuais(resp);
 
+  // --- mês em andamento: o que já entrou/saiu e o que ainda falta ---
+  const rmc = rf(resp, 1);
+  const mesRows = await q<any>(
+    `WITH sp AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje),
+     lim AS (SELECT date_trunc('month',(SELECT hoje FROM sp))::date AS ini,
+                    (date_trunc('month',(SELECT hoje FROM sp)) + interval '1 month')::date AS fim),
+     chaves AS (
+       SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS ch
+       FROM financas_lancamentos, sp
+       WHERE classe='despesa' AND data_lancamento > sp.hoje
+     )
+     SELECT
+       (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
+         WHERE classe='receita' AND data_lancamento >= lim.ini AND data_lancamento <= sp.hoje${rmc.sql}) AS receita_recebida,
+       (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
+         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim${rmc.sql}) AS receita_agendada,
+       (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
+         WHERE l.classe='despesa' AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
+           AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
+           AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT ch FROM chaves)
+           ${rmc.sql}) AS variavel_gasto,
+       (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
+         WHERE l.classe='despesa' AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim
+           AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))${rmc.sql}) AS agendado_restante`,
+    [...rmc.p, CASA_CATS],
+  );
+
+  const rcm = rf(resp, 2);
+  const casaMesRows = await q<any>(
+    `SELECT COALESCE(categoria,'Outros') AS categoria, ROUND(SUM(valor),2) AS total
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND categoria = ANY($1::text[])
+       AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)
+       AND data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) + interval '1 month'${rcm.sql}
+     GROUP BY 1`,
+    [CASA_CATS, ...rcm.p],
+  );
+  const casaNoMesPorCategoria: Record<string, number> = {};
+  casaMesRows.forEach((x) => { casaNoMesPorCategoria[x.categoria] = Number(x.total); });
+
   return {
     patrimonioAtual,
     saldoContasAtual,
+    mesCorrente: {
+      receitaJaRecebida: Number(mesRows[0]?.receita_recebida ?? 0),
+      receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
+      variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
+      agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
+      casaNoMesPorCategoria,
+    },
     receitaMediaMensal: Number(receitaRows[0]?.media ?? 0),
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
     despesaCasaPorCategoria,
@@ -567,6 +622,8 @@ export interface ProjecaoMes {
   despesaCasa: number; despesaVariavel: number;
   saldo: number;          // fluxo do mês (receita - despesas)
   saldoProjetado: number; // dinheiro que você teria em conta no fim daquele mês
+  /** no mês em andamento os valores são o que AINDA falta acontecer, não o mês inteiro */
+  emAndamento?: boolean;
 }
 
 function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
@@ -593,6 +650,34 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
   const anchor = currentMonthSP();
   const out: ProjecaoMes[] = [];
   let saldoProjetado = base.saldoContasAtual;
+
+  // --- mês em andamento: só o que AINDA falta acontecer ---
+  // O saldo de hoje já reflete tudo que passou, então somar o mês inteiro contaria duplicado.
+  {
+    const mc = base.mesCorrente;
+    const ativos = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, anchor));
+    const cobertas = new Set(ativos.map((c) => c.categoria));
+
+    // fixo cadastrado que ainda não saiu neste mês
+    const despesaManual = ativos.reduce(
+      (s, c) => s + Math.max(0, c.valor - (mc.casaNoMesPorCategoria[c.categoria] ?? 0)), 0,
+    );
+    // casa: o que falta pra atingir a média de cada categoria ainda não coberta por cadastro
+    const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
+      .filter(([cat]) => !cobertas.has(cat))
+      .reduce((s, [cat, media]) => s + Math.max(0, media - (mc.casaNoMesPorCategoria[cat] ?? 0)), 0);
+    const despesaVariavel = Math.max(0, base.despesaVariavelMediaMensal - mc.variavelJaGasto);
+    const despesaFixa = mc.agendadoRestante;
+    const receita = Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida) + mc.receitaAgendada;
+
+    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel;
+    saldoProjetado += saldo;
+    out.push({
+      mes: anchor, mesLabel: mesLabel(anchor), receita, despesaFixa, despesaManual,
+      despesaCasa, despesaVariavel, saldo, saldoProjetado, emAndamento: true,
+    });
+  }
+
   for (let i = 1; i <= horizonMeses; i++) {
     const mes = addMonthsSP(anchor, i);
     const despesaFixa = base.despesaFixaPorMes[mes] ?? 0;

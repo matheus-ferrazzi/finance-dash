@@ -78,7 +78,10 @@ export function ProjecaoPainel({
           <tbody className="divide-y divide-border/60">
             {linhas.map((m) => (
               <tr key={m.mes}>
-                <td className="py-1.5 pr-3 whitespace-nowrap">{m.mesLabel}</td>
+                <td className="py-1.5 pr-3 whitespace-nowrap">
+                  {m.mesLabel}
+                  {m.emAndamento && <span className="ml-1 rounded bg-surface-3 px-1 py-0.5 text-[9px] text-muted">falta</span>}
+                </td>
                 <td className="py-1.5 pr-3 text-right tnum money text-accent">{brl(m.receita)}</td>
                 <td className="py-1.5 pr-3 text-right tnum money text-muted">{brl(m.despesaFixa + m.despesaManual)}</td>
                 <td className="py-1.5 pr-3 text-right tnum money text-muted">{brl(m.despesaCasa)}</td>
@@ -97,9 +100,10 @@ export function ProjecaoPainel({
       </div>
 
       <p className="mt-2 text-xs text-faint">
-        "Em conta" é o saldo real das contas correntes (Pluggy) somado ao fluxo de cada mês.
-        Não considera o mês corrente em andamento, nem o patrimônio investido
-        (<span className="tnum money">{brl(patrimonioAtual)}</span>, que fica separado).
+        "Em conta" parte do saldo real das contas (Pluggy) e vai somando o fluxo de cada mês.
+        A primeira linha é o mês em andamento e mostra só o que <b>ainda falta</b> acontecer nele
+        (marcada com "falta"), porque o saldo de hoje já reflete o que passou.
+        Não inclui o patrimônio investido (<span className="tnum money">{brl(patrimonioAtual)}</span>, que fica separado).
       </p>
     </div>
   );

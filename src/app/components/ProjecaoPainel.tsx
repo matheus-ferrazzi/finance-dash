@@ -9,13 +9,14 @@ import type { ProjecaoMes, SaldoConta } from '@/lib/queries';
 type LinhaProjecao = ProjecaoMes & { saldoComCompra?: number };
 
 export function ProjecaoPainel({
-  linhas, temSimulacao, saldoContas, receitaBase, variavelBase, patrimonioAtual,
+  linhas, temSimulacao, saldoContas, receitaBase, variavelBase, casaBase, patrimonioAtual,
 }: {
   linhas: LinhaProjecao[];
   temSimulacao: boolean;
   saldoContas: { total: number; contas: SaldoConta[] };
   receitaBase: number;
   variavelBase: number;
+  casaBase: number;
   patrimonioAtual: number;
 }) {
   return (
@@ -28,8 +29,9 @@ export function ProjecaoPainel({
           <Info size={13} className="mt-0.5 shrink-0 text-faint" />
           <span>
             Mês futuro <b className="text-text">nunca fica vazio</b>: mesmo sem nada lançado nele, já entra
-            com as parcelas que a Pluggy conhece, os fixos cadastrados e a sua média real de gasto.
-            Por isso não dá aquele falso "sobrou tudo" de planilha não preenchida.
+            com as parcelas que a Pluggy conhece, os gastos da casa, os fixos cadastrados e a sua
+            média real de gasto. Por isso não dá aquele falso "sobrou tudo" de planilha não preenchida.
+            Se você cadastrar um compromisso numa categoria da casa, o seu valor substitui a média dela.
           </span>
         </div>
         <div className="mt-2.5 flex flex-wrap gap-2 text-[11px]">
@@ -38,6 +40,9 @@ export function ProjecaoPainel({
           </span>
           <span className="rounded-lg bg-surface-3 px-2 py-1 text-muted">
             receita média <b className="tnum money text-accent">{brl(receitaBase)}</b>
+          </span>
+          <span className="rounded-lg bg-surface-3 px-2 py-1 text-muted">
+            casa (aluguel, luz, água…) <b className="tnum money text-despesa">{brl(casaBase)}</b>
           </span>
           <span className="rounded-lg bg-surface-3 px-2 py-1 text-muted">
             gasto variável médio <b className="tnum money text-despesa">{brl(variavelBase)}</b>
@@ -63,6 +68,7 @@ export function ProjecaoPainel({
               <th className="py-1.5 pr-3 font-medium">Mês</th>
               <th className="py-1.5 pr-3 font-medium text-right">Receita</th>
               <th className="py-1.5 pr-3 font-medium text-right">Parcelas + fixos</th>
+              <th className="py-1.5 pr-3 font-medium text-right">Casa</th>
               <th className="py-1.5 pr-3 font-medium text-right">Gasto médio</th>
               <th className="py-1.5 pr-3 font-medium text-right">Sobra do mês</th>
               <th className="py-1.5 pr-3 font-medium text-right">Em conta</th>
@@ -75,6 +81,7 @@ export function ProjecaoPainel({
                 <td className="py-1.5 pr-3 whitespace-nowrap">{m.mesLabel}</td>
                 <td className="py-1.5 pr-3 text-right tnum money text-accent">{brl(m.receita)}</td>
                 <td className="py-1.5 pr-3 text-right tnum money text-muted">{brl(m.despesaFixa + m.despesaManual)}</td>
+                <td className="py-1.5 pr-3 text-right tnum money text-muted">{brl(m.despesaCasa)}</td>
                 <td className="py-1.5 pr-3 text-right tnum money text-muted">{brl(m.despesaVariavel)}</td>
                 <td className={`py-1.5 pr-3 text-right tnum money font-medium ${m.saldo >= 0 ? 'text-accent' : 'text-despesa'}`}>{brl(m.saldo)}</td>
                 <td className={`py-1.5 pr-3 text-right tnum money font-medium ${m.saldoProjetado >= 0 ? 'text-text' : 'text-despesa'}`}>{brl(m.saldoProjetado)}</td>

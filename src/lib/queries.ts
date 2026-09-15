@@ -476,6 +476,8 @@ export interface ProjecaoBase {
   saldoContasAtual: number;
   receitaMediaMensal: number;
   despesaVariavelMediaMensal: number;
+  /** média mensal por categoria da casa (aluguel/luz/água/internet/telefone/gás) */
+  despesaCasaPorCategoria: Record<string, number>;
   despesaFixaPorMes: Record<string, number>; // 'YYYY-MM' -> soma de lançamentos futuros já confirmados pela Pluggy
   compromissosManuais: CompromissoManual[];
 }
@@ -517,6 +519,24 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
     [CASA_CATS, ...r2.p],
   );
 
+  // gastos da casa entram pela média real por categoria (aluguel, luz, água...).
+  // Ficam fora da média "variável" acima justamente pra não contar duas vezes.
+  const rc = rf(resp, 2);
+  const casaRows = await q<any>(
+    `SELECT categoria, ROUND(AVG(total),2) AS media FROM (
+       SELECT COALESCE(categoria,'Outros') AS categoria,
+              date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
+       FROM financas_lancamentos
+       WHERE classe='despesa' AND categoria = ANY($1::text[])
+         AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
+         AND data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${rc.sql}
+       GROUP BY 1,2
+     ) m GROUP BY categoria`,
+    [CASA_CATS, ...rc.p],
+  );
+  const despesaCasaPorCategoria: Record<string, number> = {};
+  casaRows.forEach((x) => { despesaCasaPorCategoria[x.categoria] = Number(x.media); });
+
   const r3 = rf(resp, 1);
   const fixaRows = await q<any>(
     `SELECT to_char(date_trunc('month',data_lancamento),'YYYY-MM') AS mes, SUM(valor) AS total
@@ -535,6 +555,7 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
     saldoContasAtual,
     receitaMediaMensal: Number(receitaRows[0]?.media ?? 0),
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
+    despesaCasaPorCategoria,
     despesaFixaPorMes,
     compromissosManuais,
   };
@@ -542,7 +563,8 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
 
 export interface ProjecaoMes {
   mes: string; mesLabel: string;
-  receita: number; despesaFixa: number; despesaManual: number; despesaVariavel: number;
+  receita: number; despesaFixa: number; despesaManual: number;
+  despesaCasa: number; despesaVariavel: number;
   saldo: number;          // fluxo do mês (receita - despesas)
   saldoProjetado: number; // dinheiro que você teria em conta no fim daquele mês
 }
@@ -574,14 +596,21 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
   for (let i = 1; i <= horizonMeses; i++) {
     const mes = addMonthsSP(anchor, i);
     const despesaFixa = base.despesaFixaPorMes[mes] ?? 0;
-    const despesaManual = base.compromissosManuais
-      .filter((c) => compromissoAtivoNoMes(c, mes))
-      .reduce((s, c) => s + c.valor, 0);
+    const ativosNoMes = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, mes));
+    const despesaManual = ativosNoMes.reduce((s, c) => s + c.valor, 0);
+
+    // se você cadastrou um compromisso naquela categoria da casa, o SEU número manda
+    // e a média histórica daquela categoria não entra (senão contaria duas vezes)
+    const categoriasCobertas = new Set(ativosNoMes.map((c) => c.categoria));
+    const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
+      .filter(([cat]) => !categoriasCobertas.has(cat))
+      .reduce((s, [, v]) => s + v, 0);
+
     const despesaVariavel = base.despesaVariavelMediaMensal;
     const receita = base.receitaMediaMensal;
-    const saldo = receita - despesaFixa - despesaManual - despesaVariavel;
+    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel;
     saldoProjetado += saldo;
-    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaVariavel, saldo, saldoProjetado });
+    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, saldo, saldoProjetado });
   }
   return out;
 }

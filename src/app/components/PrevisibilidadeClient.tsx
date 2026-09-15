@@ -99,6 +99,7 @@ export function PrevisibilidadeClient({
   const primeiroMesNegativo = sliced.find((m) => m.saldoProjetado < 0);
   const receitaBase = projecao[0]?.receita ?? 0;
   const variavelBase = projecao[0]?.despesaVariavel ?? 0;
+  const casaBase = projecao[0]?.despesaCasa ?? 0;
 
   const itens: ItemLista[] = useMemo(() => {
     const hojeYM = currentMonthSP();
@@ -405,6 +406,7 @@ export function PrevisibilidadeClient({
         saldoContas={saldoContas}
         receitaBase={receitaBase}
         variavelBase={variavelBase}
+        casaBase={casaBase}
         patrimonioAtual={patrimonioAtual}
       />
     </div>

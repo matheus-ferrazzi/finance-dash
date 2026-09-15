@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search } from 'lucide-react';
+import { LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search, Telescope } from 'lucide-react';
 
 const LINKS = [
   { href: '/', label: 'Visão geral', short: 'Visão', icon: LayoutDashboard },
@@ -15,6 +15,7 @@ const LINKS = [
 
 // páginas secundárias — no desktop entram na sidebar, no mobile ficam como ícones no header
 const EXTRA = [
+  { href: '/previsibilidade', label: 'Previsibilidade', short: 'Previs.', icon: Telescope },
   { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
   { href: '/buscar', label: 'Buscar', short: 'Buscar', icon: Search },
 ];

@@ -2,7 +2,7 @@
 
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-  AreaChart, Area, Cell, PieChart, Pie,
+  AreaChart, Area, Cell, PieChart, Pie, ComposedChart, Line, ReferenceLine,
 } from 'recharts';
 import { brlCompact, mesLabel, brl } from '@/lib/format';
 
@@ -116,6 +116,38 @@ export function PatrimonioChart({ data }: { data: { data: string; valor: number 
         <Tooltip content={<TT />} cursor={{ stroke: '#ffffff14' }} />
         <Area type="monotone" dataKey="valor" name="Patrimônio" stroke="#2ee6a0" strokeWidth={2} fill="url(#gpat)" dot={{ r: 3 }} />
       </AreaChart>
+    </ResponsiveContainer></div>
+  );
+}
+
+export function ProjecaoChart({
+  data, temSimulacao,
+}: {
+  data: { mesLabel: string; saldo: number; saldoProjetado: number; saldoComCompra?: number }[];
+  temSimulacao?: boolean;
+}) {
+  return (
+    <div className="money"><ResponsiveContainer width="100%" height={320}>
+      {/* dois eixos: a sobra mensal e o saldo acumulado têm escalas bem diferentes —
+          num eixo só as barras somem perto da linha */}
+      <ComposedChart data={data} margin={{ top: 8, right: 4, left: -10, bottom: 0 }} barCategoryGap="20%">
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
+        <XAxis dataKey="mesLabel" tick={AXIS} axisLine={false} tickLine={false} />
+        <YAxis yAxisId="fluxo" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
+        <YAxis yAxisId="conta" orientation="right" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
+        <ReferenceLine yAxisId="conta" y={0} stroke="#ff6b6b" strokeDasharray="2 4" strokeOpacity={0.5} />
+        <Tooltip content={<TT />} cursor={{ fill: '#ffffff08' }} />
+        <Bar yAxisId="fluxo" dataKey="saldo" name="Sobra do mês" radius={[5, 5, 0, 0]} maxBarSize={44}>
+          {data.map((x, i) => <Cell key={i} fill={x.saldo >= 0 ? '#2ee6a0' : '#ff6b6b'} />)}
+        </Bar>
+        <Line yAxisId="conta" type="monotone" dataKey="saldoProjetado" name="Dinheiro em conta" stroke="#5bc8f5" strokeWidth={2} dot={false} />
+        {temSimulacao && (
+          <Line
+            yAxisId="conta" type="monotone" dataKey="saldoComCompra" name="Com a compra"
+            stroke="#f5b642" strokeWidth={2} strokeDasharray="5 4" dot={false}
+          />
+        )}
+      </ComposedChart>
     </ResponsiveContainer></div>
   );
 }

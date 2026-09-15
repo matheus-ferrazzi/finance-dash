@@ -14,6 +14,7 @@ Painel financeiro pessoal em **Next.js 14**, que lê os lançamentos, faturas e 
 - **Investimentos** — carteira, lucro real, aportes por mês e evolução do patrimônio.
 - **Assinaturas & recorrentes** — detecta cobranças que se repetem em 3+ meses e estima o gasto mensal fixo.
 - **Buscar** — busca de qualquer lançamento por descrição.
+- **Previsibilidade** — projeção mês a mês: quanto está comprometido, até quando, e quanto dinheiro sobra. Parte do **saldo real das contas** e nunca deixa um mês futuro "vazio" (usa parcelas já lançadas + compromissos fixos cadastrados + média real de gasto dos últimos 3 meses). Inclui **simulador de compra** ("se eu gastar X em Nx, fico no vermelho? por quanto tempo?").
 - **Insights** — faixa de alertas automáticos no topo (teto estourado, fatura vencendo, saldo negativo).
 - **Modo privado** — "olhinho" que borra todos os valores na tela (igual app de banco).
 

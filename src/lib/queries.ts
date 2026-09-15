@@ -1,5 +1,5 @@
-import { q } from './db';
-import { currentMonthSP, normalizeMes, mesLongo } from './format';
+import { q, qw } from './db';
+import { currentMonthSP, normalizeMes, mesLongo, mesLabel } from './format';
 
 export type Resp = 'casal' | 'Matheus' | 'Ariane';
 
@@ -354,4 +354,234 @@ export async function getPatrimonioHistorico(resp: Resp): Promise<PatrimonioPont
     r.p,
   );
   return rows.map((x) => ({ data: x.data, valor: Number(x.valor) }));
+}
+
+// ==================== PREVISIBILIDADE ====================
+// "quanto vou ter daqui a X meses", "por quanto tempo estou comprometido",
+// "se eu comprar isso agora, fico no vermelho?"
+
+/** parcelamentos de cartão detectados automaticamente (a Pluggy já lança as parcelas futuras) */
+export interface CompromissoParcelado {
+  chave: string; categoria: string; banco: string; responsavel: string;
+  valorParcela: number; restantes: number; dataFim: string;
+  parcelaAtual: number | null; parcelaTotal: number | null;
+}
+
+export async function getCompromissosParcelados(resp: Resp): Promise<CompromissoParcelado[]> {
+  const r = rf(resp, 1);
+  const rows = await q<any>(
+    `WITH fut AS (
+       SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
+              descricao, valor, data_lancamento, COALESCE(categoria,'Outros') AS categoria,
+              COALESCE(banco,'—') AS banco, responsavel
+       FROM financas_lancamentos
+       WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
+     )
+     SELECT chave, COUNT(*) AS restantes, ROUND(AVG(valor),2) AS valor_parcela,
+            to_char(MAX(data_lancamento),'YYYY-MM-DD') AS data_fim,
+            mode() WITHIN GROUP (ORDER BY categoria) AS categoria,
+            mode() WITHIN GROUP (ORDER BY banco) AS banco,
+            mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel,
+            (array_agg(descricao ORDER BY data_lancamento ASC))[1] AS proxima_desc
+     FROM fut
+     WHERE length(chave) >= 4
+     GROUP BY chave
+     ORDER BY data_fim DESC`,
+    r.p,
+  );
+  return rows.map((x) => {
+    const m = String(x.proxima_desc ?? '').match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    return {
+      chave: x.chave, categoria: x.categoria, banco: x.banco, responsavel: x.responsavel,
+      valorParcela: Number(x.valor_parcela), restantes: Number(x.restantes), dataFim: x.data_fim,
+      parcelaAtual: m ? Number(m[1]) : null, parcelaTotal: m ? Number(m[2]) : null,
+    };
+  });
+}
+
+/** compromissos cadastrados manualmente (aluguel, luz, água, financiamentos — a Pluggy não sabe "até quando") */
+export interface CompromissoManual {
+  id: number; nome: string; categoria: string; valor: number; responsavel: string;
+  dataInicio: string; mesesTotais: number | null; observacao: string | null; dataFim: string | null;
+}
+
+export async function getCompromissosManuais(resp: Resp): Promise<CompromissoManual[]> {
+  const filtro = resp === 'casal' ? '' : ` AND responsavel IN ($1,'casal')`;
+  const params = resp === 'casal' ? [] : [resp];
+  const rows = await q<any>(
+    `SELECT id, nome, categoria, valor, responsavel, to_char(data_inicio,'YYYY-MM-DD') AS data_inicio,
+            meses_totais, observacao,
+            CASE WHEN meses_totais IS NOT NULL
+                 THEN to_char(data_inicio + ((meses_totais-1) || ' months')::interval, 'YYYY-MM-DD')
+                 ELSE NULL END AS data_fim
+     FROM financas_compromissos
+     WHERE ativo = true${filtro}
+     ORDER BY data_inicio`,
+    params,
+  );
+  return rows.map((x) => ({
+    id: Number(x.id), nome: x.nome, categoria: x.categoria, valor: Number(x.valor), responsavel: x.responsavel,
+    dataInicio: x.data_inicio, mesesTotais: x.meses_totais == null ? null : Number(x.meses_totais),
+    observacao: x.observacao, dataFim: x.data_fim,
+  }));
+}
+
+export interface CompromissoInput {
+  nome: string; categoria: string; valor: number; responsavel: 'casal' | 'Matheus' | 'Ariane';
+  dataInicio: string; mesesTotais: number | null; observacao?: string | null;
+}
+
+export async function createCompromisso(data: CompromissoInput): Promise<number> {
+  const rows = await qw<any>(
+    `INSERT INTO financas_compromissos (nome,categoria,valor,responsavel,data_inicio,meses_totais,observacao)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+    [data.nome, data.categoria, data.valor, data.responsavel, data.dataInicio, data.mesesTotais, data.observacao ?? null],
+  );
+  return Number(rows[0].id);
+}
+
+export async function updateCompromisso(id: number, data: CompromissoInput): Promise<void> {
+  await qw(
+    `UPDATE financas_compromissos SET nome=$1,categoria=$2,valor=$3,responsavel=$4,data_inicio=$5,meses_totais=$6,observacao=$7,atualizado_em=now()
+     WHERE id=$8`,
+    [data.nome, data.categoria, data.valor, data.responsavel, data.dataInicio, data.mesesTotais, data.observacao ?? null, id],
+  );
+}
+
+export async function deleteCompromisso(id: number): Promise<void> {
+  await qw(`DELETE FROM financas_compromissos WHERE id=$1`, [id]);
+}
+
+export interface SaldoConta {
+  banco: string; responsavel: string; saldo: number; atualizadoPluggy: string | null;
+}
+
+/** saldo real das contas correntes (vem da Pluggy via workflow "Pluggy - Saldos das Contas") */
+export async function getSaldoContas(resp: Resp): Promise<{ total: number; contas: SaldoConta[] }> {
+  const r = rf(resp, 1);
+  const rows = await q<any>(
+    `SELECT banco, responsavel, saldo, to_char(atualizado_pluggy,'YYYY-MM-DD"T"HH24:MI:SS') AS atualizado_pluggy
+     FROM financas_saldos WHERE 1=1${r.sql} ORDER BY saldo DESC`,
+    r.p,
+  );
+  const contas = rows.map((x) => ({
+    banco: x.banco, responsavel: x.responsavel, saldo: Number(x.saldo), atualizadoPluggy: x.atualizado_pluggy,
+  }));
+  return { total: contas.reduce((s, c) => s + c.saldo, 0), contas };
+}
+
+/** ingredientes crus da projeção — combinados por computeProjecao (função pura, sem DB) */
+export interface ProjecaoBase {
+  patrimonioAtual: number;
+  saldoContasAtual: number;
+  receitaMediaMensal: number;
+  despesaVariavelMediaMensal: number;
+  despesaFixaPorMes: Record<string, number>; // 'YYYY-MM' -> soma de lançamentos futuros já confirmados pela Pluggy
+  compromissosManuais: CompromissoManual[];
+}
+
+export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
+  const patrimonioAtual = await getPatrimonioAtual(resp);
+  const { total: saldoContasAtual } = await getSaldoContas(resp);
+
+  const r1 = rf(resp, 1);
+  const receitaRows = await q<any>(
+    `SELECT ROUND(AVG(m.total),2) AS media FROM (
+       SELECT date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
+       FROM financas_lancamentos
+       WHERE classe='receita'
+         AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
+         AND data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${r1.sql}
+       GROUP BY 1
+     ) m`,
+    r1.p,
+  );
+
+  const r2 = rf(resp, 2);
+  const varRows = await q<any>(
+    `WITH chaves_parceladas AS (
+       SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave
+       FROM financas_lancamentos
+       WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date
+     )
+     SELECT ROUND(AVG(m.total),2) AS media FROM (
+       SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
+       FROM financas_lancamentos l
+       WHERE l.classe='despesa'
+         AND NOT (l.categoria = ANY($1::text[]))
+         AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT chave FROM chaves_parceladas)
+         AND l.data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
+         AND l.data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${r2.sql}
+       GROUP BY 1
+     ) m`,
+    [CASA_CATS, ...r2.p],
+  );
+
+  const r3 = rf(resp, 1);
+  const fixaRows = await q<any>(
+    `SELECT to_char(date_trunc('month',data_lancamento),'YYYY-MM') AS mes, SUM(valor) AS total
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date${r3.sql}
+     GROUP BY 1 ORDER BY 1`,
+    r3.p,
+  );
+  const despesaFixaPorMes: Record<string, number> = {};
+  fixaRows.forEach((x) => { despesaFixaPorMes[x.mes] = Number(x.total); });
+
+  const compromissosManuais = await getCompromissosManuais(resp);
+
+  return {
+    patrimonioAtual,
+    saldoContasAtual,
+    receitaMediaMensal: Number(receitaRows[0]?.media ?? 0),
+    despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
+    despesaFixaPorMes,
+    compromissosManuais,
+  };
+}
+
+export interface ProjecaoMes {
+  mes: string; mesLabel: string;
+  receita: number; despesaFixa: number; despesaManual: number; despesaVariavel: number;
+  saldo: number;          // fluxo do mês (receita - despesas)
+  saldoProjetado: number; // dinheiro que você teria em conta no fim daquele mês
+}
+
+function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
+  if (mes < c.dataInicio.slice(0, 7)) return false;
+  if (c.dataFim && mes > c.dataFim.slice(0, 7)) return false;
+  return true;
+}
+
+function addMonthsSP(anchorYYYYMM: string, n: number): string {
+  const [y, m] = anchorYYYYMM.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Função pura (sem DB) — monta a série mês a mês.
+ * Regra central: mês futuro NUNCA fica vazio. Mesmo sem nada lançado nele, ele já
+ * nasce com as parcelas conhecidas + os fixos cadastrados + a média real de gasto
+ * variável. É isso que evita o falso otimismo de planilha ("não preenchi, logo sobrou").
+ * `saldoProjetado` parte do saldo REAL das contas correntes (Pluggy) e vai
+ * somando o fluxo de cada mês = quanto dinheiro você teria em conta naquele mês.
+ */
+export function computeProjecao(base: ProjecaoBase, horizonMeses: number): ProjecaoMes[] {
+  const anchor = currentMonthSP();
+  const out: ProjecaoMes[] = [];
+  let saldoProjetado = base.saldoContasAtual;
+  for (let i = 1; i <= horizonMeses; i++) {
+    const mes = addMonthsSP(anchor, i);
+    const despesaFixa = base.despesaFixaPorMes[mes] ?? 0;
+    const despesaManual = base.compromissosManuais
+      .filter((c) => compromissoAtivoNoMes(c, mes))
+      .reduce((s, c) => s + c.valor, 0);
+    const despesaVariavel = base.despesaVariavelMediaMensal;
+    const receita = base.receitaMediaMensal;
+    const saldo = receita - despesaFixa - despesaManual - despesaVariavel;
+    saldoProjetado += saldo;
+    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaVariavel, saldo, saldoProjetado });
+  }
+  return out;
 }

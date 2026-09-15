@@ -10,7 +10,7 @@ function resolveResp(v?: string): Resp {
 }
 
 function titulo(s: string): string {
-  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+  return s.split(' ').map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
 }
 
 export default async function Assinaturas({ searchParams }: { searchParams: { resp?: string } }) {

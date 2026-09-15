@@ -84,6 +84,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Housing: Home,
   Electricity: Zap,
   'Water and sewage': Droplet,
+  Water: Droplet,
   'Digital services': Tv,
   Internet: Wifi,
   Telecommunications: Wifi,
@@ -108,6 +109,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'Bank fees': Landmark,
   Services: Receipt,
   Gym: Dumbbell,
+  'Loans and financing': Landmark,
 };
 
 const ICON_COLORS = ['text-accent', 'text-matheus', 'text-ariane', 'text-warn', 'text-[#5bc8f5]', 'text-[#c792ea]'];

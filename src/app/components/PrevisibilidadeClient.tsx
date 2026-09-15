@@ -89,15 +89,17 @@ export function PrevisibilidadeClient({
     return base.map((m, i) => ({ ...m, saldoComCompra: simulacao.saldoComCompra[i] }));
   }, [projecao, horizonte, simulacao]);
   const mesAtual = projecao[0];
-  // tudo que você vai ter que pagar de qualquer jeito: parcelas + fixos + casa
+  // o que sai de qualquer jeito: fixos + casa + parcelas JÁ contratadas.
+  // Compra futura no crédito não entra — ainda não foi feita, não é compromisso.
   const comprometido = useMemo(
-    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual + m.despesaCasa + m.fatura, 0),
+    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual + m.despesaCasa + m.parcelas, 0),
     [sliced],
   );
-  const sobraMedia = useMemo(
-    () => (sliced.length ? sliced.reduce((s, m) => s + m.saldo, 0) / sliced.length : 0),
-    [sliced],
-  );
+  // média só dos meses cheios — o mês em andamento é parcial e distorceria
+  const sobraMedia = useMemo(() => {
+    const cheios = sliced.filter((m) => !m.emAndamento);
+    return cheios.length ? cheios.reduce((s, m) => s + m.saldo, 0) / cheios.length : 0;
+  }, [sliced]);
   const saldoFuturo = sliced.length ? sliced[sliced.length - 1].saldoProjetado : saldoContas.total;
   const primeiroMesNegativo = sliced.find((m) => m.saldoProjetado < 0);
   // os chips mostram a BASE mensal cheia — projecao[0] é o mês em andamento

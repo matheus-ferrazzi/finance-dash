@@ -686,6 +686,7 @@ export interface ProjecaoMes {
   despesaCasa: number;
   despesaVariavel: number; // gasto no débito
   fatura: number;          // fatura de cartão que sai da conta no mês
+  parcelas: number;        // parte da fatura já contratada (parcelamentos)
   saldo: number;           // fluxo de CAIXA do mês
   saldoProjetado: number;  // dinheiro em conta no fim daquele mês
   /** no mês em andamento os valores são o que AINDA falta acontecer, não o mês inteiro */
@@ -755,12 +756,13 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
     const despesaFixa = mc.agendadoRestante;
     const receita = Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida) + mc.receitaAgendada;
     const fatura = Math.max(0, faturaDoMes(base, anchor) - mc.faturaJaPaga);
+    const parcelas = Math.min(fatura, base.despesaFixaPorMes[anchor] ?? 0);
 
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;
     out.push({
       mes: anchor, mesLabel: mesLabel(anchor), receita, despesaFixa, despesaManual,
-      despesaCasa, despesaVariavel, fatura, saldo, saldoProjetado, emAndamento: true,
+      despesaCasa, despesaVariavel, fatura, parcelas, saldo, saldoProjetado, emAndamento: true,
     });
   }
 
@@ -780,9 +782,10 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
     const despesaVariavel = base.despesaVariavelMediaMensal;
     const receita = base.receitaMediaMensal;
     const fatura = faturaDoMes(base, mes);
+    const parcelas = base.despesaFixaPorMes[mes] ?? 0;
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;
-    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, fatura, saldo, saldoProjetado });
+    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, fatura, parcelas, saldo, saldoProjetado });
   }
   return out;
 }

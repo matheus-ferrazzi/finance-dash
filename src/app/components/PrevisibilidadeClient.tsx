@@ -100,9 +100,12 @@ export function PrevisibilidadeClient({
   );
   const saldoFuturo = sliced.length ? sliced[sliced.length - 1].saldoProjetado : saldoContas.total;
   const primeiroMesNegativo = sliced.find((m) => m.saldoProjetado < 0);
-  const receitaBase = projecao[0]?.receita ?? 0;
-  const variavelBase = projecao[0]?.despesaVariavel ?? 0;
-  const casaBase = projecao[0]?.despesaCasa ?? 0;
+  // os chips mostram a BASE mensal cheia — projecao[0] é o mês em andamento
+  // e carrega só o que falta, o que daria um número menor e enganoso aqui
+  const mesCheio = projecao[1] ?? projecao[0];
+  const receitaBase = mesCheio?.receita ?? 0;
+  const variavelBase = mesCheio?.despesaVariavel ?? 0;
+  const casaBase = mesCheio?.despesaCasa ?? 0;
 
   const itens: ItemLista[] = useMemo(() => {
     const hojeYM = currentMonthSP();

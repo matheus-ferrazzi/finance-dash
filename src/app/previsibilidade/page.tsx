@@ -34,6 +34,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         resp={resp}
         patrimonioAtual={base.patrimonioAtual}
         saldoContas={saldos}
+        receitasAReceber={base.mesCorrente.receitasAReceber}
         projecao={projecao}
         parcelados={parcelados}
         manuais={manuais}

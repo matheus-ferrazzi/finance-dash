@@ -501,6 +501,8 @@ export interface ProjecaoBase {
   mesCorrente: {
     receitaJaRecebida: number;
     receitaAgendada: number;
+    /** entradas recorrentes que ainda não caíram (ex.: salário do dia 20) */
+    receitasAReceber: ReceitaPrevista[];
     variavelJaGasto: number;               // no débito, fora casa
     agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
     faturaJaPaga: number;                  // fatura de cartão já paga neste mês
@@ -534,6 +536,52 @@ async function getMesesConfiaveis(resp: Resp): Promise<string[]> {
   // nenhum mês passou no teste — cai pros últimos 3 pra não zerar a projeção
   const hoje = currentDateSP().slice(0, 7);
   return [1, 2, 3].map((i) => `${addMonthsSP(hoje, -i)}-01`);
+}
+
+export interface ReceitaPrevista {
+  nome: string; valor: number; diaTipico: number; responsavel: string;
+}
+
+/**
+ * Entradas recorrentes que AINDA não caíram neste mês (ex.: a 2ª parcela do
+ * salário, que cai sempre no dia 20). Agrupa por descrição + metade do mês,
+ * porque o mesmo salário pode vir em duas parcelas com a mesma descrição.
+ */
+async function getReceitasAReceber(resp: Resp): Promise<ReceitaPrevista[]> {
+  const r = rf(resp, 1);
+  const rows = await q<any>(
+    `WITH base AS (
+       SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
+              CASE WHEN EXTRACT(day FROM data_lancamento) <= 15 THEN 'inicio' ELSE 'fim' END AS metade,
+              valor, responsavel, date_trunc('month',data_lancamento) AS mes,
+              EXTRACT(day FROM data_lancamento) AS dia
+       FROM financas_lancamentos
+       WHERE classe='receita' AND valor >= 300
+         AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
+         AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
+     ),
+     por_mes AS (
+       SELECT chave, metade, mes, SUM(valor) AS total, MIN(dia) AS dia,
+              mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel
+       FROM base GROUP BY 1,2,3
+     )
+     SELECT chave, metade,
+            ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY total)
+                  FILTER (WHERE mes < date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date))::numeric, 2) AS media,
+            ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY dia)
+                  FILTER (WHERE mes < date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date))::numeric) AS dia_tipico,
+            mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel,
+            COUNT(*) FILTER (WHERE mes < date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)) AS meses_antes,
+            COUNT(*) FILTER (WHERE mes = date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)) AS ja_caiu
+     FROM por_mes GROUP BY 1,2`,
+    r.p,
+  );
+  return rows
+    .filter((x) => Number(x.meses_antes) >= 2 && Number(x.ja_caiu) === 0 && Number(x.media) > 0)
+    .map((x) => ({
+      nome: String(x.chave).trim(), valor: Number(x.media),
+      diaTipico: Number(x.dia_tipico), responsavel: x.responsavel,
+    }));
 }
 
 export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
@@ -617,6 +665,7 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
   fixaRows.forEach((x) => { despesaFixaPorMes[x.mes] = Number(x.total); });
 
   const compromissosManuais = await getCompromissosManuais(resp);
+  const receitasAReceber = await getReceitasAReceber(resp);
 
   // --- mês em andamento: o que já entrou/saiu e o que ainda falta ---
   const rmc = rf(resp, 1);
@@ -670,6 +719,7 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
     mesCorrente: {
       receitaJaRecebida: Number(mesRows[0]?.receita_recebida ?? 0),
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
+      receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
@@ -760,7 +810,12 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
       : base.despesaVariavelMediaMensal / diasNoMes;
     const despesaVariavel = ritmo * (diasNoMes - diaHoje);
     const despesaFixa = mc.agendadoRestante;
-    const receita = Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida) + mc.receitaAgendada;
+    // Entradas recorrentes que ainda não caíram (salário do dia 20, etc).
+    // Mais preciso que "média menos o que já entrou": sabe QUAL entrada falta.
+    const recorrentes = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0);
+    const receita = (recorrentes > 0
+      ? recorrentes
+      : Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida)) + mc.receitaAgendada;
     const fatura = Math.max(0, faturaDoMes(base, anchor) - mc.faturaJaPaga);
     const parcelas = Math.min(fatura, base.despesaFixaPorMes[anchor] ?? 0);
 

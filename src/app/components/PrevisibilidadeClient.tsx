@@ -8,7 +8,7 @@ import { SectionTitle, KpiCard, Progress, respBadge, catIcon } from './ui';
 import { ProjecaoPainel } from './ProjecaoPainel';
 import { SimuladorCompra, simularCompra } from './SimuladorCompra';
 import { CATEGORIAS_COMPROMISSO } from '@/lib/validation';
-import type { Resp, ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta } from '@/lib/queries';
+import type { Resp, ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta, ReceitaPrevista } from '@/lib/queries';
 
 const HORIZONTES = [3, 6, 12, 24] as const;
 
@@ -59,11 +59,12 @@ const FORM_VAZIO: FormState = {
 };
 
 export function PrevisibilidadeClient({
-  resp, patrimonioAtual, saldoContas, projecao, parcelados, manuais,
+  resp, patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber,
 }: {
   resp: Resp;
   patrimonioAtual: number;
   saldoContas: { total: number; contas: SaldoConta[] };
+  receitasAReceber: ReceitaPrevista[];
   projecao: ProjecaoMes[];
   parcelados: CompromissoParcelado[];
   manuais: CompromissoManual[];
@@ -249,7 +250,11 @@ export function PrevisibilidadeClient({
             <div className="card-2 px-3 py-2.5">
               <div className="text-[11px] text-muted">Ainda entra</div>
               <div className="mt-1 tnum money text-sm font-medium text-accent">+{brl(mesAtual.receita)}</div>
-              <div className="text-[10px] text-faint">salário a receber</div>
+              <div className="text-[10px] text-faint">
+                {receitasAReceber.length > 0
+                  ? receitasAReceber.map((r) => `dia ${r.diaTipico}`).join(' · ')
+                  : 'salário a receber'}
+              </div>
             </div>
             <div className="card-2 px-3 py-2.5">
               <div className="text-[11px] text-muted">Ainda sai</div>
@@ -266,6 +271,11 @@ export function PrevisibilidadeClient({
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
+            {receitasAReceber.map((r, i) => (
+              <span key={i} className="rounded bg-accent/10 px-2 py-1 text-accent">
+                {formatChave(r.nome)} (dia {r.diaTipico}) <b className="tnum money">{brl(r.valor)}</b>
+              </span>
+            ))}
             <span className="rounded bg-surface-2 px-2 py-1">casa que falta <b className="tnum money">{brl(mesAtual.despesaCasa)}</b></span>
             <span className="rounded bg-surface-2 px-2 py-1">fixos cadastrados <b className="tnum money">{brl(mesAtual.despesaManual)}</b></span>
             <span className="rounded bg-surface-2 px-2 py-1">débito agendado <b className="tnum money">{brl(mesAtual.despesaFixa)}</b></span>

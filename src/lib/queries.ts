@@ -316,11 +316,25 @@ export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
 
 export interface Assinatura { nome: string; valorMedio: number; meses: number; categoria: string; banco: string; ultima: string; }
 
-/** gastos recorrentes (aparecem em >= 3 meses distintos) — assinaturas/mensalidades */
+/**
+ * Gastos recorrentes que você ainda NÃO está acompanhando.
+ * De propósito exclui o que já vira compromisso na /previsibilidade (categoria
+ * cadastrada ou parcelamento com data futura): senão o aluguel aparecia nas duas
+ * telas com valores diferentes — aqui a média histórica, lá o valor cadastrado.
+ * Assinaturas = descoberta; Compromissos = acompanhamento.
+ */
 export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
   const r = rf(resp, 1);
   const rows = await q<any>(
-    `WITH base AS (
+    `WITH ja_acompanhado AS (
+       SELECT DISTINCT categoria FROM financas_compromissos WHERE ativo = true
+     ),
+     chaves_parceladas AS (
+       SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS ch
+       FROM financas_lancamentos
+       WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date
+     ),
+     base AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
               valor, COALESCE(categoria,'Outros') AS categoria, COALESCE(banco,'—') AS banco,
               date_trunc('month', data_lancamento) AS mes, data_lancamento
@@ -335,6 +349,8 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
             to_char(MAX(data_lancamento),'YYYY-MM-DD') AS ultima
      FROM base
      WHERE length(chave) >= 4
+       AND categoria NOT IN (SELECT categoria FROM ja_acompanhado)
+       AND chave NOT IN (SELECT ch FROM chaves_parceladas)
      GROUP BY chave
      HAVING COUNT(DISTINCT mes) >= 3 AND ROUND(AVG(valor),2) >= 5
      ORDER BY valor_medio DESC LIMIT 30`,

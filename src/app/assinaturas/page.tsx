@@ -22,7 +22,7 @@ export default async function Assinaturas({ searchParams }: { searchParams: { re
     <div>
       <PageTitle
         title="Assinaturas & recorrentes"
-        subtitle="Cobranças que se repetem em 3+ meses — assinaturas, mensalidades e contas fixas."
+        subtitle="Cobranças que se repetem em 3+ meses e que você ainda NÃO acompanha — o que já está em Previsibilidade não aparece aqui."
       />
 
       <div className="card mb-4">

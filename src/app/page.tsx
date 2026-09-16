@@ -1,8 +1,12 @@
-import { getKpis, getSerie, getOrcamento, getFaturas, getRecentes, resolvePeriodo, Resp } from '@/lib/queries';
+import Link from 'next/link';
+import {
+  getKpis, getSerie, getOrcamento, getFaturas, getRecentes,
+  getProjecaoBase, computeProjecao, resolvePeriodo, Resp,
+} from '@/lib/queries';
 import { brl, pct, dataBR, diasAte, traduzCategoria } from '@/lib/format';
 import { PageTitle, KpiCard, SectionTitle, Progress, respBadge } from './components/ui';
 import { ReceitaDespesaChart, SaldoAreaChart } from './components/charts';
-import { TrendingUp, TrendingDown, Wallet, PiggyBank } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, PiggyBank, Telescope, ArrowRight } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +18,12 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   const resp = resolveResp(searchParams.resp);
   const per = resolvePeriodo(searchParams.p, searchParams.mes);
 
-  const [kpis, serie, orc, faturas, recentes] = await Promise.all([
+  const [kpis, serie, orc, faturas, recentes, base] = await Promise.all([
     getKpis(resp, per), getSerie(resp, per, 6), getOrcamento(resp, per), getFaturas(resp), getRecentes(resp, per, 8),
+    getProjecaoBase(resp),
   ]);
+  // primeira linha = mês em andamento, com só o que ainda falta acontecer
+  const mesAtual = computeProjecao(base, 1)[0];
 
   const dRec = kpis.receita_ant ? pct(kpis.receita - kpis.receita_ant, kpis.receita_ant) : null;
   const dDes = kpis.despesa_ant ? pct(kpis.despesa - kpis.despesa_ant, kpis.despesa_ant) : null;
@@ -39,7 +46,10 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
 
   return (
     <div>
-      <PageTitle title="Visão geral" subtitle={`${per.label} · receitas e despesas reais (sem transferências internas nem fatura).`} />
+      <PageTitle
+        title="Visão geral"
+        subtitle={`${per.label} · o que você consumiu — a compra no crédito conta no dia da compra, não quando a fatura vence.`}
+      />
 
       {insights.length > 0 && (
         <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -63,6 +73,46 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
         <KpiCard label="Saldo" value={kpis.saldo} tone={kpis.saldo >= 0 ? 'up' : 'down'} hint={kpis.saldo >= 0 ? 'sobrou' : 'no vermelho'} icon={Wallet} />
         <KpiCard label="Investido" value={kpis.patrimonio} hint="patrimônio atual" icon={PiggyBank} />
       </div>
+
+      {mesAtual && (
+        <Link href={`/previsibilidade${searchParams.resp ? `?resp=${searchParams.resp}` : ''}`} className="mt-4 block">
+          <div className="card transition-colors hover:bg-surface-2/40">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Telescope size={15} className="text-faint" />
+                <SectionTitle>Como {mesAtual.mesLabel} deve fechar</SectionTitle>
+              </div>
+              <ArrowRight size={15} className="text-faint" />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="card-2 px-3 py-2.5">
+                <div className="text-[11px] text-muted">Tenho hoje</div>
+                <div className="mt-1 tnum money text-sm font-medium">{brl(base.saldoContasAtual)}</div>
+              </div>
+              <div className="card-2 px-3 py-2.5">
+                <div className="text-[11px] text-muted">Ainda entra</div>
+                <div className="mt-1 tnum money text-sm font-medium text-accent">+{brl(mesAtual.receita)}</div>
+              </div>
+              <div className="card-2 px-3 py-2.5">
+                <div className="text-[11px] text-muted">Ainda sai</div>
+                <div className="mt-1 tnum money text-sm font-medium text-despesa">
+                  −{brl(mesAtual.despesaFixa + mesAtual.despesaManual + mesAtual.despesaCasa + mesAtual.despesaVariavel + mesAtual.fatura)}
+                </div>
+              </div>
+              <div className="card-2 px-3 py-2.5">
+                <div className="text-[11px] text-muted">Fecho com</div>
+                <div className={`mt-1 tnum money text-sm font-semibold ${mesAtual.saldoProjetado >= 0 ? 'text-accent' : 'text-despesa'}`}>
+                  {brl(mesAtual.saldoProjetado)}
+                </div>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-faint">
+              Dinheiro em conta, não competência — compra no crédito entra quando a fatura é paga.
+            </p>
+          </div>
+        </Link>
+      )}
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="card lg:col-span-2">

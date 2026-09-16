@@ -1,16 +1,11 @@
 import { q, qw } from './db';
-import { currentMonthSP, normalizeMes, mesLongo, mesLabel } from './format';
+import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
+
+export { currentDateSP };
 
 export type Resp = 'casal' | 'Matheus' | 'Ariane';
 
 // ---------- período (mês ou janela de dias) ----------
-export function currentDateSP(): string {
-  const p = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date());
-  const g = (t: string) => p.find((x) => x.type === t)!.value;
-  return `${g('year')}-${g('month')}-${g('day')}`;
-}
 function addDays(dateStr: string, n: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d + n));
@@ -281,6 +276,9 @@ export async function getCasaSerie(resp: Resp, per: Periodo, meses = 6): Promise
   return rows.map((x) => ({ mes: x.mes, receita: 0, despesa: Number(x.despesa) }));
 }
 
+/** sentinela para conexão sem last_sync — grande o bastante pra cair no vermelho */
+export const NUNCA_SINCRONIZOU = 99999;
+
 export interface SyncConn { banco: string; responsavel: string; lastSync: string; horas: number; }
 export interface SyncStatus { oldestH: number; conns: SyncConn[] }
 
@@ -288,10 +286,13 @@ export async function getSyncStatus(): Promise<SyncStatus> {
   const rows = await q<any>(
     `SELECT banco, responsavel, to_char(last_sync,'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_sync,
             ROUND(EXTRACT(EPOCH FROM (now()-last_sync))/3600, 1) AS horas
-     FROM financas_sync ORDER BY last_sync ASC`,
+     FROM financas_sync ORDER BY last_sync ASC NULLS FIRST`,
   );
+  // last_sync nulo = conexão que nunca sincronizou. Sem esse tratamento o
+  // Number(null)=0 fazia ela aparecer como a MAIS fresca de todas, em verde.
   const conns: SyncConn[] = rows.map((r) => ({
-    banco: r.banco, responsavel: r.responsavel, lastSync: r.last_sync, horas: Number(r.horas),
+    banco: r.banco, responsavel: r.responsavel, lastSync: r.last_sync,
+    horas: r.horas == null ? NUNCA_SINCRONIZOU : Number(r.horas),
   }));
   const oldestH = conns.length ? Math.max(...conns.map((c) => c.horas)) : 0;
   return { oldestH, conns };

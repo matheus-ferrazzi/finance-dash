@@ -14,14 +14,24 @@ function ddmm(ms: number): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+/**
+ * Data do dia `dia` no mês (ano, mes), sem estourar pro mês seguinte.
+ * Cartão que fecha dia 30 não tem "30 de fevereiro": Date.UTC(2027,1,30)
+ * viraria 2 de março e jogava o ciclo inteiro pro mês errado.
+ */
+function diaDoMes(ano: number, mes: number, dia: number): number {
+  const ultimoDia = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
+  return Date.UTC(ano, mes, Math.min(dia, ultimoDia));
+}
+
 /** ciclo de fatura que contém hoje, a partir do dia de fechamento */
 function cicloAtual(fechamento: string | null, hojeMs: number) {
   const hoje = new Date(hojeMs);
   const y = hoje.getUTCFullYear(), m = hoje.getUTCMonth();
   const closeDay = fechamento ? new Date(fechamento + 'T00:00:00Z').getUTCDate() : 1;
-  const dThis = Date.UTC(y, m, closeDay);
-  if (dThis <= hojeMs) return { start: dThis, end: Date.UTC(y, m + 1, closeDay) };
-  return { start: Date.UTC(y, m - 1, closeDay), end: dThis };
+  const dThis = diaDoMes(y, m, closeDay);
+  if (dThis <= hojeMs) return { start: dThis, end: diaDoMes(y, m + 1, closeDay), closeDay };
+  return { start: diaDoMes(y, m - 1, closeDay), end: dThis, closeDay };
 }
 
 export default async function Faturas({ searchParams }: { searchParams: { resp?: string } }) {
@@ -32,7 +42,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   const hojeMs = Date.UTC(hy, hm - 1, hd);
 
   const views: FaturaView[] = faturas.map((f) => {
-    const { start, end } = cicloAtual(f.fechamento, hojeMs);
+    const { start, end, closeDay } = cicloAtual(f.fechamento, hojeMs);
     const meus = creditos.filter((c) => c.banco === f.banco && c.responsavel === f.responsavel);
     const items = meus
       .filter((c) => {
@@ -43,7 +53,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
     const soma = items.reduce((s, i) => s + i.valor, 0);
     // próximo ciclo [end, end+1mês) — soma das parcelas futuras já lançadas
     const ne = new Date(end);
-    const nextEnd = Date.UTC(ne.getUTCFullYear(), ne.getUTCMonth() + 1, ne.getUTCDate());
+    const nextEnd = diaDoMes(ne.getUTCFullYear(), ne.getUTCMonth() + 1, closeDay);
     const proxSoma = meus
       .filter((c) => { const t = new Date(c.data + 'T00:00:00Z').getTime(); return t >= end && t < nextEnd; })
       .reduce((s, c) => s + c.valor, 0);

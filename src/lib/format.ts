@@ -94,10 +94,26 @@ export function traduzInvest(t: string): string {
   return INV_PT[t?.toUpperCase?.()] ?? t;
 }
 
+/** Data de hoje (YYYY-MM-DD) no fuso do Brasil, independente do fuso do servidor. */
+export function currentDateSP(): string {
+  const p = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)!.value;
+  return `${g('year')}-${g('month')}-${g('day')}`;
+}
+
+/**
+ * Dias até uma data, comparando DIAS DE CALENDÁRIO no fuso do Brasil.
+ * Antes usava `new Date()` + setHours, que é a hora do servidor: rodando em UTC,
+ * das 21h à meia-noite de SP a data já tinha virado e todo "vence em X dias"
+ * saía um dia menor.
+ */
 export function diasAte(d: string | Date | null | undefined): number | null {
   if (!d) return null;
-  const dt = typeof d === 'string' ? new Date(d + 'T00:00:00') : d;
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  return Math.round((dt.getTime() - hoje.getTime()) / 86_400_000);
+  const alvo = typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10);
+  const [ay, am, ad] = alvo.split('-').map(Number);
+  if (!ay || !am || !ad) return null;
+  const [hy, hm, hd] = currentDateSP().split('-').map(Number);
+  return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(hy, hm - 1, hd)) / 86_400_000);
 }

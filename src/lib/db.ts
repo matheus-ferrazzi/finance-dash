@@ -46,11 +46,3 @@ export async function qw<T = any>(text: string, params: any[] = []): Promise<T[]
   const res = await writerPool.query(text, params);
   return res.rows as T[];
 }
-
-/** Filtro de responsável: 'casal' = sem filtro; 'Matheus'/'Ariane' = filtra. */
-export function respClause(resp: string, start = 1): { sql: string; params: string[] } {
-  if (resp === 'Matheus' || resp === 'Ariane') {
-    return { sql: ` AND responsavel = $${start}`, params: [resp] };
-  }
-  return { sql: '', params: [] };
-}

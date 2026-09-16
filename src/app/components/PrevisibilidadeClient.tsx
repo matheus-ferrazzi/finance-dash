@@ -8,7 +8,7 @@ import { SectionTitle, KpiCard, Progress, respBadge, catIcon } from './ui';
 import { ProjecaoPainel } from './ProjecaoPainel';
 import { SimuladorCompra, simularCompra } from './SimuladorCompra';
 import { CATEGORIAS_COMPROMISSO } from '@/lib/validation';
-import type { Resp, ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta, ReceitaPrevista } from '@/lib/queries';
+import type { ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta, ReceitaPrevista } from '@/lib/queries';
 
 const HORIZONTES = [3, 6, 12, 24] as const;
 
@@ -59,9 +59,8 @@ const FORM_VAZIO: FormState = {
 };
 
 export function PrevisibilidadeClient({
-  resp, patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber,
+  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber,
 }: {
-  resp: Resp;
   patrimonioAtual: number;
   saldoContas: { total: number; contas: SaldoConta[] };
   receitasAReceber: ReceitaPrevista[];

@@ -488,6 +488,8 @@ export async function getSaldoContas(resp: Resp): Promise<{ total: number; conta
 export interface ProjecaoBase {
   patrimonioAtual: number;
   saldoContasAtual: number;
+  /** reaproveitado pela página — evita refazer as mesmas consultas */
+  saldoContas: { total: number; contas: SaldoConta[] };
   receitaMediaMensal: number;
   /** gasto no DÉBITO (fora casa) — o que sai direto da conta */
   despesaVariavelMediaMensal: number;
@@ -585,9 +587,10 @@ async function getReceitasAReceber(resp: Resp): Promise<ReceitaPrevista[]> {
 }
 
 export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
-  const patrimonioAtual = await getPatrimonioAtual(resp);
-  const { total: saldoContasAtual } = await getSaldoContas(resp);
-  const meses = await getMesesConfiaveis(resp);
+  const [patrimonioAtual, saldoContas, meses] = await Promise.all([
+    getPatrimonioAtual(resp), getSaldoContas(resp), getMesesConfiaveis(resp),
+  ]);
+  const saldoContasAtual = saldoContas.total;
 
   const r1 = rf(resp, 2);
   const receitaRows = await q<any>(
@@ -716,6 +719,7 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
   return {
     patrimonioAtual,
     saldoContasAtual,
+    saldoContas,
     mesCorrente: {
       receitaJaRecebida: Number(mesRows[0]?.receita_recebida ?? 0),
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),

@@ -1,6 +1,5 @@
 import {
-  getProjecaoBase, computeProjecao, getCompromissosParcelados, getCompromissosManuais,
-  getSaldoContas, Resp,
+  getProjecaoBase, computeProjecao, getCompromissosParcelados, Resp,
 } from '@/lib/queries';
 import { PageTitle } from '../components/ui';
 import { PrevisibilidadeClient } from '../components/PrevisibilidadeClient';
@@ -16,11 +15,10 @@ const HORIZONTE_MAX = 24;
 export default async function Previsibilidade({ searchParams }: { searchParams: { resp?: string } }) {
   const resp = resolveResp(searchParams.resp);
 
-  const [base, parcelados, manuais, saldos] = await Promise.all([
+  // getProjecaoBase já traz saldos e compromissos manuais — não consultar de novo
+  const [base, parcelados] = await Promise.all([
     getProjecaoBase(resp),
     getCompromissosParcelados(resp),
-    getCompromissosManuais(resp),
-    getSaldoContas(resp),
   ]);
   const projecao = computeProjecao(base, HORIZONTE_MAX);
 
@@ -31,13 +29,12 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         subtitle="Quanto está comprometido, até quando, e quanto dinheiro você deve ter daqui a alguns meses."
       />
       <PrevisibilidadeClient
-        resp={resp}
         patrimonioAtual={base.patrimonioAtual}
-        saldoContas={saldos}
+        saldoContas={base.saldoContas}
         receitasAReceber={base.mesCorrente.receitasAReceber}
         projecao={projecao}
         parcelados={parcelados}
-        manuais={manuais}
+        manuais={base.compromissosManuais}
       />
     </div>
   );

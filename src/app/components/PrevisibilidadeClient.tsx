@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, X, Infinity as InfinityIcon, CreditCard, PiggyBank } from 'lucide-react';
-import { brl, mesLabel, currentMonthSP, traduzCategoria } from '@/lib/format';
+import { brl, mesLabel, currentMonthSP, traduzCategoria, parseValorBR } from '@/lib/format';
 import { SectionTitle, KpiCard, Progress, respBadge, catIcon } from './ui';
 import { ProjecaoPainel } from './ProjecaoPainel';
 import { SimuladorCompra, simularCompra } from './SimuladorCompra';
@@ -159,7 +159,7 @@ export function PrevisibilidadeClient({
     const payload = {
       nome: form.nome.trim(),
       categoria: form.categoria,
-      valor: Number(form.valor.replace(',', '.')),
+      valor: parseValorBR(form.valor),
       responsavel: form.responsavel,
       dataInicio: form.dataInicio,
       mesesTotais: form.mesesTotais.trim() === '' ? null : Number(form.mesesTotais),

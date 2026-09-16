@@ -77,7 +77,9 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card">
-          <SectionTitle>Orçamento — atenção</SectionTitle>
+          {/* o teto é sempre mensal — sem esse rótulo, com o filtro em "7 dias"
+              a tela dizia "últimos 7 dias" no topo e mostrava o mês aqui */}
+          <SectionTitle>Orçamento do mês — atenção</SectionTitle>
           {alertas.length === 0 && <p className="text-sm text-muted">Tudo dentro do teto. 👍</p>}
           <div className="space-y-3">
             {alertas.map((o) => (

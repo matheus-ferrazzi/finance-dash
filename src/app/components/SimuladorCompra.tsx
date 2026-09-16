@@ -1,7 +1,7 @@
 'use client';
 
 import { Calculator, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { brl } from '@/lib/format';
+import { brl, parseValorBR } from '@/lib/format';
 import { SectionTitle } from './ui';
 import type { ProjecaoMes } from '@/lib/queries';
 
@@ -24,7 +24,7 @@ export interface Simulacao {
 export function simularCompra(
   valorStr: string, parcelasStr: string, saldoAtual: number, projecao: ProjecaoMes[],
 ): Simulacao | null {
-  const v = Number(valorStr.replace(/\./g, '').replace(',', '.'));
+  const v = parseValorBR(valorStr);
   const n = Math.max(1, Math.min(48, Math.floor(Number(parcelasStr) || 1)));
   if (!Number.isFinite(v) || v <= 0) return null;
 

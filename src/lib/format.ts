@@ -94,6 +94,17 @@ export function traduzInvest(t: string): string {
   return INV_PT[t?.toUpperCase?.()] ?? t;
 }
 
+/**
+ * Lê valor digitado em português: "1.500,00" ou "1500,50" ou "1500".
+ * `Number("1.500,00".replace(',','.'))` dava NaN porque o ponto é separador
+ * de milhar aqui, não decimal.
+ */
+export function parseValorBR(s: string): number {
+  const limpo = String(s ?? '').trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : NaN;
+}
+
 /** Data de hoje (YYYY-MM-DD) no fuso do Brasil, independente do fuso do servidor. */
 export function currentDateSP(): string {
   const p = new Intl.DateTimeFormat('en-CA', {

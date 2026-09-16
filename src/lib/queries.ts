@@ -405,11 +405,16 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
     r.p,
   );
   return rows.map((x) => {
-    const m = String(x.proxima_desc ?? '').match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+    // "3/4" = parcela 3 de 4. Exige atual <= total pra não ler data como parcela
+    // ("05/09" viraria "parcela 5 de 9"), e o total tem que ser > 1.
+    const m = String(x.proxima_desc ?? '').match(/(?:^|\s)(\d{1,2})\s*\/\s*(\d{1,2})(?:\s|$)/);
+    const pAtual = m ? Number(m[1]) : null;
+    const pTotal = m ? Number(m[2]) : null;
+    const parcelaValida = pAtual != null && pTotal != null && pTotal > 1 && pAtual <= pTotal;
     return {
       chave: x.chave, categoria: x.categoria, banco: x.banco, responsavel: x.responsavel,
       valorParcela: Number(x.valor_parcela), restantes: Number(x.restantes), dataFim: x.data_fim,
-      parcelaAtual: m ? Number(m[1]) : null, parcelaTotal: m ? Number(m[2]) : null,
+      parcelaAtual: parcelaValida ? pAtual : null, parcelaTotal: parcelaValida ? pTotal : null,
     };
   });
 }
@@ -795,10 +800,17 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
     const ativos = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, anchor));
     const cobertas = new Set(ativos.map((c) => c.categoria));
 
-    // fixo cadastrado que ainda não saiu neste mês
-    const despesaManual = ativos.reduce(
-      (s, c) => s + Math.max(0, c.valor - (mc.casaNoMesPorCategoria[c.categoria] ?? 0)), 0,
-    );
+    // Fixo cadastrado que ainda não saiu neste mês. O desconto do que já foi pago
+    // é POR CATEGORIA, não por item: com dois compromissos "Housing" de R$1000 e
+    // R$1000 já pago, descontar em cada um zerava os dois (some R$1000 da conta).
+    const pagoPorCategoria: Record<string, number> = {};
+    const despesaManual = ativos.reduce((s, c) => {
+      const jaPago = mc.casaNoMesPorCategoria[c.categoria] ?? 0;
+      const consumido = pagoPorCategoria[c.categoria] ?? 0;
+      const abate = Math.min(c.valor, Math.max(0, jaPago - consumido));
+      pagoPorCategoria[c.categoria] = consumido + abate;
+      return s + (c.valor - abate);
+    }, 0);
     // casa: o que falta pra atingir a média de cada categoria ainda não coberta por cadastro
     const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
       .filter(([cat]) => !cobertas.has(cat))

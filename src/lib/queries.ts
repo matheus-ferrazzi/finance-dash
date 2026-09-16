@@ -258,7 +258,13 @@ export async function getAporteMensal(resp: Resp, meses = 12): Promise<AportePon
   return rows.map((x) => ({ mes: x.mes, valor: Number(x.valor) }));
 }
 
-export const CASA_CATS = ['Housing', 'Electricity', 'Water', 'Internet', 'Telecommunications', 'Gas'];
+/**
+ * Contas fixas da casa. "Internet" ficou DE FORA de propósito: nesta base a Pluggy
+ * joga compras de TikTok/ByteDance nessa categoria, e a conta de internet de verdade
+ * vem da Telefônica dentro de "Telecommunications". Tratar "Internet" como fixo
+ * cobrava compra avulsa como se fosse conta do mês.
+ */
+export const CASA_CATS = ['Housing', 'Electricity', 'Water', 'Telecommunications', 'Gas'];
 
 export async function getCasaSerie(resp: Resp, per: Periodo, meses = 6): Promise<SeriePonto[]> {
   const r = rf(resp, 3);

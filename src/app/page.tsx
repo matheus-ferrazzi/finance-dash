@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import {
   getKpis, getSerie, getOrcamento, getFaturas, getRecentes,
-  getProjecaoBase, computeProjecao, resolvePeriodo, Resp,
+  getProjecaoBase, computeProjecao, computeRitmo, resolvePeriodo, Resp,
 } from '@/lib/queries';
 import { brl, pct, dataBR, diasAte, traduzCategoria } from '@/lib/format';
 import { PageTitle, KpiCard, SectionTitle, respBadge } from './components/ui';
 import { ReceitaDespesaChart } from './components/charts';
+import { RitmoHoje } from './components/RitmoHoje';
 import { TrendingUp, TrendingDown, Wallet, PiggyBank, Telescope, ArrowRight } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,8 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   ]);
   // primeira linha = mês em andamento, com só o que ainda falta acontecer
   const mesAtual = computeProjecao(base, 1)[0];
+  const ritmo = mesAtual ? computeRitmo(base, mesAtual) : null;
+  const qs = searchParams.resp ? `?resp=${searchParams.resp}` : '';
 
   const dRec = kpis.receita_ant ? pct(kpis.receita - kpis.receita_ant, kpis.receita_ant) : null;
   const dDes = kpis.despesa_ant ? pct(kpis.despesa - kpis.despesa_ant, kpis.despesa_ant) : null;
@@ -44,6 +47,10 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
         title="Visão geral"
         subtitle={`${per.label} · o que você consumiu — a compra no crédito conta no dia da compra.`}
       />
+
+      {ritmo && mesAtual && (
+        <RitmoHoje ritmo={ritmo} mesLabel={mesAtual.mesLabel} href={`/previsibilidade${qs}`} />
+      )}
 
       {insights.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
@@ -69,7 +76,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
       </div>
 
       {mesAtual && (
-        <Link href={`/previsibilidade${searchParams.resp ? `?resp=${searchParams.resp}` : ''}`} className="mt-4 block">
+        <Link href={`/previsibilidade${qs}`} className="mt-4 block">
           <div className="card transition-colors hover:bg-surface-2/40">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">

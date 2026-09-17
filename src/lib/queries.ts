@@ -583,22 +583,53 @@ export interface PrevisaoResumo {
  * Os bots chamam isto via HTTP em vez de reimplementar a conta em SQL — assim
  * não existe uma segunda versão da lógica pra desandar em relação ao site.
  */
-export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
-  const base = await getProjecaoBase(resp);
-  const proj = computeProjecao(base, 6);
-  const atual = proj[0];
+export interface Ritmo {
+  diaHoje: number;
+  diasRestantes: number;
+  /** quanto dá pra gastar por dia, daqui até o fim do mês, sem fechar no vermelho */
+  ritmoSeguroDia: number;
+  /** média diária que já está sendo praticada neste mês */
+  ritmoAtualDia: number;
+  /** o total livre que sobra pro dia a dia no resto do mês */
+  sobraParaODiaADia: number;
+  fechaCom: number;
+}
 
+/**
+ * O número mais acionável do app: quanto cabe gastar hoje.
+ *
+ * Fica aqui, e não dentro de quem exibe, porque a home e o endpoint dos bots
+ * precisam do mesmo número — duas cópias da conta viravam duas verdades.
+ */
+export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes): Ritmo {
   const [, , diaStr] = currentDateSP().split('-');
   const diaHoje = Number(diaStr);
   const [ano, mes] = atual.mes.split('-').map(Number);
   const diasNoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
   const diasRestantes = Math.max(0, diasNoMes - diaHoje);
 
-  const aindaSai = atual.despesaFixa + atual.despesaManual + atual.despesaCasa + atual.despesaVariavel + atual.fatura;
   // tudo que não é gasto do dia a dia já está comprometido; o que sobra é o que
   // dá pra gastar até o fim do mês sem fechar no vermelho
   const sobraParaODiaADia = base.saldoContasAtual + atual.receita
     - atual.despesaFixa - atual.despesaManual - atual.despesaCasa - atual.fatura;
+
+  return {
+    diaHoje,
+    diasRestantes,
+    sobraParaODiaADia,
+    ritmoSeguroDia: diasRestantes > 0 ? Math.max(0, sobraParaODiaADia / diasRestantes) : 0,
+    ritmoAtualDia: diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
+    fechaCom: atual.saldoProjetado,
+  };
+}
+
+export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
+  const base = await getProjecaoBase(resp);
+  const proj = computeProjecao(base, 6);
+  const atual = proj[0];
+  const ritmo = computeRitmo(base, atual);
+
+  const aindaSai = atual.despesaFixa + atual.despesaManual + atual.despesaCasa + atual.despesaVariavel + atual.fatura;
 
   return {
     mes: atual.mes, mesLabel: atual.mesLabel,
@@ -606,9 +637,9 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
     aindaEntra: atual.receita,
     aindaSai,
     fechaCom: atual.saldoProjetado,
-    diasRestantes,
-    ritmoSeguroDia: diasRestantes > 0 ? Math.max(0, sobraParaODiaADia / diasRestantes) : 0,
-    ritmoAtualDia: diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
+    diasRestantes: ritmo.diasRestantes,
+    ritmoSeguroDia: ritmo.ritmoSeguroDia,
+    ritmoAtualDia: ritmo.ritmoAtualDia,
     receitasAReceber: base.mesCorrente.receitasAReceber,
     proximosMeses: proj.slice(1).map((m) => ({
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,

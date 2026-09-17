@@ -1,6 +1,6 @@
 import { getOrcamento, getDespesas, resolvePeriodo, Resp } from '@/lib/queries';
 import { brl, mesLongo } from '@/lib/format';
-import { PageTitle, SectionTitle } from '../components/ui';
+import { PageTitle, SectionTitle, StatStrip } from '../components/ui';
 import { OrcamentoAccordion, OrcGroup } from '../components/OrcamentoAccordion';
 
 export const dynamic = 'force-dynamic';
@@ -33,20 +33,13 @@ export default async function Orcamento({ searchParams }: { searchParams: { resp
     <div>
       <PageTitle title="Orçamento" subtitle={`${mesLongo(per.mesAnchor)} · orçamento é mensal · toque num item pra ver o que consumiu o teto.`} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-        <div className="card">
-          <div className="text-xs text-muted">Gasto orçado</div>
-          <div className="mt-1.5 text-xl md:text-2xl font-semibold tnum">{brl(gastoTotal)}</div>
-        </div>
-        <div className="card">
-          <div className="text-xs text-muted">Teto total</div>
-          <div className="mt-1.5 text-xl md:text-2xl font-semibold tnum text-muted">{brl(tetoTotal)}</div>
-        </div>
-        <div className="card col-span-2 lg:col-span-1">
-          <div className="text-xs text-muted">Disponível</div>
-          <div className={`mt-1.5 text-xl md:text-2xl font-semibold tnum ${disp >= 0 ? 'text-accent' : 'text-despesa'}`}>{brl(disp)}</div>
-        </div>
-      </div>
+      <StatStrip
+        stats={[
+          { label: 'Gasto orçado', value: brl(gastoTotal) },
+          { label: 'Teto total', value: brl(tetoTotal), tone: 'muted' },
+          { label: disp >= 0 ? 'Disponível' : 'Estourou', value: brl(Math.abs(disp)), tone: disp >= 0 ? 'up' : 'down' },
+        ]}
+      />
 
       <SectionTitle>Por categoria — toque para expandir</SectionTitle>
       {grupos.length === 0 ? (

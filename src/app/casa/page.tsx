@@ -1,6 +1,6 @@
 import { getDespesas, getCasaSerie, CASA_CATS, resolvePeriodo, Resp } from '@/lib/queries';
 import { brl } from '@/lib/format';
-import { PageTitle, SectionTitle } from '../components/ui';
+import { PageTitle, SectionTitle, StatStrip } from '../components/ui';
 import { CasaChart } from '../components/charts';
 import { CategoryAccordion, CatGroup } from '../components/CategoryAccordion';
 
@@ -41,30 +41,21 @@ export default async function Casa({ searchParams }: { searchParams: { resp?: st
 
   return (
     <div>
-      <PageTitle title="Casa" subtitle={`${per.label} · gastos fixos do lar — moradia, energia, água, internet, telefone.`} />
+      <PageTitle title="Casa" subtitle={`${per.label} · gastos fixos do lar — moradia, energia, água, telefone e gás.`} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-        <div className="card">
-          <div className="text-xs text-muted">{comparavel ? 'Total da casa no mês' : 'Total da casa no período'}</div>
-          <div className="mt-1.5 text-xl md:text-2xl font-semibold tnum money text-warn">{brl(total)}</div>
-        </div>
-        <div className="card">
-          <div className="text-xs text-muted">Média (meses anteriores)</div>
-          <div className="mt-1.5 text-xl md:text-2xl font-semibold tnum money text-muted">{brl(media)}</div>
-        </div>
-        <div className="card col-span-2 lg:col-span-1">
-          <div className="text-xs text-muted">vs. média</div>
-          {comparavel ? (
-            <div className={`mt-1.5 text-xl md:text-2xl font-semibold tnum money ${total <= media ? 'text-accent' : 'text-despesa'}`}>
-              {media > 0 ? `${total <= media ? '−' : '+'}${brl(Math.abs(total - media))}` : '—'}
-            </div>
-          ) : (
-            <div className="mt-1.5 text-sm text-faint">
-              só compara com o filtro <b className="text-muted">Mês</b> — a média é mensal
-            </div>
-          )}
-        </div>
-      </div>
+      <StatStrip
+        stats={[
+          { label: comparavel ? 'Total no mês' : 'Total no período', value: brl(total), tone: 'warn' },
+          { label: 'Média dos meses anteriores', value: brl(media), tone: 'muted' },
+          comparavel
+            ? {
+                label: 'vs. média',
+                value: media > 0 ? `${total <= media ? '−' : '+'}${brl(Math.abs(total - media))}` : '—',
+                tone: (total <= media ? 'up' : 'down') as 'up' | 'down',
+              }
+            : { label: 'vs. média', value: '—', tone: 'muted' as const, hint: 'só compara com o filtro Mês' },
+        ]}
+      />
 
       <div className="card mb-4">
         <SectionTitle>Evolução (6 meses)</SectionTitle>

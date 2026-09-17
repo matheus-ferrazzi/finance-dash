@@ -25,17 +25,18 @@ export default async function Investimentos({ searchParams }: { searchParams: { 
     <div>
       <PageTitle title="Investimentos" subtitle="Posição atual da carteira — lucro = valor atual menos aportado." />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      {/* lucro e rentabilidade são o mesmo fato — o percentual vira o rodapé do card */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         <KpiCard label="Valor atual" value={atual} icon={Wallet} />
         <KpiCard label="Aportado" value={investido} hint="custo" icon={PiggyBank} />
-        <KpiCard label="Lucro/Prejuízo" value={lucro} tone={lucro >= 0 ? 'up' : 'down'} icon={TrendingUp} />
-        <div className="card">
-          <div className="text-xs text-muted">Rentabilidade</div>
-          <div className={`mt-2 text-xl md:text-2xl font-semibold tnum ${rentPct >= 0 ? 'text-accent' : 'text-despesa'}`}>
-            {rentPct >= 0 ? '+' : ''}{rentPct}%
-          </div>
-          <div className="mt-1 text-xs text-muted">sobre o aportado</div>
-        </div>
+        <KpiCard
+          label="Lucro/Prejuízo"
+          value={lucro}
+          tone={lucro >= 0 ? 'up' : 'down'}
+          delta={rentPct}
+          deltaLabel="sobre o aportado"
+          icon={TrendingUp}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">

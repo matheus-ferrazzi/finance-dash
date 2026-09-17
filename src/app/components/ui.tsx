@@ -45,6 +45,32 @@ export function KpiCard({
   );
 }
 
+/**
+ * Faixa de números de apoio. Serve pro caso comum de "total, referência e a
+ * diferença entre os dois": três KpiCard lado a lado davam peso de manchete a
+ * um número que é só aritmética do anterior. Aqui eles dividem um cartão só.
+ */
+export function StatStrip({
+  stats,
+}: {
+  stats: { label: string; value: string; tone?: 'up' | 'down' | 'warn' | 'muted'; hint?: string }[];
+}) {
+  const color = { up: 'text-accent', down: 'text-despesa', warn: 'text-warn', muted: 'text-muted' };
+  return (
+    <div className="card mb-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:items-start sm:gap-10">
+      {stats.map((s, i) => (
+        <div key={i}>
+          <div className="text-[11px] text-muted">{s.label}</div>
+          <div className={`mt-0.5 text-lg font-semibold tnum money ${s.tone ? color[s.tone] : 'text-text'}`}>
+            {s.value}
+          </div>
+          {s.hint && <div className="mt-0.5 text-[11px] text-faint">{s.hint}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Progress({ value, teto }: { value: number; teto: number }) {
   const p = teto > 0 ? Math.min((value / teto) * 100, 100) : 0;
   const over = teto > 0 && value > teto;

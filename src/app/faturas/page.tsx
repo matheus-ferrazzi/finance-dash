@@ -1,6 +1,6 @@
 import { getFaturas, getCreditoDespesas, currentDateSP, Resp } from '@/lib/queries';
 import { brl } from '@/lib/format';
-import { PageTitle } from '../components/ui';
+import { PageTitle, StatStrip } from '../components/ui';
 import { FaturaCard, FaturaView } from '../components/FaturaCard';
 
 export const dynamic = 'force-dynamic';
@@ -66,15 +66,21 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   });
 
   const totalAberto = faturas.reduce((s, f) => s + f.valor, 0);
+  const limiteTotal = faturas.reduce((s, f) => s + (f.limite ?? 0), 0);
+  const dispTotal = faturas.reduce((s, f) => s + (f.disponivel ?? 0), 0);
+  const emCurso = views.reduce((s, v) => s + v.soma, 0);
 
   return (
     <div>
       <PageTitle title="Faturas" subtitle="Cartões de crédito — toque em cada um pra ver as compras do ciclo." />
 
-      <div className="card mb-4">
-        <div className="text-xs text-muted">Total em faturas abertas</div>
-        <div className="mt-1.5 text-2xl font-semibold tnum text-despesa">{brl(totalAberto)}</div>
-      </div>
+      <StatStrip
+        stats={[
+          { label: 'Faturas abertas', value: brl(totalAberto), tone: 'down', hint: 'a pagar' },
+          { label: 'Ciclo em curso', value: brl(emCurso), tone: 'warn', hint: 'vira fatura depois' },
+          { label: 'Limite disponível', value: brl(dispTotal), tone: 'muted', hint: `de ${brl(limiteTotal)}` },
+        ]}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {views.map((v) => <FaturaCard key={v.id} f={v} />)}

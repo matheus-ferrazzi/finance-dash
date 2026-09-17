@@ -566,6 +566,56 @@ export interface ReceitaPrevista {
   nome: string; valor: number; diaTipico: number; responsavel: string;
 }
 
+export interface PrevisaoResumo {
+  mes: string; mesLabel: string;
+  saldoHoje: number; aindaEntra: number; aindaSai: number; fechaCom: number;
+  diasRestantes: number;
+  /** quanto dá pra gastar por dia no resto do mês pra fechar no zero */
+  ritmoSeguroDia: number;
+  /** quanto você está gastando por dia neste mês */
+  ritmoAtualDia: number;
+  receitasAReceber: ReceitaPrevista[];
+  proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number }[];
+}
+
+/**
+ * Resumo da previsão num formato pronto pra consumo (site e bots do Telegram).
+ * Os bots chamam isto via HTTP em vez de reimplementar a conta em SQL — assim
+ * não existe uma segunda versão da lógica pra desandar em relação ao site.
+ */
+export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
+  const base = await getProjecaoBase(resp);
+  const proj = computeProjecao(base, 6);
+  const atual = proj[0];
+
+  const [, , diaStr] = currentDateSP().split('-');
+  const diaHoje = Number(diaStr);
+  const [ano, mes] = atual.mes.split('-').map(Number);
+  const diasNoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const diasRestantes = Math.max(0, diasNoMes - diaHoje);
+
+  const aindaSai = atual.despesaFixa + atual.despesaManual + atual.despesaCasa + atual.despesaVariavel + atual.fatura;
+  // tudo que não é gasto do dia a dia já está comprometido; o que sobra é o que
+  // dá pra gastar até o fim do mês sem fechar no vermelho
+  const sobraParaODiaADia = base.saldoContasAtual + atual.receita
+    - atual.despesaFixa - atual.despesaManual - atual.despesaCasa - atual.fatura;
+
+  return {
+    mes: atual.mes, mesLabel: atual.mesLabel,
+    saldoHoje: base.saldoContasAtual,
+    aindaEntra: atual.receita,
+    aindaSai,
+    fechaCom: atual.saldoProjetado,
+    diasRestantes,
+    ritmoSeguroDia: diasRestantes > 0 ? Math.max(0, sobraParaODiaADia / diasRestantes) : 0,
+    ritmoAtualDia: diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
+    receitasAReceber: base.mesCorrente.receitasAReceber,
+    proximosMeses: proj.slice(1).map((m) => ({
+      mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
+    })),
+  };
+}
+
 /**
  * Entradas recorrentes que AINDA não caíram neste mês (ex.: a 2ª parcela do
  * salário, que cai sempre no dia 20). Agrupa por descrição + metade do mês,

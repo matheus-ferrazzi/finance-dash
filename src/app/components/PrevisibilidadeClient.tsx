@@ -269,21 +269,25 @@ export function PrevisibilidadeClient({
               </div>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
-            {receitasAReceber.map((r, i) => (
-              <span key={i} className="rounded bg-accent/10 px-2 py-1 text-accent">
-                {formatChave(r.nome)} (dia {r.diaTipico}) <b className="tnum money">{brl(r.valor)}</b>
-              </span>
-            ))}
-            <span className="rounded bg-surface-2 px-2 py-1">casa que falta <b className="tnum money">{brl(mesAtual.despesaCasa)}</b></span>
-            <span className="rounded bg-surface-2 px-2 py-1">fixos cadastrados <b className="tnum money">{brl(mesAtual.despesaManual)}</b></span>
-            <span className="rounded bg-surface-2 px-2 py-1">débito agendado <b className="tnum money">{brl(mesAtual.despesaFixa)}</b></span>
-            <span className="rounded bg-surface-2 px-2 py-1">gasto do dia a dia que falta <b className="tnum money">{brl(mesAtual.despesaVariavel)}</b></span>
-            <span className="rounded bg-surface-2 px-2 py-1">fatura a pagar <b className="tnum money text-warn">{brl(mesAtual.fatura)}</b></span>
-          </div>
-          <p className="mt-2 text-xs text-faint">
-            O saldo de hoje já reflete tudo que passou, então aqui só entra o que <b>ainda falta</b> acontecer
-            até o fim do mês — é isso que faz a conta fechar com o extrato.
+          {/* uma linha em vez de cinco chips: a quebra detalhada não precisa
+              competir de igual pra igual com os quatro números que importam */}
+          <p className="mt-3 text-xs leading-relaxed text-muted">
+            {receitasAReceber.length > 0 && (
+              <>
+                Entra:{' '}
+                {receitasAReceber.map((r, i) => (
+                  <span key={i} className="text-accent">
+                    {formatChave(r.nome)} dia {r.diaTipico} <span className="tnum money">{brl(r.valor)}</span>
+                    {i < receitasAReceber.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+                {' · '}
+              </>
+            )}
+            Sai: casa <span className="tnum money">{brl(mesAtual.despesaCasa)}</span>
+            {' · '}fixos <span className="tnum money">{brl(mesAtual.despesaManual)}</span>
+            {' · '}dia a dia <span className="tnum money">{brl(mesAtual.despesaVariavel)}</span>
+            {' · '}fatura <span className="tnum money text-warn">{brl(mesAtual.fatura)}</span>
           </p>
         </div>
       )}

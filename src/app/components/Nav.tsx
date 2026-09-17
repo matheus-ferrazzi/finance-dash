@@ -1,21 +1,31 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search, Telescope } from 'lucide-react';
+import {
+  LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
+  Telescope, Stethoscope, MoreHorizontal,
+} from 'lucide-react';
 
+/**
+ * Barra principal: as 5 perguntas que se faz no dia a dia.
+ * Previsibilidade subiu pra cá (é a mais usada) e Orçamento/Casa/Faturas/
+ * Investimentos viraram secundárias — são consulta pontual, não rotina.
+ */
 const LINKS = [
   { href: '/', label: 'Visão geral', short: 'Visão', icon: LayoutDashboard },
+  { href: '/previsibilidade', label: 'Previsibilidade', short: 'Previsão', icon: Telescope },
+  { href: '/diagnostico', label: 'Diagnóstico', short: 'Diagnóst.', icon: Stethoscope },
   { href: '/gastos', label: 'Gastos', short: 'Gastos', icon: Receipt },
-  { href: '/orcamento', label: 'Orçamento', short: 'Orçam.', icon: Target },
-  { href: '/casa', label: 'Casa', short: 'Casa', icon: Home },
   { href: '/faturas', label: 'Faturas', short: 'Faturas', icon: CreditCard },
-  { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },
 ];
 
-// páginas secundárias — no desktop entram na sidebar, no mobile ficam como ícones no header
+// secundárias — sidebar no desktop, ícones no header no mobile
 const EXTRA = [
-  { href: '/previsibilidade', label: 'Previsibilidade', short: 'Previs.', icon: Telescope },
+  { href: '/orcamento', label: 'Orçamento', short: 'Orçam.', icon: Target },
+  { href: '/casa', label: 'Casa', short: 'Casa', icon: Home },
+  { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },
   { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
   { href: '/buscar', label: 'Buscar', short: 'Buscar', icon: Search },
 ];
@@ -52,29 +62,53 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/** ícones das páginas secundárias no header (acesso rápido no mobile) */
-export function HeaderLinks() {
+/**
+ * Um botão só pras páginas secundárias, em vez de uma fileira de ícones.
+ * O header tinha 6 controles competindo por atenção; isso corta pra 4.
+ */
+export function MoreMenu() {
   const path = usePathname();
   const sp = useSearchParams();
   const qs = sp.toString();
+  const [aberto, setAberto] = useState(false);
+  const aqui = EXTRA.some((e) => e.href === path);
+
   return (
-    <div className="flex items-center gap-1">
-      {EXTRA.map(({ href, label, icon: Icon }) => {
-        const active = path === href;
-        return (
-          <Link
-            key={href}
-            href={href + (qs ? `?${qs}` : '')}
-            aria-label={label}
-            title={label}
-            className={`grid h-9 w-9 place-items-center rounded-xl border border-border transition-colors ${
-              active ? 'bg-surface-3 text-accent' : 'bg-surface text-muted hover:text-text'
-            }`}
-          >
-            <Icon size={17} />
-          </Link>
-        );
-      })}
+    <div className="relative">
+      <button
+        onClick={() => setAberto(!aberto)}
+        aria-expanded={aberto}
+        aria-label="Mais páginas"
+        className={`grid h-9 w-9 place-items-center rounded-xl border border-border transition-colors ${
+          aqui || aberto ? 'bg-surface-3 text-accent' : 'bg-surface text-muted hover:text-text'
+        }`}
+      >
+        <MoreHorizontal size={17} />
+      </button>
+
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setAberto(false)} aria-hidden />
+          <div className="fadein absolute right-0 top-full mt-2 z-30 w-52 rounded-xl border border-border bg-surface-2 p-1 shadow-card">
+            {EXTRA.map(({ href, label, icon: Icon }) => {
+              const active = path === href;
+              return (
+                <Link
+                  key={href}
+                  href={href + (qs ? `?${qs}` : '')}
+                  onClick={() => setAberto(false)}
+                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                    active ? 'bg-surface-3 text-text' : 'text-muted hover:text-text hover:bg-surface-3/60'
+                  }`}
+                >
+                  <Icon size={16} className={active ? 'text-accent' : 'text-faint'} />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

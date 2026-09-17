@@ -933,3 +933,142 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
   }
   return out;
 }
+
+// ==================== DIAGNÓSTICO ====================
+// Cruza o passado (o que já aconteceu) com a projeção pra responder
+// "onde eu estou errando" — em vez de só mostrar números.
+
+/** Grupos de gasto: é isso que dá a leitura de "pra onde vai cada R$100". */
+export const GRUPOS_GASTO: { nome: string; emoji: string; cats: string[]; travado: boolean }[] = [
+  { nome: 'Casa', emoji: '🏠', travado: true, cats: ['Housing', 'Electricity', 'Water', 'Telecommunications', 'Gas'] },
+  { nome: 'Dívida e seguro', emoji: '🏦', travado: true, cats: ['Loans and financing', 'Loans', 'Insurance', 'Taxes', 'Bank fees', 'Interests charged'] },
+  { nome: 'Mercado', emoji: '🛒', travado: false, cats: ['Groceries'] },
+  { nome: 'Comer fora', emoji: '🍔', travado: false, cats: ['Food delivery', 'Eating out', 'Food and drinks'] },
+  { nome: 'Lazer e digital', emoji: '🎮', travado: false, cats: ['Digital services', 'Gaming', 'Cinema, theater and concerts', 'Tickets', 'Travel'] },
+  { nome: 'Saúde', emoji: '💊', travado: false, cats: ['Healthcare', 'Pharmacy', 'Hospital clinics and labs', 'Optometry'] },
+  { nome: 'Transporte', emoji: '🚗', travado: false, cats: ['Gas stations', 'Automotive', 'Taxi and ride-hailing', 'Public transportation', 'Parking', 'Tolls and in vehicle payment', 'Vehicle maintenance'] },
+  { nome: 'Compras', emoji: '🛍️', travado: false, cats: ['Shopping', 'Clothing', 'Online shopping', 'Electronics', 'Houseware'] },
+];
+
+export interface GrupoGasto {
+  nome: string; emoji: string; total: number; pctRenda: number; travado: boolean;
+}
+export interface VariacaoCat {
+  categoria: string; anterior: number; atual: number; delta: number; pct: number | null;
+}
+export interface Diagnostico {
+  mesRef: string; mesRefLabel: string;   // último mês COMPLETO
+  renda: number; gasto: number; pctGastoDaRenda: number;
+  grupos: GrupoGasto[];
+  travado: number; livre: number;
+  /** comparação justa: mesmo dia do mês, mês passado vs este */
+  diaComparacao: number;
+  variacoes: VariacaoCat[];
+  /** PIX/transferências que caíram como despesa sem categoria clara */
+  semClassificacao: { total: number; itens: { descricao: string; valor: number; data: string }[] };
+  /** sobra mensal projetada num mês cheio — base pro simulador de corte */
+  sobraMensalProjetada: number;
+  saldoProjetadoFim: number;
+}
+
+export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
+  // mês de referência = último mês COMPLETO (o atual ainda está correndo)
+  const anchor = currentMonthSP();
+  const mesRef = addMonthsSP(anchor, -1);
+
+  const r1 = rf(resp, 2);
+  const catRows = await q<any>(
+    `SELECT COALESCE(categoria,'Outros') AS categoria, ROUND(SUM(valor),2) AS total
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND ${SEM_ESPELHO}
+       AND date_trunc('month',data_lancamento) = $1::date${r1.sql}
+     GROUP BY 1`,
+    [`${mesRef}-01`, ...r1.p],
+  );
+
+  const r2 = rf(resp, 2);
+  const rendaRows = await q<any>(
+    `SELECT COALESCE(SUM(valor),0) AS total FROM financas_lancamentos
+     WHERE classe='receita' AND date_trunc('month',data_lancamento) = $1::date${r2.sql}`,
+    [`${mesRef}-01`, ...r2.p],
+  );
+  const renda = Number(rendaRows[0]?.total ?? 0);
+
+  const porCat = new Map<string, number>();
+  catRows.forEach((x) => porCat.set(x.categoria, Number(x.total)));
+  const gasto = [...porCat.values()].reduce((s, v) => s + v, 0);
+
+  const usadas = new Set<string>();
+  const grupos: GrupoGasto[] = GRUPOS_GASTO.map((g) => {
+    let total = 0;
+    g.cats.forEach((c) => { if (porCat.has(c)) { total += porCat.get(c)!; usadas.add(c); } });
+    return {
+      nome: g.nome, emoji: g.emoji, total, travado: g.travado,
+      pctRenda: renda > 0 ? (total / renda) * 100 : 0,
+    };
+  }).filter((g) => g.total > 0);
+
+  const resto = [...porCat.entries()].filter(([c]) => !usadas.has(c)).reduce((s, [, v]) => s + v, 0);
+  if (resto > 0) {
+    grupos.push({ nome: 'Resto', emoji: '❓', total: resto, travado: false, pctRenda: renda > 0 ? (resto / renda) * 100 : 0 });
+  }
+  grupos.sort((a, b) => b.total - a.total);
+
+  const travado = grupos.filter((g) => g.travado).reduce((s, g) => s + g.total, 0);
+
+  // --- o que mudou: mês passado vs este, até o MESMO dia (senão é injusto) ---
+  const [, , diaStr] = currentDateSP().split('-');
+  const diaComparacao = Number(diaStr);
+  const r3 = rf(resp, 4);
+  const varRows = await q<any>(
+    `SELECT COALESCE(categoria,'Outros') AS categoria,
+       ROUND(COALESCE(SUM(valor) FILTER (WHERE date_trunc('month',data_lancamento) = $1::date),0),2) AS anterior,
+       ROUND(COALESCE(SUM(valor) FILTER (WHERE date_trunc('month',data_lancamento) = $2::date),0),2) AS atual
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND ${SEM_ESPELHO}
+       AND EXTRACT(day FROM data_lancamento) <= $3
+       AND date_trunc('month',data_lancamento) IN ($1::date, $2::date)${r3.sql}
+     GROUP BY 1`,
+    [`${mesRef}-01`, `${anchor}-01`, diaComparacao, ...r3.p],
+  );
+  const variacoes: VariacaoCat[] = varRows
+    .map((x) => {
+      const anterior = Number(x.anterior), atual = Number(x.atual);
+      return {
+        categoria: x.categoria, anterior, atual, delta: atual - anterior,
+        // % sobre base pequena distorce — melhor não mostrar
+        pct: anterior >= 50 ? ((atual - anterior) / anterior) * 100 : null,
+      };
+    })
+    .filter((v) => Math.abs(v.delta) >= 50)
+    .sort((a, b) => b.delta - a.delta);
+
+  // --- despesa sem categoria clara (PIX/transferência solta) ---
+  const r4 = rf(resp, 2);
+  const semCatRows = await q<any>(
+    `SELECT COALESCE(descricao,'(sem descrição)') AS descricao, ROUND(SUM(valor),2) AS valor,
+            to_char(MAX(data_lancamento),'YYYY-MM-DD') AS data
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND ${SEM_ESPELHO}
+       AND COALESCE(categoria,'Outros') IN ('Transfers','Transfer - PIX','Outros','Services','Same person transfer','Transfer - Bank Slip')
+       AND date_trunc('month',data_lancamento) = $1::date${r4.sql}
+     GROUP BY 1 ORDER BY valor DESC LIMIT 8`,
+    [`${mesRef}-01`, ...r4.p],
+  );
+  const itens = semCatRows.map((x) => ({ descricao: x.descricao, valor: Number(x.valor), data: x.data }));
+
+  // --- ligação com a projeção: quanto sobra num mês cheio ---
+  const base = await getProjecaoBase(resp);
+  const proj = computeProjecao(base, 3);
+  const mesCheio = proj[1] ?? proj[0];
+
+  return {
+    mesRef, mesRefLabel: mesLabel(mesRef),
+    renda, gasto, pctGastoDaRenda: renda > 0 ? (gasto / renda) * 100 : 0,
+    grupos, travado, livre: Math.max(0, renda - travado),
+    diaComparacao, variacoes,
+    semClassificacao: { total: itens.reduce((s, i) => s + i.valor, 0), itens },
+    sobraMensalProjetada: mesCheio?.saldo ?? 0,
+    saldoProjetadoFim: proj[0]?.saldoProjetado ?? 0,
+  };
+}

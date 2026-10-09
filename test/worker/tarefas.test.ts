@@ -34,6 +34,17 @@ describe('transacoes', () => {
     expect(c.repo.aplicado).toEqual([{ linhas: ['a', 'x1', 'x2', 'x3', 'novo'], remover: ['b'] }]);
   });
 
+  it('não remove o que é mais antigo que o histórico que o banco expõe (Itaú só devolve 12 meses)', async () => {
+    const c = ctx('real');
+    // pedido de 24 meses, mas a Pluggy só tem transações a partir de 2025-10-15
+    for (const id of ['velha1', 'velha2']) c.repo.banco.set(id, linhaBancoFake(id, '2025-03-01'));
+    for (const id of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10']) c.repo.banco.set(id, linhaBancoFake(id, '2026-01-10'));
+    c.pluggy.txs.set('acc-1', ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'r10'].map((id) => txFake(id, '2026-01-10'))
+      .concat([txFake('mais-antiga', '2025-10-15')]));
+    await TAREFAS.transacoes(c, { desde: '2024-10-09' });
+    expect(c.repo.aplicado[0].remover).toEqual([]);
+  });
+
   it('dry-run: não grava nada além da execução', async () => {
     const c = cenario('dry-run');
     await TAREFAS.transacoes(c, {});

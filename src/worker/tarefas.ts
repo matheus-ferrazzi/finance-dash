@@ -98,8 +98,14 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
         const linhas = txs.map((t) => montarLinha(t, c, docs));
         const banco = await ctx.repo.lancamentosDaConta(c, desde);
         const dif = contarDiferencas(banco, linhas);
-        // o dia exato de "desde" fica fora: a Pluggy filtra por data-hora e o banco guarda só a data
-        const candidatos = [...banco.values()].filter((l) => String(l.data_lancamento) > desde).map((l) => l.id_transacao);
+        // Só é candidata a remoção a linha dentro do que a Pluggy de fato cobriu:
+        // - o dia exato de "desde" fica fora (a Pluggy filtra por data-hora, o banco guarda só a data);
+        // - nada antes da transação mais antiga devolvida: Itaú e Inter só expõem 12 meses, e
+        //   "não veio" por estar fora do histórico do banco não é "foi cancelado".
+        const maisAntiga = linhas.reduce((m, l) => (l.data_lancamento < m ? l.data_lancamento : m), '9999-12-31');
+        const candidatos = [...banco.values()]
+          .filter((l) => String(l.data_lancamento) > desde && String(l.data_lancamento) >= maisAntiga)
+          .map((l) => l.id_transacao);
         const plano = planejarReconciliacao(new Set(txs.map((t) => t.id)), candidatos, opts.limite);
         if (ctx.modo !== 'dry-run') await ctx.repo.gravarCruas(txs);
         if (ctx.modo === 'real') await ctx.repo.aplicarConta(linhas, plano.remover);

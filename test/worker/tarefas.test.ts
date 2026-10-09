@@ -116,6 +116,15 @@ describe('itens', () => {
     expect(c.repo.chamadas).toContain('inserirConta acc-nova Débito');
     expect(ex.contagens.contasNovas).toEqual(['Nubank/Matheus/Débito']);
   });
+
+  it('conta já registrada, mesmo desligada, não é redescoberta', async () => {
+    const c = ctx('sombra');
+    c.repo.desligadas = ['acc-poupanca'];
+    c.pluggy.contasPorItem.set('item-1', [{ id: 'acc-poupanca', itemId: 'item-1', type: 'BANK' }]);
+    const ex = await TAREFAS.itens(c, {});
+    expect(c.repo.chamadas.filter((x) => x.startsWith('inserirConta'))).toEqual([]);
+    expect(ex.contagens.contasNovas).toBeUndefined();
+  });
 });
 
 describe('atualizar-itens', () => {

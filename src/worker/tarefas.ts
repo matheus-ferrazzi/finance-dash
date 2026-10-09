@@ -179,7 +179,8 @@ async function investimentos(ctx: Contexto) {
 async function itens(ctx: Contexto) {
   return executar(ctx, 'itens', async (contagens, falhas) => {
     const contas = await contasComItem(ctx, () => true);
-    const conhecidas = new Set(contas.map((c) => c.account_id));
+    // inclui as desligadas: conta registrada não é "descoberta" de novo a cada hora
+    const conhecidas = await ctx.repo.idsRegistrados();
     const novas: string[] = [];
     for (const [itemId, c] of porItem(contas)) {
       try {

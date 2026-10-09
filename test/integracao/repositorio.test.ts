@@ -62,4 +62,18 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     await pool.query(`INSERT INTO pluggy_contas (account_id, banco, responsavel, forma, coleta_faturas) VALUES ('acc', 'Nubank', 'Matheus', 'Crédito', true)`);
     expect(await repo.contasAtivas()).toEqual([{ ...conta, item_id: null }]);
   });
+
+  it('conta descoberta entra desligada: registrada, mas fora de contasAtivas', async () => {
+    await repo.inserirConta({ ...conta, account_id: 'poupanca', forma: 'Débito' }, 'BANK');
+    expect((await repo.contasAtivas()).map((c) => c.account_id)).toEqual(['acc']);
+    expect(await repo.idsRegistrados()).toEqual(new Set(['acc', 'poupanca']));
+  });
+
+  it('002 liga as linhas antigas à conta do seed, nunca à conta descoberta', async () => {
+    // 'outra' (Nubank/Matheus/Débito) tem conta de seed e uma poupança descoberta com a mesma combinação
+    await pool.query(`INSERT INTO pluggy_contas (account_id, banco, responsavel, forma) VALUES ('seed-debito', 'Nubank', 'Matheus', 'Débito')`);
+    await pool.query(readFileSync('db/migrations/002_virada.sql', 'utf8'));
+    const r = await pool.query(`SELECT id_transacao, account_id FROM financas_lancamentos WHERE id_transacao = 'outra'`);
+    expect(r.rows).toEqual([{ id_transacao: 'outra', account_id: 'seed-debito' }]);
+  });
 });

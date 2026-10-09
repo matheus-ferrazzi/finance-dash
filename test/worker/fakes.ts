@@ -39,7 +39,9 @@ export class RepoFake implements Repo {
   chamadas: string[] = [];
   execucoes: Execucao[] = [];
   aplicado: { linhas: string[]; remover: string[] }[] = [];
+  desligadas: string[] = [];
   async contasAtivas() { return this.contas; }
+  async idsRegistrados() { return new Set([...this.contas.map((c) => c.account_id), ...this.desligadas]); }
   async definirItemDaConta(a: string, i: string) { this.chamadas.push(`definirItem ${a} ${i}`); }
   async inserirConta(c: Conta) { this.chamadas.push(`inserirConta ${c.account_id} ${c.forma}`); }
   async lancamentosDaConta() { return new Map(this.banco); }

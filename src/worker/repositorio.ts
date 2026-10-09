@@ -6,6 +6,8 @@ import type {
 
 export interface Repo {
   contasAtivas(): Promise<Conta[]>;
+  /** Todas as contas registradas, ativas ou não. */
+  idsRegistrados(): Promise<Set<string>>;
   definirItemDaConta(accountId: string, itemId: string): Promise<void>;
   inserirConta(c: Conta, tipoPluggy: string): Promise<void>;
   lancamentosDaConta(c: Conta, desde: string): Promise<Map<string, LinhaBanco>>;
@@ -38,15 +40,21 @@ export class PgRepo implements Repo {
     return r.rows;
   }
 
+  async idsRegistrados(): Promise<Set<string>> {
+    const r = await this.pool.query<{ account_id: string }>(`SELECT account_id FROM pluggy_contas`);
+    return new Set(r.rows.map((x) => x.account_id));
+  }
+
   async definirItemDaConta(accountId: string, itemId: string) {
     await this.pool.query(`UPDATE pluggy_contas SET item_id = $2 WHERE account_id = $1`, [accountId, itemId]);
   }
 
+  /** Conta descoberta entra DESLIGADA: muda saldo e previsão, então quem liga é o Matheus. */
   async inserirConta(c: Conta, tipoPluggy: string) {
     await this.pool.query(
       `INSERT INTO pluggy_contas (account_id, item_id, banco, responsavel, forma, tipo_pluggy,
-         coleta_transacoes, coleta_saldo, coleta_faturas, coleta_investimentos)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (account_id) DO NOTHING`,
+         coleta_transacoes, coleta_saldo, coleta_faturas, coleta_investimentos, ativo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, false) ON CONFLICT (account_id) DO NOTHING`,
       [c.account_id, c.item_id, c.banco, c.responsavel, c.forma, tipoPluggy,
         c.coleta_transacoes, c.coleta_saldo, c.coleta_faturas, c.coleta_investimentos],
     );

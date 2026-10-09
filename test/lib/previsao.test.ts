@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { addMonths, computeProjecao, computeRitmo, diasNoMes, mediana, type ProjecaoBase } from '../../src/lib/previsao';
+import {
+  addMonths, computeProjecao, computeRitmo, diasNoMes, mediana, receitaAindaAEntrar, receitaRecorrente,
+  type EntradaReceita, type ProjecaoBase,
+} from '../../src/lib/previsao';
 
 export function baseFake(p: Partial<ProjecaoBase> = {}): ProjecaoBase {
   return {
     patrimonioAtual: 0, saldoContasAtual: 1000, saldoContas: { total: 1000, contas: [] },
-    receitaMediaMensal: 5000, despesaVariavelMediaMensal: 3000, creditoNovoMedio: 1000,
+    fontesReceita: [{ fonte: 'empresa', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' }], despesaVariavelMediaMensal: 3000, creditoNovoMedio: 1000,
     despesaCasaPorCategoria: { Housing: 1500 }, despesaFixaPorMes: {}, compromissosManuais: [],
     mesCorrente: {
-      receitaJaRecebida: 0, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto: 0,
+      recebidoPorFonte: {}, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto: 0,
       agendadoRestante: 0, faturaJaPaga: 0, casaNoMesPorCategoria: {},
     },
     ...p,
@@ -33,5 +36,51 @@ describe('computeProjecao com hoje explícito', () => {
     const base = baseFake();
     const r = computeRitmo(base, computeProjecao(base, 1, '2026-08-10')[0], '2026-08-10');
     expect([r.diaHoje, r.diasRestantes]).toEqual([10, 21]);
+  });
+});
+
+const e = (fonte: string, mes: string, dia: number, valor: number): EntradaReceita =>
+  ({ fonte, nome: fonte, mes, dia, valor, responsavel: 'Matheus' });
+
+describe('receitaRecorrente', () => {
+  it('mediana por fonte; entrada avulsa não entra', () => {
+    const r = receitaRecorrente([
+      e('empresa', '2026-06', 5, 5000), e('empresa', '2026-07', 5, 5000), e('empresa', '2026-08', 5, 7000),
+      e('avulsa', '2026-07', 12, 2000),
+    ], ['2026-06', '2026-07', '2026-08']);
+    expect(r).toEqual([{ fonte: 'empresa', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' }]);
+  });
+  it('salário em duas partes no mesmo mês soma por mês', () => {
+    const r = receitaRecorrente([
+      e('empresa', '2026-07', 5, 2000), e('empresa', '2026-07', 20, 3000),
+      e('empresa', '2026-08', 5, 2000), e('empresa', '2026-08', 20, 3000),
+    ], ['2026-07', '2026-08']);
+    expect(r[0].valor).toBe(5000);
+  });
+  it('fonte fora dos meses-base é ignorada; com 1 mês-base, 1 aparição basta', () => {
+    expect(receitaRecorrente([e('x', '2026-05', 1, 100)], ['2026-07'])).toEqual([]);
+    expect(receitaRecorrente([e('x', '2026-07', 1, 100)], ['2026-07'])).toHaveLength(1);
+  });
+});
+
+describe('receitaAindaAEntrar', () => {
+  it('depois da primeira parte, a segunda ainda entra; recebido inteiro some', () => {
+    const fontes = [{ fonte: 'empresa', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' },
+                    { fonte: 'outra', nome: 'outra', valor: 1000, diaTipico: 10, responsavel: 'Ariane' }];
+    const r = receitaAindaAEntrar(fontes, { empresa: 2000, outra: 1000 });
+    expect(r.map((f) => [f.fonte, f.valor])).toEqual([['empresa', 3000]]);
+  });
+});
+
+describe('receita na projeção', () => {
+  it('meses futuros: soma das fontes; mês corrente: o que falta entrar + agendado', () => {
+    const base = baseFake({
+      fontesReceita: [{ fonte: 'a', nome: 'a', valor: 4000, diaTipico: 5, responsavel: 'Matheus' },
+                      { fonte: 'b', nome: 'b', valor: 1000, diaTipico: 20, responsavel: 'Ariane' }],
+    });
+    base.mesCorrente.receitasAReceber = [{ fonte: 'b', nome: 'b', valor: 1000, diaTipico: 20, responsavel: 'Ariane' }];
+    base.mesCorrente.receitaAgendada = 50;
+    const p = computeProjecao(base, 1, '2026-08-10');
+    expect([p[0].receita, p[1].receita]).toEqual([1050, 5000]);
   });
 });

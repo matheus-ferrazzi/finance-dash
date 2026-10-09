@@ -14,8 +14,16 @@ export interface SaldoConta {
   banco: string; responsavel: string; saldo: number; atualizadoPluggy: string | null;
 }
 
+/** Fonte de receita recorrente (quem paga) com o valor mensal típico. */
 export interface ReceitaPrevista {
+  /** documento da contraparte, ou a descrição sem dígitos quando o banco não manda documento */
+  fonte: string;
   nome: string; valor: number; diaTipico: number; responsavel: string;
+}
+
+/** Uma entrada de dinheiro, já atribuída à fonte. */
+export interface EntradaReceita {
+  fonte: string; nome: string; mes: string; dia: number; valor: number; responsavel: string;
 }
 
 /** ingredientes crus da projeção — combinados por computeProjecao (função pura, sem DB) */
@@ -24,7 +32,8 @@ export interface ProjecaoBase {
   saldoContasAtual: number;
   /** reaproveitado pela página — evita refazer as mesmas consultas */
   saldoContas: { total: number; contas: SaldoConta[] };
-  receitaMediaMensal: number;
+  /** fontes de receita recorrentes nos meses-base, com o valor mensal típico (mediana) */
+  fontesReceita: ReceitaPrevista[];
   /** gasto no DÉBITO (fora casa) — o que sai direto da conta */
   despesaVariavelMediaMensal: number;
   /** compras novas no crédito por mês (fora parcelamentos) — vira fatura */
@@ -35,9 +44,10 @@ export interface ProjecaoBase {
   compromissosManuais: CompromissoManual[];
   /** o que já aconteceu no mês em andamento — usado pra fechar o mês corrente */
   mesCorrente: {
-    receitaJaRecebida: number;
+    /** o que cada fonte já pagou no mês */
+    recebidoPorFonte: Record<string, number>;
     receitaAgendada: number;
-    /** entradas recorrentes que ainda não caíram (ex.: salário do dia 20) */
+    /** o que ainda falta entrar de cada fonte recorrente (ex.: a 2ª parte do salário) */
     receitasAReceber: ReceitaPrevista[];
     variavelJaGasto: number;               // no débito, fora casa
     agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
@@ -92,6 +102,42 @@ export function mediana(xs: readonly number[]): number {
 }
 
 /**
+ * Receita recorrente por fonte. Recorrente = apareceu em pelo menos 2 dos meses-base
+ * (ou em todos, se houver só um). Valor = mediana dos totais mensais em que apareceu:
+ * um mês com bônus ou adiantamento não puxa a previsão como puxava a média simples.
+ * Entrada avulsa (uma vez só) não entra.
+ */
+export function receitaRecorrente(entradas: readonly EntradaReceita[], mesesBase: readonly string[]): ReceitaPrevista[] {
+  const base = new Set(mesesBase);
+  const minimo = Math.max(1, Math.min(2, base.size));
+  const porFonte = new Map<string, { nome: string; responsavel: string; porMes: Map<string, number>; dias: number[] }>();
+  for (const e of entradas) {
+    if (!base.has(e.mes)) continue;
+    const f = porFonte.get(e.fonte) ?? { nome: e.nome, responsavel: e.responsavel, porMes: new Map<string, number>(), dias: [] as number[] };
+    f.porMes.set(e.mes, (f.porMes.get(e.mes) ?? 0) + e.valor);
+    f.dias.push(e.dia);
+    porFonte.set(e.fonte, f);
+  }
+  return [...porFonte.entries()]
+    .filter(([, f]) => f.porMes.size >= minimo)
+    .map(([fonte, f]) => ({
+      fonte, nome: f.nome, responsavel: f.responsavel,
+      valor: Math.round(mediana([...f.porMes.values()]) * 100) / 100,
+      diaTipico: Math.round(mediana(f.dias)),
+    }))
+    .filter((f) => f.valor > 0)
+    .sort((a, b) => b.valor - a.valor);
+}
+
+/** O que ainda falta entrar de cada fonte neste mês. Só fica o que falta mais de 10% do valor da fonte. */
+export function receitaAindaAEntrar(fontes: readonly ReceitaPrevista[], recebidoPorFonte: Record<string, number>): ReceitaPrevista[] {
+  return fontes
+    .map((f) => ({ f, falta: Math.round((f.valor - (recebidoPorFonte[f.fonte] ?? 0)) * 100) / 100 }))
+    .filter(({ f, falta }) => falta > 0.1 * f.valor)
+    .map(({ f, falta }) => ({ ...f, valor: falta }));
+}
+
+/**
  * O número mais acionável do app: quanto cabe gastar hoje.
  *
  * Fica aqui, e não dentro de quem exibe, porque a home e o endpoint dos bots
@@ -141,6 +187,7 @@ function faturaDoMes(base: ProjecaoBase, mes: string): number {
  */
 export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: string = currentDateSP()): ProjecaoMes[] {
   const anchor = hoje.slice(0, 7);
+  const receitaMensal = base.fontesReceita.reduce((s, f) => s + f.valor, 0);
   const out: ProjecaoMes[] = [];
   let saldoProjetado = base.saldoContasAtual;
 
@@ -176,12 +223,8 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
       : base.despesaVariavelMediaMensal / dias;
     const despesaVariavel = ritmo * (dias - diaHoje);
     const despesaFixa = mc.agendadoRestante;
-    // Entradas recorrentes que ainda não caíram (salário do dia 20, etc).
-    // Mais preciso que "média menos o que já entrou": sabe QUAL entrada falta.
-    const recorrentes = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0);
-    const receita = (recorrentes > 0
-      ? recorrentes
-      : Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida)) + mc.receitaAgendada;
+    // o que ainda falta entrar de cada fonte recorrente (a 2ª parte do salário, etc) + o já agendado
+    const receita = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0) + mc.receitaAgendada;
     const fatura = Math.max(0, faturaDoMes(base, anchor) - mc.faturaJaPaga);
     const parcelas = Math.min(fatura, base.despesaFixaPorMes[anchor] ?? 0);
 
@@ -207,7 +250,7 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
       .reduce((s, [, v]) => s + v, 0);
 
     const despesaVariavel = base.despesaVariavelMediaMensal;
-    const receita = base.receitaMediaMensal;
+    const receita = receitaMensal;
     const fatura = faturaDoMes(base, mes);
     const parcelas = base.despesaFixaPorMes[mes] ?? 0;
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;

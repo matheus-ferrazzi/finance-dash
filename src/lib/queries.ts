@@ -2,8 +2,8 @@ import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparGastos, type GrupoGasto } from './grupos';
 import {
-  addMonths, computeProjecao, computeRitmo,
-  type CompromissoManual, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
+  addMonths, computeProjecao, computeRitmo, receitaAindaAEntrar, receitaRecorrente,
+  type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
 export {
@@ -575,66 +575,33 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
   };
 }
 
-/**
- * Entradas recorrentes que AINDA não caíram neste mês (ex.: a 2ª parcela do
- * salário, que cai sempre no dia 20). Agrupa por descrição + metade do mês,
- * porque o mesmo salário pode vir em duas parcelas com a mesma descrição.
- */
-async function getReceitasAReceber(resp: Resp, hoje: string): Promise<ReceitaPrevista[]> {
-  const r = rf(resp, 1);
-  const h = `$${r.p.length + 1}::date`;
-  const rows = await q<any>(
-    `WITH base AS (
-       SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
-              CASE WHEN EXTRACT(day FROM data_lancamento) <= 15 THEN 'inicio' ELSE 'fim' END AS metade,
-              valor, responsavel, date_trunc('month',data_lancamento) AS mes,
-              EXTRACT(day FROM data_lancamento) AS dia
-       FROM financas_lancamentos
-       WHERE classe='receita' AND valor >= 300
-         AND data_lancamento >= date_trunc('month',${h}) - interval '3 months'
-         AND data_lancamento <= ${h}${r.sql}
-     ),
-     por_mes AS (
-       SELECT chave, metade, mes, SUM(valor) AS total, MIN(dia) AS dia,
-              mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel
-       FROM base GROUP BY 1,2,3
-     )
-     SELECT chave, metade,
-            ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY total)
-                  FILTER (WHERE mes < date_trunc('month',${h}))::numeric, 2) AS media,
-            ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY dia)
-                  FILTER (WHERE mes < date_trunc('month',${h}))::numeric) AS dia_tipico,
-            mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel,
-            COUNT(*) FILTER (WHERE mes < date_trunc('month',${h})) AS meses_antes,
-            COUNT(*) FILTER (WHERE mes = date_trunc('month',${h})) AS ja_caiu
-     FROM por_mes GROUP BY 1,2`,
-    [...r.p, hoje],
-  );
-  return rows
-    .filter((x) => Number(x.meses_antes) >= 2 && Number(x.ja_caiu) === 0 && Number(x.media) > 0)
-    .map((x) => ({
-      nome: String(x.chave).trim(), valor: Number(x.media),
-      diaTipico: Number(x.dia_tipico), responsavel: x.responsavel,
-    }));
-}
-
 export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()): Promise<ProjecaoBase> {
   const [patrimonioAtual, saldoContas, meses] = await Promise.all([
     getPatrimonioAtual(resp), getSaldoContas(resp), getMesesConfiaveis(resp, hoje),
   ]);
   const saldoContasAtual = saldoContas.total;
 
-  const r1 = rf(resp, 2);
-  const receitaRows = await q<any>(
-    `SELECT ROUND(AVG(m.total),2) AS media FROM (
-       SELECT date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
-       FROM financas_lancamentos
-       WHERE classe='receita'
-         AND date_trunc('month',data_lancamento) = ANY($1::date[])${r1.sql}
-       GROUP BY 1
-     ) m`,
-    [meses, ...r1.p],
+  // receita por FONTE (quem paga): documento da contraparte, ou a descrição sem dígitos
+  // quando o banco não manda documento. Meses-base + o mês de hoje (para o "já recebido").
+  const r1 = rf(resp, 3);
+  const entradaRows = await q<any>(
+    `SELECT COALESCE(contraparte_doc,
+              trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g'))) AS fonte,
+            trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS nome,
+            to_char(data_lancamento,'YYYY-MM') AS mes, EXTRACT(day FROM data_lancamento)::int AS dia,
+            valor::float8 AS valor, responsavel
+     FROM financas_lancamentos
+     WHERE classe='receita'
+       AND data_lancamento >= LEAST((SELECT MIN(m) FROM unnest($1::date[]) m), date_trunc('month',$2::date)::date)
+       AND data_lancamento <= $2::date${r1.sql}`,
+    [meses, hoje, ...r1.p],
   );
+  const entradas: EntradaReceita[] = entradaRows.map((x) => ({
+    fonte: x.fonte, nome: x.nome, mes: x.mes, dia: Number(x.dia), valor: Number(x.valor), responsavel: x.responsavel,
+  }));
+  const fontesReceita = receitaRecorrente(entradas, meses.map((m) => m.slice(0, 7)));
+  const recebidoPorFonte: Record<string, number> = {};
+  for (const e of entradas) if (e.mes === hoje.slice(0, 7)) recebidoPorFonte[e.fonte] = (recebidoPorFonte[e.fonte] ?? 0) + e.valor;
 
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.
@@ -702,7 +669,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   fixaRows.forEach((x) => { despesaFixaPorMes[x.mes] = Number(x.total); });
 
   const compromissosManuais = await getCompromissosManuais(resp);
-  const receitasAReceber = await getReceitasAReceber(resp, hoje);
+  const receitasAReceber = receitaAindaAEntrar(fontesReceita, recebidoPorFonte);
 
   // --- mês em andamento: o que já entrou/saiu e o que ainda falta ---
   const rmc = rf(resp, 1);
@@ -716,8 +683,6 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
        WHERE classe='despesa' AND data_lancamento > sp.hoje AND criado_em::date <= sp.hoje
      )
      SELECT
-       (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
-         WHERE classe='receita' AND data_lancamento >= lim.ini AND data_lancamento <= sp.hoje${rmc.sql}) AS receita_recebida,
        (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
          WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim AND criado_em::date <= sp.hoje${rmc.sql}) AS receita_agendada,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
@@ -757,7 +722,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     saldoContasAtual,
     saldoContas,
     mesCorrente: {
-      receitaJaRecebida: Number(mesRows[0]?.receita_recebida ?? 0),
+      recebidoPorFonte,
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
       receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
@@ -765,7 +730,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
       casaNoMesPorCategoria,
     },
-    receitaMediaMensal: Number(receitaRows[0]?.media ?? 0),
+    fontesReceita,
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
     creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,

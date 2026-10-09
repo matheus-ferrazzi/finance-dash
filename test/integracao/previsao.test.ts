@@ -41,4 +41,12 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     const cedo = await queries.getProjecaoBase('casal', '2026-07-31');
     expect(cedo.mesCorrente.variavelJaGasto).toBe(100);
   });
+
+  it('receita sem documento agrupa pela descrição sem dígitos e com espaços normalizados', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
+      VALUES ('r1', '2026-05-05', 3000, 'PIX RECEBIDO  SILVA 0501', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '2026-05-05'),
+             ('r2', '2026-06-05', 3000, 'PIX RECEBIDO SILVA 0602', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '2026-06-05')`);
+    const base = await queries.getProjecaoBase('casal', '2026-07-01');
+    expect(base.fontesReceita.map((f) => [f.nome, f.valor])).toEqual([['pix recebido silva', 3000]]);
+  });
 });

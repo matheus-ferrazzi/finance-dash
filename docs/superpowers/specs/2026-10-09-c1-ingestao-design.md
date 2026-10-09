@@ -87,8 +87,10 @@ Conta nova num item já conhecido é inserida sozinha (`ativo=true`) e registrad
 `transferencia_casal` = documento do pagador e do recebedor pertencem aos titulares das contas
 (CPFs lidos de `/identity` em memória a cada execução, **nunca gravados**).
 
-**`financas_lancamentos_removidos`** — mesma estrutura de `financas_lancamentos` + `removido_em`,
-`motivo`. Reconciliação **move** a linha para cá. Reversível com um `INSERT … SELECT`.
+**`financas_lancamentos_removidos`** — `id`, `id_transacao`, `dados jsonb` (a linha inteira via
+`to_jsonb`), `removido_em`, `motivo`. Reconciliação **move** a linha para cá. Guardar como JSON
+deixa o "mover" imune a coluna nova em `financas_lancamentos`; reverter é
+`INSERT … SELECT (jsonb_populate_record(NULL::financas_lancamentos, dados)).*`.
 
 **`financas_faturas_historico`** — `id` (pk, id da fatura), `account_id`, `vencimento`, `total`,
 `minimo`, `encargos jsonb`, `pagamentos jsonb`, `atualizado_em`.
@@ -96,8 +98,14 @@ Conta nova num item já conhecido é inserida sozinha (`ativo=true`) e registrad
 **`pluggy_execucoes`** — `id`, `tarefa`, `inicio`, `fim`, `ok`, `modo` (`sombra`/`real`/`dry-run`),
 `contagens jsonb`, `erro`.
 
-**Nomes:** `Itaú` passa a ser o nome canônico. A migração renomeia `Itau` → `Itaú` em
-`financas_sync` e `financas_sync_log` (só essas usam a grafia sem acento).
+**Nomes:** `Itaú` passa a ser o nome canônico. Uma migração **separada**, aplicada só na virada
+(`002_virada.sql`), renomeia `Itau` → `Itaú` em `financas_sync` e `financas_sync_log` (só essas usam a
+grafia sem acento). Não pode ir na 001: o `sync_pluggy.sh` continua rodando durante o modo sombra e
+recriaria a linha `Itau`, deixando a `Itaú` parada e o selo vermelho.
+
+**Flags de coleta em `pluggy_contas`:** `coleta_transacoes`, `coleta_saldo`, `coleta_faturas`,
+`coleta_investimentos`, semeadas a partir das listas atuais de cada workflow. Paridade exata: hoje a
+fatura do Bradesco não é coletada e o item do Neon não entra em investimentos.
 
 **Papel `pluggy_worker`:** `SELECT/INSERT/UPDATE` nas tabelas de ingestão e `pluggy_*`;
 `DELETE` só em `financas_lancamentos` (para mover) e `pluggy_*`. Senha definida pelo Matheus.

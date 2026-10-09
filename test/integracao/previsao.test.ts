@@ -42,6 +42,19 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(cedo.mesCorrente.variavelJaGasto).toBe(100);
   });
 
+  it('crédito por vencimento: fatura_id exato; fatura_prevista + deslocamento aprendido da conta; senão mês seguinte', async () => {
+    // conta "neon": fatura_prevista é o mês ANTERIOR ao vencimento (aprende +1 pelo lançamento ligado à fatura)
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES ('fat-ago', 'neon', '2026-08-05', 300)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_id, fatura_prevista)
+      VALUES ('c1', '2026-07-10', 100, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2026-07-10', 'neon', 'fat-ago', '2026-07'),
+             ('c2', '2026-08-10', 40, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2026-08-10', 'neon', NULL, '2026-08'),
+             ('c3', '2026-08-12', 25, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-08-12', 'nu', NULL, NULL)`);
+    const base = await queries.getProjecaoBase('casal', '2026-08-15');
+    expect(base.creditoPorVencimento['2026-08']).toBe(100);  // pelo fatura_id
+    expect(base.creditoPorVencimento['2026-09']).toBe(65);   // 40 (prevista ago + 1) + 25 (sem nada: mês seguinte)
+    expect(base.faturaReal).toEqual({ '2026-08': 300 });
+  });
+
   it('receita sem documento agrupa pela descrição sem dígitos e com espaços normalizados', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
       VALUES ('r1', '2026-05-05', 3000, 'PIX RECEBIDO  SILVA 0501', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '2026-05-05'),

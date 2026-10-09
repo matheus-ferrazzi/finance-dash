@@ -40,7 +40,10 @@ export interface ProjecaoBase {
   creditoNovoMedio: number;
   /** média mensal por categoria da casa (aluguel/luz/água/internet/telefone/gás) */
   despesaCasaPorCategoria: Record<string, number>;
-  despesaFixaPorMes: Record<string, number>; // 'YYYY-MM' -> soma de lançamentos futuros já confirmados pela Pluggy
+  /** 'AAAA-MM' do vencimento -> compras no crédito já lançadas (conhecidas em hoje) que vencem nele */
+  creditoPorVencimento: Record<string, number>;
+  /** 'AAAA-MM' do vencimento -> total real da fatura (histórico da Pluggy), só as que vencem até o mês de hoje */
+  faturaReal: Record<string, number>;
   compromissosManuais: CompromissoManual[];
   /** o que já aconteceu no mês em andamento — usado pra fechar o mês corrente */
   mesCorrente: {
@@ -184,12 +187,14 @@ function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
 }
 
 /**
- * Fatura que sai da conta no mês: as parcelas já agendadas para ele
- * (a Pluggy lança as futuras) mais as compras novas no crédito, que você
- * faz todo mês e caem na fatura seguinte.
+ * Fatura que sai da conta num mês FUTURO, pelo vencimento:
+ * - fatura real conhecida (histórico) manda;
+ * - senão, compras já lançadas que vencem nele + as compras novas que ainda vão
+ *   acontecer: no mês seguinte, só a fração do mês corrente que falta; depois, a média cheia.
+ * Antes usava as parcelas DATADAS no mês, que oscilavam sem relação com a fatura.
  */
-function faturaDoMes(base: ProjecaoBase, mes: string): number {
-  return (base.despesaFixaPorMes[mes] ?? 0) + base.creditoNovoMedio;
+function faturaFutura(base: ProjecaoBase, mes: string, fracaoNovas: number): number {
+  return base.faturaReal[mes] ?? (base.creditoPorVencimento[mes] ?? 0) + base.creditoNovoMedio * fracaoNovas;
 }
 
 /**
@@ -240,8 +245,9 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
     const despesaFixa = mc.agendadoRestante;
     // o que ainda falta entrar de cada fonte recorrente (a 2ª parte do salário, etc) + o já agendado
     const receita = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0) + mc.receitaAgendada;
-    const fatura = Math.max(0, faturaDoMes(base, anchor) - mc.faturaJaPaga);
-    const parcelas = Math.min(fatura, base.despesaFixaPorMes[anchor] ?? 0);
+    // fatura que vence neste mês (real, se já fechou) menos o que já foi pago
+    const fatura = Math.max(0, (base.faturaReal[anchor] ?? base.creditoPorVencimento[anchor] ?? 0) - mc.faturaJaPaga);
+    const parcelas = Math.min(fatura, base.creditoPorVencimento[anchor] ?? 0);
 
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;
@@ -251,6 +257,8 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
     });
   }
 
+  const diaHojeNum = Number(hoje.split('-')[2]);
+  const diasAnchor = diasNoMes(anchor);
   for (let i = 1; i <= horizonMeses; i++) {
     const mes = addMonths(anchor, i);
     const despesaFixa = 0; // no caixa, parcela de cartão sai dentro da fatura
@@ -266,8 +274,8 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
 
     const despesaVariavel = base.despesaVariavelMediaMensal;
     const receita = receitaMensal;
-    const fatura = faturaDoMes(base, mes);
-    const parcelas = base.despesaFixaPorMes[mes] ?? 0;
+    const fatura = faturaFutura(base, mes, i === 1 ? (diasAnchor - diaHojeNum) / diasAnchor : 1);
+    const parcelas = Math.min(fatura, base.creditoPorVencimento[mes] ?? 0);
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;
     out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, fatura, parcelas, saldo, saldoProjetado });

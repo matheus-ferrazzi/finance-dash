@@ -634,6 +634,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
        FROM financas_lancamentos l
        WHERE l.classe='despesa' AND l.forma_pagamento='Crédito'
          AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT chave FROM chaves_parceladas)
+         AND NOT (COALESCE(l.parcela_total,0) > 1 OR l.descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$')
          AND date_trunc('month',l.data_lancamento) = ANY($1::date[])${rcn.sql}
        GROUP BY 1
      ) m`,
@@ -657,17 +658,48 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   const despesaCasaPorCategoria: Record<string, number> = {};
   casaRows.forEach((x) => { despesaCasaPorCategoria[x.categoria] = Number(x.media); });
 
-  const r3 = rf(resp, 1);
-  const h3 = `$${r3.p.length + 1}::date`;
-  const fixaRows = await q<any>(
-    `SELECT to_char(date_trunc('month',data_lancamento),'YYYY-MM') AS mes, SUM(valor) AS total
-     FROM financas_lancamentos
-     WHERE classe='despesa' AND data_lancamento > ${h3} AND criado_em::date <= ${h3}${r3.sql}
-     GROUP BY 1 ORDER BY 1`,
-    [...r3.p, hoje],
+  // Compras no crédito pelo MÊS DE VENCIMENTO da fatura em que caem, nesta ordem:
+  // 1) fatura_id -> vencimento real; 2) fatura_prevista + deslocamento da conta, aprendido dos
+  // lançamentos que têm os dois (no Nubank fatura_prevista é o mês do vencimento; no Neon e no
+  // Santander, o mês anterior); 3) mês seguinte ao lançamento. Só o conhecido em hoje.
+  const r3 = rf(resp, 2);
+  const credVencRows = await q<any>(
+    `WITH desloc AS (
+       SELECT l.account_id,
+              mode() WITHIN GROUP (ORDER BY (EXTRACT(year FROM h.vencimento) * 12 + EXTRACT(month FROM h.vencimento))
+                - (left(l.fatura_prevista, 4)::int * 12 + right(l.fatura_prevista, 2)::int)) AS meses
+       FROM financas_lancamentos l JOIN financas_faturas_historico h ON h.id = l.fatura_id
+       WHERE l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
+       GROUP BY 1
+     )
+     SELECT to_char(COALESCE(
+              h.vencimento,
+              CASE WHEN l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
+                   THEN (to_date(l.fatura_prevista, 'YYYY-MM') + make_interval(months => COALESCE(d.meses, 0)::int))::date END,
+              (date_trunc('month', l.data_lancamento) + interval '1 month')::date), 'YYYY-MM') AS venc,
+            SUM(l.valor)::float8 AS total
+     FROM financas_lancamentos l
+     LEFT JOIN financas_faturas_historico h ON h.id = l.fatura_id
+     LEFT JOIN desloc d ON d.account_id = l.account_id
+     WHERE l.classe = 'despesa' AND l.forma_pagamento = 'Crédito'
+       AND (l.data_lancamento <= $1::date OR l.criado_em::date <= $1::date)${r3.sql}
+     GROUP BY 1`,
+    [hoje, ...r3.p],
   );
-  const despesaFixaPorMes: Record<string, number> = {};
-  fixaRows.forEach((x) => { despesaFixaPorMes[x.mes] = Number(x.total); });
+  const creditoPorVencimento: Record<string, number> = {};
+  credVencRows.forEach((x) => { creditoPorVencimento[x.venc] = Number(x.total); });
+
+  // fatura real (histórico da Pluggy) das que vencem até o mês de hoje
+  const filtroResp = resp === 'casal' ? '' : ' AND c.responsavel = $2';
+  const faturaRows = await q<any>(
+    `SELECT to_char(h.vencimento, 'YYYY-MM') AS venc, SUM(h.total)::float8 AS total
+     FROM financas_faturas_historico h LEFT JOIN pluggy_contas c ON c.account_id = h.account_id
+     WHERE date_trunc('month', h.vencimento) <= date_trunc('month', $1::date)${filtroResp}
+     GROUP BY 1`,
+    resp === 'casal' ? [hoje] : [hoje, resp],
+  );
+  const faturaReal: Record<string, number> = {};
+  faturaRows.forEach((x) => { faturaReal[x.venc] = Number(x.total); });
 
   const compromissosManuais = await getCompromissosManuais(resp);
   const receitasAReceber = receitaAindaAEntrar(fontesReceita, recebidoPorFonte);
@@ -735,7 +767,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
     creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,
-    despesaFixaPorMes,
+    creditoPorVencimento,
+    faturaReal,
     compromissosManuais,
   };
 }

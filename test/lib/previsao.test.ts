@@ -8,7 +8,7 @@ export function baseFake(p: Partial<ProjecaoBase> = {}): ProjecaoBase {
   return {
     patrimonioAtual: 0, saldoContasAtual: 1000, saldoContas: { total: 1000, contas: [] },
     fontesReceita: [{ fonte: 'empresa', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' }], despesaVariavelMediaMensal: 3000, creditoNovoMedio: 1000,
-    despesaCasaPorCategoria: { Housing: 1500 }, despesaFixaPorMes: {}, compromissosManuais: [],
+    despesaCasaPorCategoria: { Housing: 1500 }, creditoPorVencimento: {}, faturaReal: {}, compromissosManuais: [],
     mesCorrente: {
       recebidoPorFonte: {}, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto: 0,
       agendadoRestante: 0, faturaJaPaga: 0, casaNoMesPorCategoria: {},
@@ -101,5 +101,33 @@ describe('mesesBaseReceita', () => {
   it('renda que alterna entre dois patamares: a mediana de 6 meses fica no meio', () => {
     const alterna = [4700, 6400, 4500, 6100, 4600, 4400].map((v, i) => e('empresa', mesesBaseReceita('2026-08-01')[i], 1, v));
     expect(receitaRecorrente(alterna, mesesBaseReceita('2026-08-01'))[0].valor).toBe(4650);
+  });
+});
+
+describe('fatura', () => {
+  const base = baseFake({
+    creditoNovoMedio: 1000,
+    faturaReal: { '2026-08': 2500 },
+    creditoPorVencimento: { '2026-08': 2400, '2026-09': 600, '2026-10': 300 },
+  });
+  base.mesCorrente.faturaJaPaga = 500;
+  const p = computeProjecao(base, 3, '2026-08-11');
+  it('mês corrente: fatura real que vence nele menos o já pago', () => {
+    expect(p[0].fatura).toBe(2000);
+  });
+  it('mês seguinte: compras já lançadas + média pela fração do mês que falta', () => {
+    expect(p[1].fatura).toBeCloseTo(600 + 1000 * 20 / 31, 2);
+  });
+  it('meses depois: parcelas já lançadas + média; sem nada lançado, só a média', () => {
+    expect(p[2].fatura).toBe(1300);
+    expect(p[3].fatura).toBe(1000);
+  });
+  it('fatura real conhecida manda (teste contra o passado)', () => {
+    const q = computeProjecao(baseFake({ faturaReal: { '2026-09': 999 }, creditoPorVencimento: {} }), 1, '2026-08-11');
+    expect(q[1].fatura).toBe(999);
+  });
+  it('sem nada conhecido no mês corrente, não dá NaN', () => {
+    const q = computeProjecao(baseFake({ faturaReal: {}, creditoPorVencimento: {} }), 0, '2026-08-11');
+    expect(q[0].fatura).toBe(0);
   });
 });

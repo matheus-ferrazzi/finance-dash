@@ -86,8 +86,12 @@ describe('receita na projeção', () => {
 });
 
 describe('mesesBaseReceita', () => {
-  it('os 3 últimos meses fechados antes de hoje, do mais recente ao mais antigo', () => {
-    expect(mesesBaseReceita('2026-08-01')).toEqual(['2026-07', '2026-06', '2026-05']);
-    expect(mesesBaseReceita('2026-01-31')).toEqual(['2025-12', '2025-11', '2025-10']);
+  it('os 6 últimos meses fechados antes de hoje, do mais recente ao mais antigo', () => {
+    expect(mesesBaseReceita('2026-08-01')).toEqual(['2026-07', '2026-06', '2026-05', '2026-04', '2026-03', '2026-02']);
+    expect(mesesBaseReceita('2026-01-31')[0]).toBe('2025-12');
+  });
+  it('renda que alterna entre dois patamares: a mediana de 6 meses fica no meio', () => {
+    const alterna = [4700, 6400, 4500, 6100, 4600, 4400].map((v, i) => e('empresa', mesesBaseReceita('2026-08-01')[i], 1, v));
+    expect(receitaRecorrente(alterna, mesesBaseReceita('2026-08-01'))[0].valor).toBe(4650);
   });
 });

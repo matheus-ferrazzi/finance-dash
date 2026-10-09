@@ -130,13 +130,16 @@ export function receitaRecorrente(entradas: readonly EntradaReceita[], mesesBase
 }
 
 /**
- * Meses-base da receita: os 3 últimos meses fechados, consecutivos. Não usa os "meses
- * confiáveis" (filtro de transferências, feito para as médias de gasto): com eles a base
- * podia ser julho + fevereiro, e um salário novo desde maio deixava de ser "recorrente".
+ * Meses-base da receita: os 6 últimos meses fechados, consecutivos.
+ * - Não usa os "meses confiáveis" (filtro de transferências, feito para as médias de gasto):
+ *   com eles a base podia ser julho + fevereiro, e um salário novo desde maio deixava de ser
+ *   "recorrente".
+ * - 6 e não 3: renda que alterna entre dois patamares (medido em 2026) faz a mediana de 3
+ *   meses pular para um lado ou outro conforme a janela; a de 6 fica no meio.
  */
 export function mesesBaseReceita(hoje: string): string[] {
   const mes = hoje.slice(0, 7);
-  return [1, 2, 3].map((i) => addMonths(mes, -i));
+  return [1, 2, 3, 4, 5, 6].map((i) => addMonths(mes, -i));
 }
 
 /** O que ainda falta entrar de cada fonte neste mês. Só fica o que falta mais de 10% do valor da fonte. */

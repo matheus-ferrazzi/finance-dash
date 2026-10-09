@@ -110,6 +110,8 @@ export function mediana(xs: readonly number[]): number {
 export function receitaRecorrente(entradas: readonly EntradaReceita[], mesesBase: readonly string[]): ReceitaPrevista[] {
   const base = new Set(mesesBase);
   const minimo = Math.max(1, Math.min(2, base.size));
+  // ainda ativa: apareceu em um dos 2 meses mais recentes (emprego antigo, que parou, não conta)
+  const recentes = new Set([...base].sort().reverse().slice(0, 2));
   const porFonte = new Map<string, { nome: string; responsavel: string; porMes: Map<string, number>; dias: number[] }>();
   for (const e of entradas) {
     if (!base.has(e.mes)) continue;
@@ -119,7 +121,7 @@ export function receitaRecorrente(entradas: readonly EntradaReceita[], mesesBase
     porFonte.set(e.fonte, f);
   }
   return [...porFonte.entries()]
-    .filter(([, f]) => f.porMes.size >= minimo)
+    .filter(([, f]) => f.porMes.size >= minimo && [...f.porMes.keys()].some((m) => recentes.has(m)))
     .map(([fonte, f]) => ({
       fonte, nome: f.nome, responsavel: f.responsavel,
       valor: Math.round(mediana([...f.porMes.values()]) * 100) / 100,

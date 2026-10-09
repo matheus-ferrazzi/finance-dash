@@ -55,19 +55,6 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(base.faturaReal).toEqual({ '2026-08': 300 });
   });
 
-  it('gasto no débito e compras novas no crédito: mediana dos 6 últimos meses fechados', async () => {
-    await pool.query(`DELETE FROM financas_lancamentos`);
-    const linhas = [['2026-01', 100], ['2026-02', 100], ['2026-03', 100], ['2026-04', 900], ['2026-05', 100], ['2026-06', 100]]
-      .flatMap(([m, v], i) => [
-        `('d${i}', '${m}-10', ${v}, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída', '${m}-10')`,
-        `('k${i}', '${m}-11', ${Number(v) * 2}, 'loja', 'Shopping', 'Crédito', 'Nubank', 'Matheus', 'despesa', 'Saída', '${m}-11')`,
-      ]).join(',');
-    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES ${linhas}`);
-    const base = await queries.getProjecaoBase('casal', '2026-07-01');
-    expect(base.despesaVariavelMediaMensal).toBe(100);
-    expect(base.creditoNovoMedio).toBe(200);
-  });
-
   it('receita sem documento agrupa pela descrição sem dígitos e com espaços normalizados', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
       VALUES ('r1', '2026-05-05', 3000, 'PIX RECEBIDO  SILVA 0501', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '2026-05-05'),

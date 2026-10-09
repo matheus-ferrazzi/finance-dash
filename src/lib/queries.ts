@@ -2,7 +2,7 @@ import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparGastos, type GrupoGasto } from './grupos';
 import {
-  addMonths, computeProjecao, computeRitmo, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -606,12 +606,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
 
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.
-  // Gasto e compras novas: MEDIANA dos 6 últimos meses fechados (mesmos meses-base da receita).
-  // A média dos "meses confiáveis" às vezes usava 1–2 meses distantes e oscilava demais.
-  const mesesGasto = basesReceita.map((m) => `${m}-01`);
   const r2 = rf(resp, 3);
   const varRows = await q<any>(
-    `SELECT m.total::float8 AS total FROM (
+    `SELECT ROUND(AVG(m.total),2) AS media FROM (
        SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
        FROM financas_lancamentos l
        WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
@@ -620,7 +617,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
          AND date_trunc('month',l.data_lancamento) = ANY($2::date[])${r2.sql}
        GROUP BY 1
      ) m`,
-    [CASA_CATS, mesesGasto, ...r2.p],
+    [CASA_CATS, meses, ...r2.p],
   );
 
   // compras novas no crédito (fora parcelamentos) — é o que vira fatura do mês seguinte
@@ -632,7 +629,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
        FROM financas_lancamentos
        WHERE classe='despesa' AND data_lancamento > ${hcn} AND criado_em::date <= ${hcn}
      )
-     SELECT m.total::float8 AS total FROM (
+     SELECT ROUND(AVG(m.total),2) AS media FROM (
        SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
        FROM financas_lancamentos l
        WHERE l.classe='despesa' AND l.forma_pagamento='Crédito'
@@ -641,7 +638,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
          AND date_trunc('month',l.data_lancamento) = ANY($1::date[])${rcn.sql}
        GROUP BY 1
      ) m`,
-    [mesesGasto, ...rcn.p, hoje],
+    [meses, ...rcn.p, hoje],
   );
 
   // gastos da casa entram pela média real por categoria (aluguel, luz, água...).
@@ -767,8 +764,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       casaNoMesPorCategoria,
     },
     fontesReceita,
-    despesaVariavelMediaMensal: Math.round(mediana(varRows.map((x) => Number(x.total))) * 100) / 100,
-    creditoNovoMedio: Math.round(mediana(creditoRows.map((x) => Number(x.total))) * 100) / 100,
+    despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
+    creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,
     creditoPorVencimento,
     faturaReal,

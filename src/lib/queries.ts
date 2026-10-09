@@ -2,7 +2,7 @@ import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparGastos, type GrupoGasto } from './grupos';
 import {
-  addMonths, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -602,7 +602,11 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   }));
   const fontesReceita = receitaRecorrente(entradas, basesReceita);
   const recebidoPorFonte: Record<string, number> = {};
-  for (const e of entradas) if (e.mes === hoje.slice(0, 7)) recebidoPorFonte[e.fonte] = (recebidoPorFonte[e.fonte] ?? 0) + e.valor;
+  for (const e of entradas) {
+    if (e.mes !== hoje.slice(0, 7)) continue;
+    const k = chaveParte(e.fonte, e.dia);
+    recebidoPorFonte[k] = (recebidoPorFonte[k] ?? 0) + e.valor;
+  }
 
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.

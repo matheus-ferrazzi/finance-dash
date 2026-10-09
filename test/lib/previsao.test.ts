@@ -48,14 +48,15 @@ describe('receitaRecorrente', () => {
       e('empresa', '2026-06', 5, 5000), e('empresa', '2026-07', 5, 5000), e('empresa', '2026-08', 5, 7000),
       e('avulsa', '2026-07', 12, 2000),
     ], ['2026-06', '2026-07', '2026-08']);
-    expect(r).toEqual([{ fonte: 'empresa', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' }]);
+    expect(r).toEqual([{ fonte: 'empresa|1', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' }]);
   });
-  it('salário em duas partes no mesmo mês soma por mês', () => {
+  it('salário em duas partes no mesmo mês: duas partes que somam o mês', () => {
     const r = receitaRecorrente([
       e('empresa', '2026-07', 5, 2000), e('empresa', '2026-07', 20, 3000),
       e('empresa', '2026-08', 5, 2000), e('empresa', '2026-08', 20, 3000),
     ], ['2026-07', '2026-08']);
-    expect(r[0].valor).toBe(5000);
+    expect(r.map((f) => f.fonte).sort()).toEqual(['empresa|1', 'empresa|2']);
+    expect(r.reduce((s, f) => s + f.valor, 0)).toBe(5000);
   });
   it('fonte fora dos meses-base é ignorada; com 1 mês-base, 1 aparição basta', () => {
     expect(receitaRecorrente([e('x', '2026-05', 1, 100)], ['2026-07'])).toEqual([]);
@@ -64,11 +65,11 @@ describe('receitaRecorrente', () => {
 });
 
 describe('receitaAindaAEntrar', () => {
-  it('depois da primeira parte, a segunda ainda entra; recebido inteiro some', () => {
-    const fontes = [{ fonte: 'empresa', nome: 'empresa', valor: 5000, diaTipico: 5, responsavel: 'Matheus' },
-                    { fonte: 'outra', nome: 'outra', valor: 1000, diaTipico: 10, responsavel: 'Ariane' }];
-    const r = receitaAindaAEntrar(fontes, { empresa: 2000, outra: 1000 });
-    expect(r.map((f) => [f.fonte, f.valor])).toEqual([['empresa', 3000]]);
+  it('só entra o que ainda não caiu, pelo valor típico', () => {
+    const fontes = [{ fonte: 'empresa|2', nome: 'empresa', valor: 1600, diaTipico: 19, responsavel: 'Matheus' },
+                    { fonte: 'outra|1', nome: 'outra', valor: 1000, diaTipico: 2, responsavel: 'Ariane' }];
+    const r = receitaAindaAEntrar(fontes, { 'outra|1': 1000 });
+    expect(r.map((f) => [f.fonte, f.valor])).toEqual([['empresa|2', 1600]]);
   });
 });
 
@@ -96,7 +97,7 @@ describe('mesesBaseReceita', () => {
       ...['2026-02', '2026-03', '2026-04'].map((m) => e('emprego-antigo', m, 5, 5000)),
       ...['2026-05', '2026-06', '2026-07'].map((m) => e('emprego-novo', m, 5, 5500)),
     ], base);
-    expect(r.map((f) => f.fonte)).toEqual(['emprego-novo']);
+    expect(r.map((f) => f.fonte)).toEqual(['emprego-novo|1']);
   });
   it('renda que alterna entre dois patamares: a mediana de 6 meses fica no meio', () => {
     const alterna = [4700, 6400, 4500, 6100, 4600, 4400].map((v, i) => e('empresa', mesesBaseReceita('2026-08-01')[i], 1, v));
@@ -146,5 +147,38 @@ describe('aplicarCenario', () => {
     const base = baseFake({ compromissosManuais: [], despesaCasaPorCategoria: { Housing: 1500 } });
     const p = computeProjecao(aplicarCenario(base, { aPartirDe: '2026-12', categoria: 'Housing', valor: 900 }), 3, '2026-10-09');
     expect(p.slice(1).map((m) => m.despesaCasa + m.despesaManual)).toEqual([1500, 900, 900]);
+  });
+});
+
+describe('receita em partes (quinzena)', () => {
+  const base6 = mesesBaseReceita('2026-10-09'); // set..abr
+  const entradas = base6.flatMap((m) => [e('empresa', m, 4, 3900), e('empresa', m, 19, 1600)]);
+  it('cada quinzena da mesma fonte vira uma parte com o seu valor típico; o mês soma as partes', () => {
+    const r = receitaRecorrente(entradas, base6);
+    expect(r.map((f) => [f.fonte, f.valor, f.diaTipico])).toEqual([['empresa|1', 3900, 4], ['empresa|2', 1600, 19]]);
+  });
+  it('primeira parte veio maior (plantão): a segunda continua prevista no valor de sempre', () => {
+    const fontes = receitaRecorrente(entradas, base6);
+    const falta = receitaAindaAEntrar(fontes, { 'empresa|1': 5939 });
+    expect(falta.map((f) => [f.fonte, f.valor])).toEqual([['empresa|2', 1600]]);
+  });
+  it('parte que já caiu sai do "ainda entra", mesmo com valor menor que o típico', () => {
+    const fontes = receitaRecorrente(entradas, base6);
+    expect(receitaAindaAEntrar(fontes, { 'empresa|1': 3000, 'empresa|2': 900 })).toEqual([]);
+  });
+});
+
+describe('extra (plantão, bônus) não vira valor típico', () => {
+  it('mês com extra acima de 1,5x o típico da parte fica fora do típico', () => {
+    const base = mesesBaseReceita('2026-09-10'); // ago..mar
+    const r = receitaRecorrente([
+      e('empresa', '2026-05', 19, 2461), e('empresa', '2026-06', 19, 3949), e('empresa', '2026-07', 19, 1544), e('empresa', '2026-08', 19, 1569),
+    ], base);
+    expect(r[0].valor).toBe(1569);
+  });
+  it('renda que só alterna de patamar (sem extra) continua pela mediana', () => {
+    const base = mesesBaseReceita('2026-08-01');
+    const r = receitaRecorrente([4700, 6400, 4500, 6100, 4600, 4400].map((v, i) => e('x', base[i], 1, v)), base);
+    expect(r[0].valor).toBe(4650);
   });
 });

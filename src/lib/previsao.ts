@@ -105,7 +105,27 @@ export function mediana(xs: readonly number[]): number {
 }
 
 /**
- * Receita recorrente por fonte. Recorrente = apareceu em pelo menos 2 dos meses-base
+ * Valor típico de uma parte: mediana dos meses, sem os meses de EXTRA (acima de 1,5x a mediana —
+ * plantão, bônus, férias). O extra conta como recebido no mês em que cai, mas não vira o "normal":
+ * com uma fonte nova e poucos meses, um único mês com extra puxava a mediana para cima.
+ */
+function valorTipico(valores: readonly number[]): number {
+  const m = mediana(valores);
+  const semExtra = valores.filter((v) => v <= 1.5 * m);
+  return mediana(semExtra.length ? semExtra : valores);
+}
+
+/**
+ * Parte de uma fonte de receita: a mesma fonte paga em quinzenas diferentes (salário em
+ * duas partes, ~dia 4 e ~dia 19) e cada quinzena tem o seu valor típico. Assim um extra
+ * na 1ª parte (plantão) não "come" a 2ª parte, que continua prevista.
+ */
+export function chaveParte(fonte: string, dia: number): string {
+  return `${fonte}|${dia <= 15 ? 1 : 2}`;
+}
+
+/**
+ * Receita recorrente por parte (fonte + quinzena). Recorrente = apareceu em pelo menos 2 dos meses-base
  * (ou em todos, se houver só um). Valor = mediana dos totais mensais em que apareceu:
  * um mês com bônus ou adiantamento não puxa a previsão como puxava a média simples.
  * Entrada avulsa (uma vez só) não entra.
@@ -118,16 +138,17 @@ export function receitaRecorrente(entradas: readonly EntradaReceita[], mesesBase
   const porFonte = new Map<string, { nome: string; responsavel: string; porMes: Map<string, number>; dias: number[] }>();
   for (const e of entradas) {
     if (!base.has(e.mes)) continue;
-    const f = porFonte.get(e.fonte) ?? { nome: e.nome, responsavel: e.responsavel, porMes: new Map<string, number>(), dias: [] as number[] };
+    const chave = chaveParte(e.fonte, e.dia);
+    const f = porFonte.get(chave) ?? { nome: e.nome, responsavel: e.responsavel, porMes: new Map<string, number>(), dias: [] as number[] };
     f.porMes.set(e.mes, (f.porMes.get(e.mes) ?? 0) + e.valor);
     f.dias.push(e.dia);
-    porFonte.set(e.fonte, f);
+    porFonte.set(chave, f);
   }
   return [...porFonte.entries()]
     .filter(([, f]) => f.porMes.size >= minimo && [...f.porMes.keys()].some((m) => recentes.has(m)))
     .map(([fonte, f]) => ({
       fonte, nome: f.nome, responsavel: f.responsavel,
-      valor: Math.round(mediana([...f.porMes.values()]) * 100) / 100,
+      valor: Math.round(valorTipico([...f.porMes.values()]) * 100) / 100,
       diaTipico: Math.round(mediana(f.dias)),
     }))
     .filter((f) => f.valor > 0)
@@ -147,12 +168,13 @@ export function mesesBaseReceita(hoje: string): string[] {
   return [1, 2, 3, 4, 5, 6].map((i) => addMonths(mes, -i));
 }
 
-/** O que ainda falta entrar de cada fonte neste mês. Só fica o que falta mais de 10% do valor da fonte. */
-export function receitaAindaAEntrar(fontes: readonly ReceitaPrevista[], recebidoPorFonte: Record<string, number>): ReceitaPrevista[] {
-  return fontes
-    .map((f) => ({ f, falta: Math.round((f.valor - (recebidoPorFonte[f.fonte] ?? 0)) * 100) / 100 }))
-    .filter(({ f, falta }) => falta > 0.1 * f.valor)
-    .map(({ f, falta }) => ({ ...f, valor: falta }));
+/**
+ * O que ainda falta entrar neste mês: as partes que ainda não caíram, pelo valor típico.
+ * Parte que já caiu sai inteira, com qualquer valor (veio maior por extra, ou menor).
+ * `recebidoPorParte` é chaveado por `chaveParte(fonte, dia)`.
+ */
+export function receitaAindaAEntrar(partes: readonly ReceitaPrevista[], recebidoPorParte: Record<string, number>): ReceitaPrevista[] {
+  return partes.filter((p) => !((recebidoPorParte[p.fonte] ?? 0) > 0));
 }
 
 /** Troca de um compromisso a partir de um mês — ex.: aluguel novo depois de mudar de cidade. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addMonths, computeProjecao, computeRitmo, diasNoMes, mediana, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type EntradaReceita, type ProjecaoBase,
 } from '../../src/lib/previsao';
 
@@ -82,5 +82,12 @@ describe('receita na projeção', () => {
     base.mesCorrente.receitaAgendada = 50;
     const p = computeProjecao(base, 1, '2026-08-10');
     expect([p[0].receita, p[1].receita]).toEqual([1050, 5000]);
+  });
+});
+
+describe('mesesBaseReceita', () => {
+  it('os 3 últimos meses fechados antes de hoje, do mais recente ao mais antigo', () => {
+    expect(mesesBaseReceita('2026-08-01')).toEqual(['2026-07', '2026-06', '2026-05']);
+    expect(mesesBaseReceita('2026-01-31')).toEqual(['2025-12', '2025-11', '2025-10']);
   });
 });

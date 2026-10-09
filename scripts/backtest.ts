@@ -1,11 +1,11 @@
 // Teste contra o passado, na VPS (lê o banco com o usuário somente-leitura do painel):
 //   docker cp dist/backtest.js finance-dashboard:/tmp/backtest.js && docker exec finance-dashboard node /tmp/backtest.js
-// Para cada um dos 3 últimos meses fechados: previsão com hoje = dia 1º × realizado.
+// Para cada um dos 3 últimos meses fechados: previsão feita na véspera do mês × realizado.
 // Imprime só totais por componente. Sai com código 1 se algum mês reprova no critério do spec.
 import { avaliarMes, componentesPrevistos, LIMITES, type Componentes } from '../src/lib/backtest';
 import { pool, q } from '../src/lib/db';
 import { currentDateSP } from '../src/lib/format';
-import { addMonths } from '../src/lib/previsao';
+import { addMonths, diasNoMes } from '../src/lib/previsao';
 import { CASA_CATS, computeProjecao, getProjecaoBase } from '../src/lib/queries';
 
 const SEM_ESPELHO = `descricao NOT ILIKE '%MORA CARTAO%' AND descricao NOT ILIKE '%PROVISAO%' AND descricao NOT ILIKE '%GASTOS CART%'`;
@@ -33,9 +33,13 @@ async function main() {
   console.log(`limites: receita ±${LIMITES.receita}, fatura ±${LIMITES.fatura}, saldo ±${LIMITES.saldo}`);
   console.log('mês      componente  previsto      real      erro');
   for (const mes of meses) {
-    const hoje = `${mes}-01`;
+    // previsão do mês INTEIRO feita na véspera (último dia do mês anterior) — é a pergunta
+    // "quanto vou ter no mês que vem". Prever "a partir do dia 1º" contava como já recebido
+    // o que cai no próprio dia 1º (a Ariane recebe nesse dia).
+    const anterior = addMonths(mes, -1);
+    const hoje = `${anterior}-${String(diasNoMes(anterior)).padStart(2, '0')}`;
     const base = await getProjecaoBase('casal', hoje);
-    const previsto = componentesPrevistos(computeProjecao(base, 0, hoje)[0]);
+    const previsto = componentesPrevistos(computeProjecao(base, 1, hoje)[1]);
     const real = await realizado(mes);
     const { erros, ok } = avaliarMes(previsto, real);
     tudoOk &&= ok;

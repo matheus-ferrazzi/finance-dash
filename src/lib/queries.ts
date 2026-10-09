@@ -2,7 +2,7 @@ import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparGastos, type GrupoGasto } from './grupos';
 import {
-  addMonths, computeProjecao, computeRitmo, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -581,6 +581,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   ]);
   const saldoContasAtual = saldoContas.total;
 
+  const basesReceita = mesesBaseReceita(hoje);
   // receita por FONTE (quem paga): documento da contraparte, ou a descrição sem dígitos
   // quando o banco não manda documento. Meses-base + o mês de hoje (para o "já recebido").
   const r1 = rf(resp, 3);
@@ -592,14 +593,14 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
             valor::float8 AS valor, responsavel
      FROM financas_lancamentos
      WHERE classe='receita'
-       AND data_lancamento >= LEAST((SELECT MIN(m) FROM unnest($1::date[]) m), date_trunc('month',$2::date)::date)
+       AND data_lancamento >= ($1 || '-01')::date
        AND data_lancamento <= $2::date${r1.sql}`,
-    [meses, hoje, ...r1.p],
+    [basesReceita[basesReceita.length - 1], hoje, ...r1.p],
   );
   const entradas: EntradaReceita[] = entradaRows.map((x) => ({
     fonte: x.fonte, nome: x.nome, mes: x.mes, dia: Number(x.dia), valor: Number(x.valor), responsavel: x.responsavel,
   }));
-  const fontesReceita = receitaRecorrente(entradas, meses.map((m) => m.slice(0, 7)));
+  const fontesReceita = receitaRecorrente(entradas, basesReceita);
   const recebidoPorFonte: Record<string, number> = {};
   for (const e of entradas) if (e.mes === hoje.slice(0, 7)) recebidoPorFonte[e.fonte] = (recebidoPorFonte[e.fonte] ?? 0) + e.valor;
 

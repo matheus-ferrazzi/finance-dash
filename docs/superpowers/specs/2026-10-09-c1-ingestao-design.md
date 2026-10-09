@@ -20,8 +20,8 @@ webhooks da Pluggy (exigem endpoint público).
 ## Por que agora
 
 - A ingestão atual olha só **15 dias para trás**. Compra no cartão só vira `POSTED` quando a fatura
-  fecha. Em 09/10/2026 havia **125 lançamentos `PENDING` com mais de 10 dias** (74 despesas do Nubank
-  crédito, R$ 5,7 mil desde junho). O painel ignora `status_pluggy`; se a Pluggy cancelou ou recriou
+  fecha. Em 09/10/2026 havia **125 lançamentos `PENDING` com mais de 10 dias**, a maioria de cartão.
+  O painel ignora `status_pluggy`; se a Pluggy cancelou ou recriou
   algum, ele continua contando como gasto.
 - A lista de contas está chumbada em **quatro lugares** (os três workflows + `sync_pluggy.sh`). Foi uma
   lista dessas que congelou o selo do Inter por 41 dias.

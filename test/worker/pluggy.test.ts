@@ -81,6 +81,20 @@ describe('PluggyClient', () => {
     expect(f.auths()).toBe(2);
   });
 
+  it('403 com chave vencida re-autentica uma vez e segue (a Pluggy responde 403, não 401)', async () => {
+    const f = fetchFalso([{ status: 403 }, { status: 200, body: { id: 'item-1' } }]);
+    const c = new PluggyClient(creds, f.fn, semEspera);
+    expect((await c.item('item-1')).id).toBe('item-1');
+    expect(f.auths()).toBe(2);
+  });
+
+  it('403 que persiste depois de re-autenticar é erro de verdade', async () => {
+    const f = fetchFalso([{ status: 403 }, { status: 403 }]);
+    const c = new PluggyClient(creds, f.fn, semEspera);
+    await expect(c.item('item-1')).rejects.toMatchObject({ status: 403 });
+    expect(f.auths()).toBe(2);
+  });
+
   it('documentoTitular devolve só dígitos; atualizarItem usa PATCH', async () => {
     const f = fetchFalso([{ status: 200, body: { document: '123.456.789-00' } }, { status: 200, body: {} }]);
     const c = new PluggyClient(creds, f.fn, semEspera);

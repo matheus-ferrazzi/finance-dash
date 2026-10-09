@@ -23,16 +23,17 @@ async function main() {
     password: exigir('WORKER_DB_PASSWORD'),
     max: 3,
   });
-  const pluggy = new PluggyClient({ clientId: exigir('PLUGGY_CLIENT_ID'), clientSecret: exigir('PLUGGY_CLIENT_SECRET') });
+  const creds = { clientId: exigir('PLUGGY_CLIENT_ID'), clientSecret: exigir('PLUGGY_CLIENT_SECRET') };
   const repo = new PgRepo(pool);
   const log = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
   const modo = lerModo(process.env.WORKER_MODO);
-  const base = { pluggy, repo, agora: () => new Date(), log };
+  // cliente (e chave da Pluggy) novo a cada rodada: a chave vence em ~2h e o processo vive dias
+  const base = () => ({ pluggy: new PluggyClient(creds), repo, agora: () => new Date(), log });
 
   if (args.tarefa === 'agendar') {
     for (const [expr, nome] of AGENDA) {
       new Cron(expr, { timezone: TZ, protect: true }, async () => {
-        const ex = await TAREFAS[nome]({ ...base, modo }, {});
+        const ex = await TAREFAS[nome]({ ...base(), modo }, {});
         log(`${nome} ${ex.ok ? 'ok' : 'FALHOU'} ${JSON.stringify(ex.contagens)}${ex.erro ? ` erro=${ex.erro}` : ''}`);
       });
     }
@@ -40,7 +41,7 @@ async function main() {
     return;
   }
 
-  const ex = await TAREFAS[args.tarefa]({ ...base, modo: args.dryRun ? 'dry-run' : modo }, { desde: args.desde, limite: args.limite });
+  const ex = await TAREFAS[args.tarefa]({ ...base(), modo: args.dryRun ? 'dry-run' : modo }, { desde: args.desde, limite: args.limite });
   console.log(JSON.stringify(ex, null, 2));
   await pool.end();
   process.exitCode = ex.ok ? 0 : 1;

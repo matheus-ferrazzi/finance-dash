@@ -61,8 +61,8 @@ export class PluggyClient implements PluggyApi {
         continue;
       }
       if (r.ok) return (await r.json()) as T;
-      if (r.status === 401 && !reautenticou) {
-        // a chave dura ~2h; numa recarga longa ela expira no meio
+      if ((r.status === 401 || r.status === 403) && !reautenticou) {
+        // a chave dura ~2h; vencida, a Pluggy responde 403 (não 401) — medido em 09/10/2026
         this.apiKey = null;
         reautenticou = true;
         tentativa--;

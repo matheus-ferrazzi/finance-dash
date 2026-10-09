@@ -79,9 +79,18 @@ Não grava nada. Usado pela tela (P2) e pelo simulador. Ex.: aluguel R$ X a part
 `scripts/backtest.ts` (roda na VPS, só lê): para cada um dos últimos 3 meses fechados, calcula a
 previsão com `hoje` = dia 1º do mês e compara com o realizado, por componente (receita, débito fora
 casa, casa + compromissos, fatura paga) e no total. Saída: tabela de erros, sem valores de
-lançamento individuais. **Critério de aceite** do P1: em cada mês testado, erro de receita
-≤ R$ 400, de fatura ≤ R$ 400 e do total ≤ R$ 500 — e nenhum componente pior que antes da mudança
-(a primeira execução, antes de mexer no modelo, registra a linha de base).
+lançamento individuais.
+
+**Critério de aceite (revisado em 09/10/2026, com o Matheus):** nenhuma medida pior que o modelo
+anterior, comparando os dois do mesmo ponto de vista (previsão do mês inteiro feita na véspera, e
+"quanto ainda entra" no dia 10), pelo erro absoluto médio dos 3 últimos meses fechados. O critério
+original (receita ≤ R$ 400, fatura ≤ R$ 400 e saldo ≤ R$ 500 em todo mês) mostrou-se inatingível
+para uma previsão de número único: a renda real alterna de patamar mês a mês e o gasto no débito
+oscila mais que isso. A incerteza passa a ser mostrada como **faixa** na tela (P2).
+
+Resultado do P1 (jul–set/2026): erro médio da fatura caiu a cerca de um quarto, o do saldo do mês
+quase pela metade, o do "ainda entra" no meio do mês a menos da metade; receita do mês inteiro
+empatou (dentro da variação da renda). Números no vault, não no repositório público.
 
 Limite conhecido: a fatura **aberta** do mês seguinte não é reconstituível no passado (só temos o
 valor final), por isso o teste avalia o mês de referência, não o seguinte.

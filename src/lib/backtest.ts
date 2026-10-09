@@ -3,7 +3,7 @@ import type { ProjecaoMes } from './previsao';
 
 export interface Componentes { receita: number; debito: number; casa: number; fatura: number; saldo: number }
 
-/** Critério de aceite do spec do P1 (em reais, valor absoluto do erro). */
+/** Limites de referência por mês (critério original do P1; o aceite agora é "nenhuma medida pior que o modelo anterior"). */
 export const LIMITES = { receita: 400, fatura: 400, saldo: 500 } as const;
 
 export function componentesPrevistos(m: ProjecaoMes): Componentes {

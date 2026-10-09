@@ -19,3 +19,7 @@ yarn-error.log*
 .DS_Store
 *.pem
 .vercel
+
+# worker
+/dist
+db/*.local.sql

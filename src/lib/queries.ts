@@ -659,7 +659,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     `WITH chaves_parceladas AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave
        FROM financas_lancamentos
-       WHERE classe='despesa' AND data_lancamento > ${hcn}
+       WHERE classe='despesa' AND data_lancamento > ${hcn} AND criado_em::date <= ${hcn}
      )
      SELECT ROUND(AVG(m.total),2) AS media FROM (
        SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
@@ -694,7 +694,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   const fixaRows = await q<any>(
     `SELECT to_char(date_trunc('month',data_lancamento),'YYYY-MM') AS mes, SUM(valor) AS total
      FROM financas_lancamentos
-     WHERE classe='despesa' AND data_lancamento > ${h3}${r3.sql}
+     WHERE classe='despesa' AND data_lancamento > ${h3} AND criado_em::date <= ${h3}${r3.sql}
      GROUP BY 1 ORDER BY 1`,
     [...r3.p, hoje],
   );
@@ -713,13 +713,13 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
      chaves AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS ch
        FROM financas_lancamentos, sp
-       WHERE classe='despesa' AND data_lancamento > sp.hoje
+       WHERE classe='despesa' AND data_lancamento > sp.hoje AND criado_em::date <= sp.hoje
      )
      SELECT
        (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
          WHERE classe='receita' AND data_lancamento >= lim.ini AND data_lancamento <= sp.hoje${rmc.sql}) AS receita_recebida,
        (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
-         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim${rmc.sql}) AS receita_agendada,
+         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim AND criado_em::date <= sp.hoje${rmc.sql}) AS receita_agendada,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
@@ -727,7 +727,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
            AND ${SEM_ESPELHO}${rmc.sql}) AS variavel_gasto,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
-           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim
+           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim AND l.criado_em::date <= sp.hoje
            AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
            AND ${SEM_ESPELHO}${rmc.sql}) AS agendado_restante,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
@@ -744,7 +744,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
      FROM financas_lancamentos
      WHERE classe='despesa' AND categoria = ANY($1::text[])
        AND data_lancamento >= date_trunc('month',${hcm})
-       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'${rcm.sql}
+       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
+       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
      GROUP BY 1`,
     [CASA_CATS, ...rcm.p, hoje],
   );

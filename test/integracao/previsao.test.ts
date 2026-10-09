@@ -28,12 +28,14 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
   });
 
   it('não enxerga lançamento posterior a hoje como já gasto nem como agendado no mês', async () => {
-    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento)
-      VALUES ('jul', '2026-07-10', 100, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída'),
-             ('set', '2026-09-10', 999, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída'),
-             ('ago', '2026-08-20', 50, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída')`);
+    // criado_em = quando a linha passou a existir no banco (é isso que diz se era "conhecida" em hoje)
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
+      VALUES ('jul', '2026-07-10', 100, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída', '2026-07-11'),
+             ('set', '2026-09-10', 999, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída', '2026-09-11'),
+             ('ago-agendado', '2026-08-20', 50, 'boleto', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída', '2026-08-05'),
+             ('ago-depois', '2026-08-25', 70, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Matheus', 'despesa', 'Saída', '2026-08-26')`);
     const base = await queries.getProjecaoBase('casal', '2026-08-15');
-    // em 15/08: o de 20/08 é "agendado no resto do mês"; o de setembro não existe para essa data
+    // em 15/08: o de 20/08 já estava agendado (gravado em 05/08); o de 25/08 e o de setembro ainda não existiam
     expect(base.mesCorrente.variavelJaGasto).toBe(0);
     expect(base.mesCorrente.agendadoRestante).toBe(50);
     const cedo = await queries.getProjecaoBase('casal', '2026-07-31');

@@ -155,6 +155,31 @@ export function receitaAindaAEntrar(fontes: readonly ReceitaPrevista[], recebido
     .map(({ f, falta }) => ({ ...f, valor: falta }));
 }
 
+/** Troca de um compromisso a partir de um mês — ex.: aluguel novo depois de mudar de cidade. */
+export interface Cenario { aPartirDe: string; categoria: string; valor: number }
+
+/**
+ * Aplica o cenário sobre a base, sem gravar nada e sem mudar a base original:
+ * o compromisso daquela categoria que começou antes termina no mês anterior; o que
+ * começaria depois sai; entra o novo valor a partir de `aPartirDe`. Sem compromisso
+ * cadastrado na categoria, a média histórica vale até lá (a projeção só cobre com o
+ * compromisso a partir do mês em que ele existe).
+ */
+export function aplicarCenario(base: ProjecaoBase, c: Cenario): ProjecaoBase {
+  const fimAnterior = `${addMonths(c.aPartirDe, -1)}-01`;
+  const compromissos = base.compromissosManuais.flatMap((m): CompromissoManual[] => {
+    if (m.categoria !== c.categoria) return [m];
+    if (m.dataInicio.slice(0, 7) >= c.aPartirDe) return [];
+    if (m.dataFim && m.dataFim.slice(0, 7) < c.aPartirDe) return [m];
+    return [{ ...m, dataFim: fimAnterior }];
+  });
+  compromissos.push({
+    id: -1, nome: `Cenário: ${c.categoria}`, categoria: c.categoria, valor: c.valor, responsavel: 'casal',
+    dataInicio: `${c.aPartirDe}-01`, mesesTotais: null, observacao: 'cenário (não gravado)', dataFim: null,
+  });
+  return { ...base, compromissosManuais: compromissos };
+}
+
 /**
  * O número mais acionável do app: quanto cabe gastar hoje.
  *

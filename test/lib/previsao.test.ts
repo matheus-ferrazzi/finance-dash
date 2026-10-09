@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addMonths, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarCenario, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type EntradaReceita, type ProjecaoBase,
 } from '../../src/lib/previsao';
 
@@ -129,5 +129,22 @@ describe('fatura', () => {
   it('sem nada conhecido no mês corrente, não dá NaN', () => {
     const q = computeProjecao(baseFake({ faturaReal: {}, creditoPorVencimento: {} }), 0, '2026-08-11');
     expect(q[0].fatura).toBe(0);
+  });
+});
+
+describe('aplicarCenario', () => {
+  const aluguel = { id: 1, nome: 'Aluguel', categoria: 'Housing', valor: 2000, responsavel: 'casal',
+    dataInicio: '2026-09-01', mesesTotais: null, observacao: null, dataFim: null };
+  it('encerra o atual no mês anterior e entra o novo a partir da data', () => {
+    const base = baseFake({ compromissosManuais: [aluguel], despesaCasaPorCategoria: {} });
+    const p = computeProjecao(aplicarCenario(base, { aPartirDe: '2027-03', categoria: 'Housing', valor: 1200 }), 8, '2026-10-09');
+    const mes = (ym: string) => p.find((m) => m.mes === ym)!;
+    expect([mes('2027-02').despesaManual, mes('2027-03').despesaManual]).toEqual([2000, 1200]);
+    expect(base.compromissosManuais).toEqual([aluguel]); // não muta
+  });
+  it('categoria sem compromisso: a média vale até a data, o cenário depois', () => {
+    const base = baseFake({ compromissosManuais: [], despesaCasaPorCategoria: { Housing: 1500 } });
+    const p = computeProjecao(aplicarCenario(base, { aPartirDe: '2026-12', categoria: 'Housing', valor: 900 }), 3, '2026-10-09');
+    expect(p.slice(1).map((m) => m.despesaCasa + m.despesaManual)).toEqual([1500, 900, 900]);
   });
 });

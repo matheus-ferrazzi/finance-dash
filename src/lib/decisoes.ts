@@ -40,3 +40,9 @@ export function sobraPorMes(projecao: ProjecaoMes[], c: Calibracao | null) {
     piorCaso: c ? Math.round((m.saldo - c.p90) * 100) / 100 : m.saldo,
   }));
 }
+
+export function textoVeredito(r: { cabe: boolean; mesQueFura: string | null; maisNegativo: string | null }, mesLabel: (m: string) => string): string {
+  if (!r.cabe && r.mesQueFura) return `Não cabe: pelo pior caso, ${mesLabel(r.mesQueFura)} vai para o vermelho por causa dela.`;
+  if (r.maisNegativo) return `Cabe, mas ${mesLabel(r.maisNegativo)} já estava no vermelho sem ela.`;
+  return 'Cabe: nenhum mês vai para o vermelho por causa dela, nem pelo pior caso.';
+}

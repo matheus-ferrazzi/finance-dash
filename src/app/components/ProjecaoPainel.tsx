@@ -1,5 +1,6 @@
 'use client';
 
+import { faixaMes, type Calibracao } from '@/lib/faixa';
 import { Info, ChevronDown } from 'lucide-react';
 import { brl } from '@/lib/format';
 import { SectionTitle } from './ui';
@@ -9,9 +10,11 @@ import type { ProjecaoMes, SaldoConta } from '@/lib/queries';
 type LinhaProjecao = ProjecaoMes & { saldoComCompra?: number };
 
 export function ProjecaoPainel({
-  linhas, temSimulacao, saldoContas, receitaBase, variavelBase, casaBase, faturaBase, patrimonioAtual, mesFoco = null,
+  linhas, temSimulacao, saldoContas, receitaBase, variavelBase, casaBase, faturaBase, patrimonioAtual, mesFoco = null, calib = null,
 }: {
   mesFoco?: string | null;
+  /** faixa 8 em 10 (F2a): coluna "pior caso"; null = sem calibração */
+  calib?: Calibracao | null;
   linhas: LinhaProjecao[];
   temSimulacao: boolean;
   saldoContas: { total: number; contas: SaldoConta[] };
@@ -87,11 +90,12 @@ export function ProjecaoPainel({
               <th className="py-1.5 pr-3 font-medium text-right">Fatura</th>
               <th className="py-1.5 pr-3 font-medium text-right">Sobra do mês</th>
               <th className="py-1.5 pr-3 font-medium text-right">Em conta</th>
+              {calib && <th className="py-1.5 pr-3 font-medium text-right">Pior caso</th>}
               {temSimulacao && <th className="py-1.5 font-medium text-right text-warn">Com a compra</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
-            {linhas.map((m) => (
+            {linhas.map((m, k) => (
               <tr key={m.mes} className={m.mes === mesFoco ? 'bg-accent/10' : undefined}>
                 <td className="py-1.5 pr-3 whitespace-nowrap">
                   {m.mesLabel}
@@ -104,6 +108,9 @@ export function ProjecaoPainel({
                 <td className="py-1.5 pr-3 text-right tnum money text-warn">{brl(m.fatura)}</td>
                 <td className={`py-1.5 pr-3 text-right tnum money font-medium ${m.saldo >= 0 ? 'text-accent' : 'text-despesa'}`}>{brl(m.saldo)}</td>
                 <td className={`py-1.5 pr-3 text-right tnum money font-medium ${m.saldoProjetado >= 0 ? 'text-text' : 'text-despesa'}`}>{brl(m.saldoProjetado)}</td>
+                {calib && (k === 0
+                  ? <td className="py-1.5 pr-3 text-right text-faint">—</td>
+                  : <td className="py-1.5 pr-3 text-right tnum money text-muted">{brl(faixaMes(m.saldoProjetado, k, calib).piorCaso)}</td>)}
                 {temSimulacao && (
                   <td className={`py-1.5 text-right tnum money font-medium ${(m.saldoComCompra ?? 0) >= 0 ? 'text-warn' : 'text-despesa'}`}>
                     {brl(m.saldoComCompra ?? 0)}

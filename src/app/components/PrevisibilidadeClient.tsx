@@ -8,6 +8,8 @@ import { SectionTitle, KpiCard, Progress, respBadge, catIcon } from './ui';
 import { ProjecaoPainel } from './ProjecaoPainel';
 import { SimuladorCompra, simularCompra } from './SimuladorCompra';
 import { CATEGORIAS_COMPROMISSO } from '@/lib/validation';
+import type { Calibracao } from '@/lib/faixa';
+import { compraCabe, saiDoVermelho, textoVeredito } from '@/lib/decisoes';
 import type { ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta, ReceitaPrevista } from '@/lib/queries';
 
 const HORIZONTES = [3, 6, 12, 24] as const;
@@ -59,8 +61,10 @@ const FORM_VAZIO: FormState = {
 };
 
 export function PrevisibilidadeClient({
-  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null,
+  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null, calib = null,
 }: {
+  /** faixa 8 em 10 (F2a); null = sem calibração ou visão individual */
+  calib?: Calibracao | null;
   patrimonioAtual: number;
   saldoContas: { total: number; contas: SaldoConta[] };
   receitasAReceber: ReceitaPrevista[];
@@ -83,6 +87,9 @@ export function PrevisibilidadeClient({
     () => simularCompra(valorSim, parcelasSim, saldoContas.total, projecao),
     [valorSim, parcelasSim, saldoContas.total, projecao],
   );
+
+  const sai = useMemo(() => saiDoVermelho(projecao, calib), [projecao, calib]);
+  const veredito = simulacao ? textoVeredito(compraCabe(projecao, calib, simulacao.valorParcela, simulacao.parcelas), (m) => mesLabel(m)) : null;
 
   // projecao[0] é o mês em andamento; o horizonte conta os meses à frente dele
   const sliced = useMemo(() => {
@@ -271,6 +278,11 @@ export function PrevisibilidadeClient({
               </div>
             </div>
           </div>
+          <p className="mt-3 text-sm text-muted">
+            {sai.provavel ? <>Sai do vermelho em <b className="text-text">{mesLabel(sai.provavel)}</b></> : <>Não sai do vermelho nos próximos {projecao.length - 1} meses</>}
+            {calib && sai.piorCaso !== sai.provavel && <> (pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai nos próximos ${projecao.length - 1} meses`})</>}
+            {!calib && <span className="text-faint"> · sem faixa de incerteza ainda: o histórico da fase atual é curto</span>}
+          </p>
           {/* uma linha em vez de cinco chips: a quebra detalhada não precisa
               competir de igual pra igual com os quatro números que importam */}
           <p className="mt-3 text-xs leading-relaxed text-muted">
@@ -363,6 +375,7 @@ export function PrevisibilidadeClient({
           valorStr={valorSim} setValorStr={setValorSim}
           parcelasStr={parcelasSim} setParcelasStr={setParcelasSim}
           resultado={simulacao}
+          veredito={veredito}
         />
       </div>
 
@@ -467,6 +480,7 @@ export function PrevisibilidadeClient({
 
       <ProjecaoPainel
         mesFoco={mesFoco}
+        calib={calib}
         linhas={sliced}
         temSimulacao={!!simulacao}
         saldoContas={saldoContas}

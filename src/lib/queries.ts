@@ -5,7 +5,8 @@ import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
 import { componentesPrevistos, type Componentes } from './backtest';
-import { calibrar, doRegime, type Calibracao } from './faixa';
+import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
+import { saiDoVermelho } from './decisoes';
 import type { MarcaInput } from './validation';
 import {
   addMonths, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
@@ -658,7 +659,16 @@ export interface PrevisaoResumo {
   /** quanto você está gastando por dia neste mês */
   ritmoAtualDia: number;
   receitasAReceber: ReceitaPrevista[];
-  proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number }[];
+  proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number; piorCaso: number }[];
+  /** faixa "8 em 10" do fechamento do mês; null sem calibração (histórico curto) ou fora da visão do casal */
+  faixa: { piorCaso: number; melhorCaso: number; n: number } | null;
+  /** primeiro mês em que o saldo fica ≥ 0 e continua (horizonte de 24 meses) */
+  saiDoVermelho: { provavel: string | null; piorCaso: string | null };
+}
+
+/** A faixa é calibrada com os erros do casal: só vale para a visão do casal. */
+export async function getCalibracaoPara(resp: Resp): Promise<Calibracao | null> {
+  return resp === 'casal' ? getCalibracao() : null;
 }
 
 /**
@@ -667,8 +677,8 @@ export interface PrevisaoResumo {
  * não existe uma segunda versão da lógica pra desandar em relação ao site.
  */
 export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
-  const base = await getProjecaoBase(resp);
-  const proj = computeProjecao(base, 6);
+  const [base, calib] = await Promise.all([getProjecaoBase(resp), getCalibracaoPara(resp)]);
+  const proj = computeProjecao(base, 24);
   const atual = proj[0];
   const ritmo = computeRitmo(base, atual);
 
@@ -684,9 +694,12 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
     ritmoSeguroDia: ritmo.ritmoSeguroDia,
     ritmoAtualDia: ritmo.ritmoAtualDia,
     receitasAReceber: base.mesCorrente.receitasAReceber,
-    proximosMeses: proj.slice(1).map((m) => ({
+    proximosMeses: proj.slice(1, 7).map((m, i) => ({
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
+      piorCaso: faixaMes(m.saldoProjetado, i + 1, calib).piorCaso,
     })),
+    faixa: calib ? { ...faixaMesCorrente(atual.saldoProjetado, ritmo.diasRestantes, diasNoMes(atual.mes), calib), n: calib.n } : null,
+    saiDoVermelho: saiDoVermelho(proj, calib),
   };
 }
 

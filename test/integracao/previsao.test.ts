@@ -104,4 +104,13 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     const b = await queries.getProjecaoBase('Ariane', '2029-10-15', { regraDebito: 'media3' });
     expect(b.despesaVariavelMediaMensal).toBe(50); // (0 + 0 + 150) / 3
   });
+
+  it('realizado do mês filtra pela pessoa', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('rz-1', '2033-03-05', 1000, 'salario', 'Salary', 'Débito', 'X', 'Ariane', 'receita', 'Entrada', '2033-03-05'),
+      ('rz-2', '2033-03-06', 300, 'mercado', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2033-03-06'),
+      ('rz-3', '2033-03-07', 500, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2033-03-07')`);
+    expect(await queries.getRealizado('2033-03', 'Ariane')).toMatchObject({ receita: 1000, debito: 300, saldo: 700 });
+    expect(await queries.getRealizado('2033-03')).toMatchObject({ receita: 1000, debito: 800, saldo: 200 });
+  });
 });

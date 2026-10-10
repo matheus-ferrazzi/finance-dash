@@ -1,141 +1,84 @@
 import Link from 'next/link';
-import {
-  getKpis, getSerie, getOrcamento, getFaturas, getRecentes,
-  getProjecaoBase, computeProjecao, computeRitmo, resolvePeriodo, Resp,
-} from '@/lib/queries';
-import { brl, pct, dataBR, diasAte, traduzCategoria } from '@/lib/format';
-import { PageTitle, KpiCard, SectionTitle, respBadge } from './components/ui';
-import { ReceitaDespesaChart } from './components/charts';
-import { RitmoHoje } from './components/RitmoHoje';
-import { TrendingUp, TrendingDown, Wallet, PiggyBank, Telescope, ArrowRight } from 'lucide-react';
+import { getContasDoMes, getDespesas, getFaturas, getMovimentosDiarios, getProjecaoBase, computeProjecao, computeRitmo, resolvePeriodo, Resp } from '@/lib/queries';
+import { brl, currentDateSP, currentMonthSP } from '@/lib/format';
+import { agruparGastos } from '@/lib/grupos';
+import { linkPara, mesValido } from '@/lib/links';
+import { serieDoMes } from '@/lib/linhaDoMes';
+import { cartaoDestaque, contasResumo, topGrupos } from '@/lib/home';
+import { LinhaDoMes } from './components/LinhaDoMes';
+import { BlocoHome } from './components/BlocoHome';
 
 export const dynamic = 'force-dynamic';
 
 function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
+const CORES = ['bg-[#7c8cff]', 'bg-accent', 'bg-warn'];
 
-export default async function Home({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string } }) {
+// Home: "como o mês vai fechar" sem rolar. Cada número leva à tela que aprofunda, já filtrada.
+export default async function Home({ searchParams }: { searchParams: { resp?: string; mes?: string } }) {
   const resp = resolveResp(searchParams.resp);
-  const per = resolvePeriodo(searchParams.p, searchParams.mes);
+  const atual = currentMonthSP();
+  const pedido = mesValido(searchParams.mes);
+  const mes = pedido && pedido <= atual ? pedido : atual; // na home não existe mês seguinte
+  const corrente = mes === atual;
+  const hoje = currentDateSP();
 
-  const [kpis, serie, orc, faturas, recentes, base] = await Promise.all([
-    getKpis(resp, per), getSerie(resp, per, 6), getOrcamento(resp, per), getFaturas(resp), getRecentes(resp, per, 8),
-    getProjecaoBase(resp),
+  const [base, contas, despesas, faturas, movimentos] = await Promise.all([
+    getProjecaoBase(resp), getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
+    getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje),
   ]);
-  // primeira linha = mês em andamento, com só o que ainda falta acontecer
-  const mesAtual = computeProjecao(base, 1)[0];
-  const ritmo = mesAtual ? computeRitmo(base, mesAtual) : null;
-  const qs = searchParams.resp ? `?resp=${searchParams.resp}` : '';
+  const mesProj = computeProjecao(base, 1)[0];
+  const ritmo = corrente && mesProj ? computeRitmo(base, mesProj) : null;
+  const aindaEntra = corrente ? base.mesCorrente.receitasAReceber.reduce((s, r) => s + r.valor, 0) : 0;
+  const serie = serieDoMes({
+    mes, hoje, saldoHoje: base.saldoContasAtual, movimentos,
+    receitas: corrente ? base.mesCorrente.receitasAReceber.map((r) => ({ dia: r.diaTipico, valor: r.valor })) : [],
+    aindaSai: corrente && ritmo ? base.saldoContasAtual + aindaEntra - ritmo.fechaCom : 0,
+  });
 
-  const dRec = kpis.receita_ant ? pct(kpis.receita - kpis.receita_ant, kpis.receita_ant) : null;
-  const dDes = kpis.despesa_ant ? pct(kpis.despesa - kpis.despesa_ant, kpis.despesa_ant) : null;
-  const cmp = per.kind === 'mes' ? 'vs mês ant.' : 'vs período ant.';
-
-  // Só o que é acionável agora. Orçamento e faturas têm aba própria — não
-  // precisam ocupar a home inteira, só avisar quando estoura.
-  const insights: { tone: 'danger' | 'warn'; label: string; value?: string }[] = [];
-  orc.filter((o) => o.teto > 0 && o.gasto > o.teto).sort((a, b) => b.gasto - a.gasto).slice(0, 1)
-    .forEach((o) => insights.push({ tone: 'danger', label: `${o.emoji} ${o.item} passou do teto`, value: `${brl(o.gasto)} / ${brl(o.teto)}` }));
-  [...faturas].filter((f) => { const d = diasAte(f.vencimento); return f.valor > 0 && d != null && d >= 0 && d <= 5; })
-    .sort((a, b) => (a.vencimento! < b.vencimento! ? -1 : 1)).slice(0, 1)
-    .forEach((f) => insights.push({ tone: 'warn', label: `💳 ${f.banco} vence em ${diasAte(f.vencimento)}d`, value: brl(f.valor) }));
+  const porCat = new Map<string, number>();
+  for (const d of despesas) porCat.set(d.categoria, (porCat.get(d.categoria) ?? 0) + d.valor);
+  const grupos = topGrupos(agruparGastos(porCat, 0));
+  const cartao = cartaoDestaque(faturas);
+  const cr = contasResumo(contas.itens);
+  const f = { resp, mes };
 
   return (
     <div>
-      <PageTitle
-        title="Visão geral"
-        subtitle={`${per.label} · o que você consumiu — a compra no crédito conta no dia da compra.`}
-      />
-
-      {ritmo && mesAtual && (
-        <RitmoHoje ritmo={ritmo} mesLabel={mesAtual.mesLabel} href={`/previsibilidade${qs}`} />
-      )}
-
-      {insights.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {insights.map((i, k) => (
-            <div
-              key={k}
-              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${
-                i.tone === 'danger' ? 'border-despesa/30 bg-despesa/10 text-despesa' : 'border-warn/30 bg-warn/10 text-warn'
-              }`}
-            >
-              <span>{i.label}</span>
-              {i.value && <span className="tnum money font-medium">{i.value}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Receita" value={kpis.receita} tone="up" delta={dRec} deltaLabel={cmp} icon={TrendingUp} />
-        <KpiCard label="Despesa" value={kpis.despesa} tone="down" delta={dDes} deltaLabel={cmp} icon={TrendingDown} />
-        <KpiCard label="Saldo" value={kpis.saldo} tone={kpis.saldo >= 0 ? 'up' : 'down'} hint={kpis.saldo >= 0 ? 'sobrou' : 'no vermelho'} icon={Wallet} />
-        <KpiCard label="Investido" value={kpis.patrimonio} hint="patrimônio atual" icon={PiggyBank} />
-      </div>
-
-      {mesAtual && (
-        <Link href={`/previsibilidade${qs}`} className="mt-4 block">
-          <div className="card transition-colors hover:bg-surface-2/40">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Telescope size={15} className="text-faint" />
-                <SectionTitle>Como {mesAtual.mesLabel} deve fechar</SectionTitle>
+      <LinhaDoMes serie={serie} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
+      <div className="grid grid-cols-2 gap-3">
+        <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre' }, atual)}
+          valor={ritmo ? `${brl(ritmo.ritmoSeguroDia)}/dia` : '—'}
+          detalhe={ritmo ? `gastando ${brl(ritmo.ritmoAtualDia)}/dia` : 'mês fechado'}
+          tom={ritmo ? (ritmo.ritmoAtualDia > ritmo.ritmoSeguroDia ? 'atencao' : 'bom') : 'neutro'} />
+        <BlocoHome titulo="Contas do mês" href={linkPara('contas', f, atual)}
+          valor={cr ? `${cr.pagas}/${cr.total}` : '—'}
+          detalhe={cr ? (cr.falta > 0 ? `falta ${brl(cr.falta)}` : 'tudo pago') : 'nenhuma conta cadastrada'}
+          tom={cr ? (cr.falta > 0 ? 'atencao' : 'bom') : 'neutro'} />
+        {/* sem href no bloco: cada grupo é o seu link (a spec pede um destino por pedaço) */}
+        <BlocoHome titulo="Para onde vai" valor={grupos[0] ? grupos[0].nome : '—'}
+          detalhe={grupos.length ? undefined : 'sem gasto no mês'}>
+          {grupos.length > 0 && (
+            <>
+              <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-surface-3">
+                {grupos.map((g, i) => <div key={g.nome} className={CORES[i]} style={{ width: `${g.pct}%` }} />)}
               </div>
-              <ArrowRight size={15} className="text-faint" />
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="card-2 px-3 py-2.5">
-                <div className="text-[11px] text-muted">Tenho hoje</div>
-                <div className="mt-1 tnum money text-sm font-medium">{brl(base.saldoContasAtual)}</div>
+              <div className="mt-1 flex flex-col">
+                {grupos.map((g, i) => (
+                  <Link key={g.nome} href={linkPara('gastos', { ...f, grupo: g.nome }, atual)}
+                    className="flex min-h-[28px] items-center gap-1.5 text-[11px] text-muted hover:text-text">
+                    <span className={`h-2 w-2 rounded-full ${CORES[i]}`} />{g.nome} {g.pct}%
+                  </Link>
+                ))}
               </div>
-              <div className="card-2 px-3 py-2.5">
-                <div className="text-[11px] text-muted">Ainda entra</div>
-                <div className="mt-1 tnum money text-sm font-medium text-accent">+{brl(mesAtual.receita)}</div>
-              </div>
-              <div className="card-2 px-3 py-2.5">
-                <div className="text-[11px] text-muted">Ainda sai</div>
-                <div className="mt-1 tnum money text-sm font-medium text-despesa">
-                  −{brl(mesAtual.despesaFixa + mesAtual.despesaManual + mesAtual.despesaCasa + mesAtual.despesaVariavel + mesAtual.fatura)}
-                </div>
-              </div>
-              <div className="card-2 px-3 py-2.5">
-                <div className="text-[11px] text-muted">Fecho com</div>
-                <div className={`mt-1 tnum money text-sm font-semibold ${mesAtual.saldoProjetado >= 0 ? 'text-accent' : 'text-despesa'}`}>
-                  {brl(mesAtual.saldoProjetado)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </Link>
-      )}
-
-      <div className="mt-4 card">
-        <SectionTitle>Receita vs. Despesa (6 meses)</SectionTitle>
-        <ReceitaDespesaChart data={serie} />
-      </div>
-
-      <div className="mt-4 card">
-        <SectionTitle>Lançamentos recentes</SectionTitle>
-        {recentes.length === 0 && <p className="text-sm text-muted">Nada neste período ainda.</p>}
-        <div className="divide-y divide-border/60">
-          {recentes.map((l) => (
-            <div key={l.id} className="flex items-center justify-between py-2.5 text-sm">
-              <div className="min-w-0">
-                <div className="truncate">{l.descricao || traduzCategoria(l.categoria)}</div>
-                <div className="text-xs text-faint">{dataBR(l.data)} · {traduzCategoria(l.categoria)} · {l.banco}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {respBadge(l.responsavel)}
-                <span className={`tnum money font-medium ${l.classe === 'receita' ? 'text-accent' : 'text-despesa'}`}>
-                  {l.classe === 'receita' ? '+' : '−'}{brl(l.valor)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+            </>
+          )}
+        </BlocoHome>
+        <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao?.banco }, atual)}
+          valor={cartao ? brl(cartao.totalAberto) : '—'}
+          detalhe={cartao ? `${cartao.banco} ${cartao.usoPct}% do limite` : 'sem cartão'}
+          tom={cartao && cartao.usoPct >= 80 ? 'ruim' : 'neutro'} />
       </div>
     </div>
   );

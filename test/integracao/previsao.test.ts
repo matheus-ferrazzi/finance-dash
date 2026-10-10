@@ -63,6 +63,19 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(base.fontesReceita.map((f) => [f.nome, f.valor])).toEqual([['pix recebido silva', 3000]]);
   });
 
+  it('fechamento da linha do mês (home) = fechaCom da previsão', async () => {
+    const { serieDoMes } = await import('../../src/lib/linhaDoMes');
+    const hoje = '2026-08-15';
+    const b = await queries.getProjecaoBase('casal', hoje);
+    const m0 = queries.computeProjecao(b, 1, hoje)[0];
+    const r = queries.computeRitmo(b, m0, hoje);
+    const entra = b.mesCorrente.receitasAReceber.reduce((s, x) => s + x.valor, 0);
+    const s = serieDoMes({ mes: '2026-08', hoje, saldoHoje: b.saldoContasAtual, movimentos: {},
+      receitas: b.mesCorrente.receitasAReceber.map((x) => ({ dia: x.diaTipico, valor: x.valor })),
+      aindaSai: b.saldoContasAtual + entra - r.fechaCom });
+    expect(s.fechamento).toBeCloseTo(r.fechaCom, 2);
+  });
+
   it('conta travada no débito fica fora do ritmo (fixoJaGasto) e o perfil mede o que sai depois de hoje', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
       VALUES ('p-ini', '2026-10-03', 300, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-10-03'),

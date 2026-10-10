@@ -25,3 +25,14 @@ describe('faixa', () => {
     expect(doRegime(['2026-05', '2026-06', '2026-07', '2026-08'])).toEqual(['2026-07', '2026-08']);
   });
 });
+
+describe('revisão final F2a: faixa nunca inverte', () => {
+  it('erro todo de um lado (previsão pessimista): pior caso não passa do provável, melhor caso não fica abaixo', () => {
+    const c = { p10: -500, p90: -100, n: 6, calculadaEm: 'x' };
+    const f = faixaMes(1000, 4, c);
+    expect(f.piorCaso).toBeLessThanOrEqual(1000);
+    expect(f.melhorCaso).toBeGreaterThanOrEqual(1000);
+    const g = faixaMesCorrente(1000, 10, 30, c);
+    expect(g.piorCaso).toBeLessThanOrEqual(1000);
+  });
+});

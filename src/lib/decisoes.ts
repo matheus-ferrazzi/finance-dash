@@ -31,6 +31,8 @@ export function compraCabe(projecao: ProjecaoMes[], c: Calibracao | null, valorP
     cabe: fura === -1,
     mesQueFura: fura === -1 ? null : projecao[fura].mes,
     maisNegativo: maisNeg === null ? null : projecao[maisNeg].mes,
+    /** quanto a compra empurra para baixo o mês mais negativo (o que ela "aprofunda" o vermelho) */
+    aprofunda: maisNeg === null ? 0 : Math.round((sem[maisNeg] - com[maisNeg]) * 100) / 100,
   };
 }
 
@@ -41,8 +43,13 @@ export function sobraPorMes(projecao: ProjecaoMes[], c: Calibracao | null) {
   }));
 }
 
-export function textoVeredito(r: { cabe: boolean; mesQueFura: string | null; maisNegativo: string | null }, mesLabel: (m: string) => string): string {
+export function textoVeredito(
+  r: { cabe: boolean; mesQueFura: string | null; maisNegativo: string | null; aprofunda?: number },
+  mesLabel: (m: string) => string,
+  dinheiro: (v: number) => string = (v) => `R$ ${v.toFixed(2).replace('.', ',')}`,
+): string {
   if (!r.cabe && r.mesQueFura) return `Não cabe: pelo pior caso, ${mesLabel(r.mesQueFura)} vai para o vermelho por causa dela.`;
-  if (r.maisNegativo) return `Cabe, mas ${mesLabel(r.maisNegativo)} já estava no vermelho sem ela.`;
+  // cenário que já está no vermelho: "cabe" soaria como liberação — a compra só aprofunda o buraco
+  if (r.maisNegativo) return `Atenção: ${mesLabel(r.maisNegativo)} já fica no vermelho sem ela; a compra aprofunda em ${dinheiro(r.aprofunda ?? 0)}.`;
   return 'Cabe: nenhum mês vai para o vermelho por causa dela, nem pelo pior caso.';
 }

@@ -44,6 +44,16 @@ describe('textoVeredito', () => {
     const ml = (m: string) => m;
     expect(textoVeredito({ cabe: true, mesQueFura: null, maisNegativo: null }, ml)).toBe('Cabe: nenhum mês vai para o vermelho por causa dela, nem pelo pior caso.');
     expect(textoVeredito({ cabe: false, mesQueFura: '2027-02', maisNegativo: '2027-02' }, ml)).toBe('Não cabe: pelo pior caso, 2027-02 vai para o vermelho por causa dela.');
-    expect(textoVeredito({ cabe: true, mesQueFura: null, maisNegativo: '2027-03' }, ml)).toBe('Cabe, mas 2027-03 já estava no vermelho sem ela.');
+  });
+});
+
+describe('revisão final F2a', () => {
+  it('cenário já no vermelho: não diz "Cabe"; diz quanto a compra aprofunda', async () => {
+    const { textoVeredito } = await import('../../src/lib/decisoes');
+    const r = compraCabe(proj([500, -800, -300, 2000]), c, 50, 1);
+    expect(r.aprofunda).toBe(50);
+    const t = textoVeredito(r, (m) => m, (v) => `R$ ${v}`);
+    expect(t.startsWith('Cabe')).toBe(false);
+    expect(t).toBe('Atenção: 2027-02 já fica no vermelho sem ela; a compra aprofunda em R$ 50.');
   });
 });

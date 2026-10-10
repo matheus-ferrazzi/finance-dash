@@ -17,7 +17,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   const resp = resolveResp(searchParams.resp);
 
   // getProjecaoBase já traz saldos e compromissos manuais — não consultar de novo
-  const [base, parcelados, calib] = await Promise.all([
+  const [base, parcelados, { calib, motivo }] = await Promise.all([
     getProjecaoBase(resp),
     getCompromissosParcelados(resp),
     getCalibracaoPara(resp),
@@ -39,6 +39,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         manuais={base.compromissosManuais}
         mesFoco={mesValido(searchParams.mes)}
         calib={calib}
+        motivoSemFaixa={motivo}
       />
     </div>
   );

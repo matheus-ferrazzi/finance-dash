@@ -52,14 +52,14 @@ O estimador é uma função pura `estimarDebito(meses: { mes: string; livre: num
 ### Calibração
 
 - Os erros do **saldo do mês** (`previsto − real`) no horizonte 1, nos 12 meses avaliados, dão os percentis **p10** e **p90**.
-- Para o mês k à frente (k = índice em `computeProjecao`: 0 é o mês em andamento, com regra própria abaixo; 1 é o mês seguinte), a faixa do **saldo acumulado** é `saldoProjetado_k + p10·√k` (pior caso) até `saldoProjetado_k + p90·√k` (melhor caso). O √k vem de tratar o erro de cada mês como independente: errar o gasto de um mês arrasta o saldo de todos os seguintes.
-- A faixa da **sobra do mês** k (fluxo) é `saldo_k + p10` até `saldo_k + p90`.
-- O mês em andamento usa a mesma régua, proporcional aos dias que faltam: `fechaCom + p10·(diasRestantes/diasNoMes)` até `fechaCom + p90·(diasRestantes/diasNoMes)`.
+- Para o mês k à frente (k = índice em `computeProjecao`: 0 é o mês em andamento, com regra própria abaixo; 1 é o mês seguinte), a faixa do **saldo acumulado** é `saldoProjetado_k − p90·√k` (pior caso) até `saldoProjetado_k − p10·√k` (melhor caso), com erro = previsto − real; a faixa sempre contém o provável. O √k vem de tratar o erro de cada mês como independente: errar o gasto de um mês arrasta o saldo de todos os seguintes.
+- A faixa da **sobra do mês** k (fluxo) é `saldo_k − p90` até `saldo_k − p10`.
+- O mês em andamento usa a mesma régua, proporcional aos dias que faltam: `fechaCom − p90·(diasRestantes/diasNoMes)` até `fechaCom − p10·(diasRestantes/diasNoMes)`.
 - A calibração guarda `n` (quantos meses entraram) e a data em que foi calculada.
 
 ### Janela da calibração (decidido com o Matheus em 10/10/2026, durante a execução)
 
-O teste de 12 meses mostrou dois regimes: até jun/2026 (emprego anterior, dívida com faturas pagas em parte, renda irregular) a previsão errava o saldo do mês em vários milhares; desde jul/2026 (fatura paga inteira, renda estável) o erro voltou à casa das centenas. Calibrar com os dois daria uma faixa inútil. A calibração usa **só os meses desde `INICIO_REGIME` = jul/2026** dentro dos 12 últimos. Com menos de 6 desses meses (até dez/2026) a previsão sai **sem faixa** e as decisões usam o número provável; a faixa aparece sozinha a partir de jan/2027. A validação fora da amostra (cobertura 70–90%) só é possível quando houver 6 meses anteriores no regime — fica registrada como pendente até lá.
+O teste de 12 meses mostrou duas fases: até jun/2026 o padrão de renda e de pagamento era outro e a previsão errava muito mais; desde jul/2026 o padrão estabilizou e o erro caiu para uma fração disso. Calibrar com os dois daria uma faixa inútil. A calibração usa **só os meses desde `INICIO_REGIME` = jul/2026** dentro dos 12 últimos. Com menos de 6 desses meses (até dez/2026) a previsão sai **sem faixa** e as decisões usam o número provável; a faixa aparece sozinha a partir de jan/2027. A validação fora da amostra (cobertura 70–90%) só é possível quando houver 6 meses anteriores no regime — fica registrada como pendente até lá.
 
 ### Onde é calculada
 

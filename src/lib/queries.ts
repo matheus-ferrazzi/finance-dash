@@ -662,22 +662,23 @@ export interface PrevisaoResumo {
   proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number; piorCaso: number }[];
   /** faixa "8 em 10" do fechamento do mês; null sem calibração (histórico curto) ou fora da visão do casal */
   faixa: { piorCaso: number; melhorCaso: number; n: number } | null;
+  /** por que não há faixa: fase atual com menos de 6 meses (ou cálculo falhou) / visão de uma pessoa */
+  faixaMotivo: MotivoSemFaixa | null;
   /** primeiro mês em que o saldo fica ≥ 0 e continua (horizonte de 24 meses) */
   saiDoVermelho: { provavel: string | null; piorCaso: string | null };
 }
 
-/** A faixa é calibrada com os erros do casal: só vale para a visão do casal. */
-export async function getCalibracaoPara(resp: Resp): Promise<Calibracao | null> {
-  return resp === 'casal' ? getCalibracao() : null;
+export type MotivoSemFaixa = 'historico_curto' | 'visao_individual';
+
+/** A faixa é calibrada com os erros do casal: só vale para a visão do casal. Sem faixa, diz o motivo. */
+export async function getCalibracaoPara(resp: Resp): Promise<{ calib: Calibracao | null; motivo: MotivoSemFaixa | null }> {
+  if (resp !== 'casal') return { calib: null, motivo: 'visao_individual' };
+  const calib = await getCalibracao();
+  return { calib, motivo: calib ? null : 'historico_curto' };
 }
 
-/**
- * Resumo da previsão num formato pronto pra consumo (site e bots do Telegram).
- * Os bots chamam isto via HTTP em vez de reimplementar a conta em SQL — assim
- * não existe uma segunda versão da lógica pra desandar em relação ao site.
- */
 export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
-  const [base, calib] = await Promise.all([getProjecaoBase(resp), getCalibracaoPara(resp)]);
+  const [base, { calib, motivo }] = await Promise.all([getProjecaoBase(resp), getCalibracaoPara(resp)]);
   const proj = computeProjecao(base, 24);
   const atual = proj[0];
   const ritmo = computeRitmo(base, atual);
@@ -699,38 +700,40 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
       piorCaso: faixaMes(m.saldoProjetado, i + 1, calib).piorCaso,
     })),
     faixa: calib ? { ...faixaMesCorrente(atual.saldoProjetado, ritmo.diasRestantes, diasNoMes(atual.mes), calib), n: calib.n } : null,
+    faixaMotivo: motivo,
     saiDoVermelho: saiDoVermelho(proj, calib),
   };
 }
 
-const cacheCalib = new Map<string, Calibracao | null>();
+// promessa por mês: acessos simultâneos (home, tela e bot no 1º acesso) esperam o mesmo cálculo
+const cacheCalib = new Map<string, Promise<Calibracao | null>>();
 
 /**
- * Faixa da previsão: erros do saldo (1 mês à frente, casal, regra em uso) nos meses fechados do regime
- * atual (desde INICIO_REGIME), dentro dos 12 últimos. Cache de 1 dia; falha de consulta = sem faixa.
+ * Faixa da previsão: erros do saldo (1 mês à frente, casal, regra em uso) nos meses fechados da fase
+ * atual (desde INICIO_REGIME), dentro dos 12 últimos. Calculada uma vez por mês de referência; com
+ * menos de 6 meses na fase atual sai na hora, sem consultar; erro de consulta não fica em cache.
  */
-export async function getCalibracao(hoje: string = currentDateSP()): Promise<Calibracao | null> {
-  if (cacheCalib.has(hoje)) return cacheCalib.get(hoje)!;
-  let c: Calibracao | null = null;
-  try {
-    const atual = hoje.slice(0, 7);
-    const meses = doRegime(Array.from({ length: 12 }, (_, i) => addMonths(atual, -(12 - i))));
-    const erros: number[] = [];
-    for (const mes of meses) {
-      const ant = addMonths(mes, -1);
-      const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
-      const proj = computeProjecao(await getProjecaoBase('casal', vesp, { regraDebito: REGRA_DEBITO }), 1, vesp);
-      const real = await getRealizado(mes);
-      if (real.receita === 0 && real.debito === 0) continue; // mês sem dado não calibra
-      erros.push(componentesPrevistos(proj[1]).saldo - real.saldo);
-    }
-    c = calibrar(erros, hoje);
-  } catch (e) {
-    console.error('calibração da faixa falhou', e);
-  }
+export function getCalibracao(hoje: string = currentDateSP()): Promise<Calibracao | null> {
+  const chave = hoje.slice(0, 7);
+  const ja = cacheCalib.get(chave);
+  if (ja) return ja;
+  const meses = doRegime(Array.from({ length: 12 }, (_, i) => addMonths(chave, -(12 - i))));
+  const p = meses.length < 6 ? Promise.resolve(null) : calcularCalibracao(meses, hoje);
   cacheCalib.clear();
-  cacheCalib.set(hoje, c);
-  return c;
+  cacheCalib.set(chave, p);
+  p.catch(() => cacheCalib.delete(chave));
+  return p.catch((e) => { console.error('calibração da faixa falhou', e); return null; });
+}
+
+async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibracao | null> {
+  const erros = await Promise.all(meses.map(async (mes) => {
+    const ant = addMonths(mes, -1);
+    const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
+    const [base, real] = await Promise.all([getProjecaoBase('casal', vesp, { regraDebito: REGRA_DEBITO }), getRealizado(mes)]);
+    if (real.receita === 0 && real.debito === 0) return null; // mês sem dado não calibra
+    return componentesPrevistos(computeProjecao(base, 1, vesp)[1]).saldo - real.saldo;
+  }));
+  return calibrar(erros.filter((e): e is number => e !== null), hoje);
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */

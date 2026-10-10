@@ -8,6 +8,8 @@ export interface Cobranca {
   chave: string; data: string; valor: number; categoria: string; banco: string;
   /** veio da Pluggy como parcela (N de M, M > 1) ou tem "N/M" no fim da descrição */
   parcelado: boolean;
+  /** quem pagou: na visão do casal, a mesma cobrança paga por cada um são duas recorrências */
+  responsavel?: string;
 }
 
 const MESES_MINIMOS = 3;
@@ -70,7 +72,7 @@ export function detectarAssinaturas(cobrancas: readonly Cobranca[], hoje?: strin
   const porComerciante = new Map<string, Cobranca[]>();
   for (const c of cobrancas) {
     if (c.parcelado) continue;
-    const k = raiz.get(comerciante(c.chave))!;
+    const k = `${c.responsavel ?? ''}|${raiz.get(comerciante(c.chave))!}`;
     porComerciante.set(k, [...(porComerciante.get(k) ?? []), c]);
   }
   const grupos = [...porComerciante.values()]

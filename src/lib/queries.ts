@@ -348,14 +348,14 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
      base AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
               valor::float8 AS valor, categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco,
-              to_char(data_lancamento,'YYYY-MM-DD') AS data,
+              to_char(data_lancamento,'YYYY-MM-DD') AS data, responsavel,
               (COALESCE(parcela_total,0) > 1 OR descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$') AS parcelado
        FROM financas_lancamentos
        WHERE classe='despesa'
          AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - interval '6 months'
          AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
      )
-     SELECT chave, valor, categoria, banco, data, parcelado
+     SELECT chave, valor, categoria, banco, data, parcelado, responsavel
      FROM base
      WHERE length(chave) >= 4
        AND categoria NOT IN (SELECT categoria FROM ja_acompanhado)
@@ -364,6 +364,7 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
   );
   return detectarAssinaturas(rows.map((x) => ({
     chave: x.chave, valor: Number(x.valor), categoria: x.categoria, banco: x.banco, data: x.data, parcelado: Boolean(x.parcelado),
+    responsavel: x.responsavel,
   })), currentDateSP());
 }
 

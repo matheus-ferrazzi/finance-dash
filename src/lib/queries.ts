@@ -3,6 +3,7 @@ import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from 
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
+import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
 import type { MarcaInput } from './validation';
 import {
   addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
@@ -687,7 +688,29 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
   };
 }
 
-export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()): Promise<ProjecaoBase> {
+/** Débito dos `n` meses fechados antes do mês de `hoje`: livre × travado, fora casa e espelhos; mês vazio = 0. */
+export async function getDebitoMensal(resp: Resp, hoje: string, n = 6): Promise<MesDebito[]> {
+  const r = rf(resp, 5);
+  // filtros no ON do LEFT JOIN (descricao/responsavel só existem em financas_lancamentos): mês vazio fica com 0
+  const rows = await q<any>(
+    `WITH ms AS (
+       SELECT to_char(generate_series(date_trunc('month', $1::date) - ($2::int || ' months')::interval,
+                                      date_trunc('month', $1::date) - interval '1 month', interval '1 month'), 'YYYY-MM') AS mes)
+     SELECT ms.mes,
+            COALESCE(SUM(l.valor) FILTER (WHERE NOT (l.categoria = ANY($4::text[]))), 0)::float8 AS livre,
+            COALESCE(SUM(l.valor) FILTER (WHERE l.categoria = ANY($4::text[])), 0)::float8 AS fixo
+     FROM ms LEFT JOIN financas_lancamentos l
+       ON to_char(l.data_lancamento, 'YYYY-MM') = ms.mes
+      AND l.classe = 'despesa' AND l.forma_pagamento = 'Débito'
+      AND NOT (l.categoria = ANY($3::text[]))
+      AND ${SEM_ESPELHO}${r.sql}
+     GROUP BY ms.mes ORDER BY ms.mes`,
+    [hoje, n, CASA_CATS, FIXO_DEBITO_CATS, ...r.p],
+  );
+  return rows.map((x) => ({ mes: x.mes, livre: Math.round(Number(x.livre) * 100) / 100, fixo: Math.round(Number(x.fixo) * 100) / 100 }));
+}
+
+export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP(), opcoes: { regraDebito?: RegraDebito } = {}): Promise<ProjecaoBase> {
   const [patrimonioAtual, saldoContas, meses] = await Promise.all([
     getPatrimonioAtual(resp), getSaldoContas(resp), getMesesConfiaveis(resp, hoje),
   ]);
@@ -723,22 +746,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.
   // dividido em gasto livre (o dia a dia) e contas travadas (consórcio, seguro, imposto…), que
-  // no mês em andamento entram como compromisso e não como ritmo
-  const r2 = rf(resp, 4);
-  const varRows = await q<any>(
-    `SELECT ROUND(AVG(m.livre),2) AS media, ROUND(AVG(m.fixo),2) AS media_fixo FROM (
-       SELECT date_trunc('month',l.data_lancamento) AS mes,
-              SUM(l.valor) FILTER (WHERE NOT (l.categoria = ANY($3::text[]))) AS livre,
-              COALESCE(SUM(l.valor) FILTER (WHERE l.categoria = ANY($3::text[])),0) AS fixo
-       FROM financas_lancamentos l
-       WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
-         AND NOT (l.categoria = ANY($1::text[]))
-         AND ${SEM_ESPELHO}
-         AND date_trunc('month',l.data_lancamento) = ANY($2::date[])${r2.sql}
-       GROUP BY 1
-     ) m`,
-    [CASA_CATS, meses, FIXO_DEBITO_CATS, ...r2.p],
-  );
+  // no mês em andamento entram como compromisso e não como ritmo. A média vem da regra escolhida
+  // pelo teste contra o passado (F2a): o gasto vem caindo e a média dos meses confiáveis não acompanha.
+  const debito = estimarDebito(await getDebitoMensal(resp, hoje), opcoes.regraDebito ?? REGRA_DEBITO, meses.map((d) => d.slice(0, 7)));
   // perfil do mês: que fração do gasto livre saiu DEPOIS do dia de hoje, nos 6 meses anteriores
   const rpf = rf(resp, 5);
   const perfilRows = await q<any>(
@@ -905,8 +915,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       casaNoMesPorCategoria,
     },
     fontesReceita,
-    despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
-    despesaFixaDebitoMedia: Number(varRows[0]?.media_fixo ?? 0),
+    despesaVariavelMediaMensal: debito.livre,
+    despesaFixaDebitoMedia: debito.fixo,
     fracaoRestanteDebito,
     creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,

@@ -58,3 +58,11 @@ describe('consórcio', () => {
     expect(traduzCategoria('Consortium')).toBe('Consórcio');
   });
 });
+
+describe('presentes', () => {
+  it('Gifts entra em Compras e aparece como "Presentes"', async () => {
+    const { traduzCategoria } = await import('../../src/lib/format');
+    expect(agruparGastos(new Map([['Gifts', 100]]), 1000)[0]).toMatchObject({ nome: 'Compras', travado: false });
+    expect(traduzCategoria('Gifts')).toBe('Presentes');
+  });
+});

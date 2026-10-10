@@ -72,3 +72,12 @@ describe('consórcio (B, 10/10/2026)', () => {
     expect(classificar('Credit card payment', 'GASTOS CARTAO DE CREDITO - DOCTO: 1', true, 'Débito', 'Matheus')).toBe('pagamento_fatura');
   });
 });
+
+describe('fatura do cartão paga por PIX QR Code (B, 10/10/2026)', () => {
+  it('PIX QR para o banco que emite o cartão é pagamento de fatura, não despesa', () => {
+    expect(classificar('Transfer - PIX', 'Pagamento de Pix QR Code BANCO SANTANDER (BRASIL) S.A.', true, 'Débito', 'Matheus')).toBe('pagamento_fatura');
+  });
+  it('PIX QR para loja continua despesa', () => {
+    expect(classificar('Transfer - PIX', 'Pagamento de Pix QR Code LOJA EXEMPLO LTDA', true, 'Débito', 'Matheus')).toBe('despesa');
+  });
+});

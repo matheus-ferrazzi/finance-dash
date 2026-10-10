@@ -6,6 +6,8 @@ import { PeriodPicker } from './components/PeriodPicker';
 import { PrivacyToggle } from './components/PrivacyToggle';
 import { SyncBadge } from './components/SyncBadge';
 import { getSyncStatus } from '@/lib/queries';
+import { lerVersao } from '@/lib/versao';
+import { VersaoAviso } from './components/VersaoAviso';
 import { Wallet } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -62,6 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Suspense>
           <MobileNav />
         </Suspense>
+        <VersaoAviso carregada={lerVersao()} />
       </body>
     </html>
   );

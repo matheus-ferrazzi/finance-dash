@@ -93,6 +93,13 @@ describe('comerciante com mais de uma assinatura, grafias diferentes e compras p
     ]));
     expect(r).toEqual([]);
   });
+  it('na visão do casal, a mesma cobrança paga por cada um são duas recorrências (casal = soma das pessoas)', () => {
+    const r = detectarAssinaturas(['07', '08', '09'].flatMap((m) => [
+      c('pix enviado fulano', `2026-${m}-10`, 93.5, { responsavel: 'Matheus' }),
+      c('pix enviado fulano', `2026-${m}-11`, 93.5, { responsavel: 'Ariane' }),
+    ]));
+    expect(r).toHaveLength(2);
+  });
   it('dia que oscila na virada do mês (30, 31, 1º) continua estável', () => {
     const r = detectarAssinaturas(['2026-06-30', '2026-07-31', '2026-09-01'].map((d) => c('clube', d, 5.95)));
     expect(r).toHaveLength(1);

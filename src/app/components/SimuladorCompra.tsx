@@ -48,8 +48,10 @@ export function simularCompra(
 }
 
 export function SimuladorCompra({
-  valorStr, setValorStr, parcelasStr, setParcelasStr, resultado,
+  valorStr, setValorStr, parcelasStr, setParcelasStr, resultado, veredito = null,
 }: {
+  /** "cabe" / "fura em…" pelo pior caso da faixa (F2a) */
+  veredito?: string | null;
   valorStr: string;
   setValorStr: (v: string) => void;
   parcelasStr: string;
@@ -125,6 +127,8 @@ export function SimuladorCompra({
               </span>
             ))}
           </div>
+
+          {veredito && <p className={`mt-3 text-sm font-medium ${veredito.startsWith('Não') ? 'text-despesa' : 'text-text'}`}>{veredito}</p>}
 
           <p className="mt-3 text-[11px] text-faint">
             A linha tracejada no gráfico abaixo mostra como fica o dinheiro em conta com essa compra.

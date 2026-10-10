@@ -37,3 +37,13 @@ describe('sobraPorMes', () => {
     ]);
   });
 });
+
+describe('textoVeredito', () => {
+  it('texto do veredito do simulador', async () => {
+    const { textoVeredito } = await import('../../src/lib/decisoes');
+    const ml = (m: string) => m;
+    expect(textoVeredito({ cabe: true, mesQueFura: null, maisNegativo: null }, ml)).toBe('Cabe: nenhum mês vai para o vermelho por causa dela, nem pelo pior caso.');
+    expect(textoVeredito({ cabe: false, mesQueFura: '2027-02', maisNegativo: '2027-02' }, ml)).toBe('Não cabe: pelo pior caso, 2027-02 vai para o vermelho por causa dela.');
+    expect(textoVeredito({ cabe: true, mesQueFura: null, maisNegativo: '2027-03' }, ml)).toBe('Cabe, mas 2027-03 já estava no vermelho sem ela.');
+  });
+});

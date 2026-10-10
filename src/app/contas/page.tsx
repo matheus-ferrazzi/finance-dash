@@ -25,7 +25,10 @@ export default async function Contas({ searchParams }: { searchParams: { resp?: 
         { label: 'Pago', value: brl(r.pago), hint: 'confirmado no banco' },
         { label: 'Falta pagar', value: brl(r.falta), tone: r.falta > 0 ? 'warn' : 'muted',
           hint: r.aConfirmar > 0 ? `${brl(r.aConfirmar)} marcado, esperando o banco` : undefined },
-        { label: 'Sobra', value: brl(r.sobra), tone: r.sobra >= 0 ? 'up' : 'down', hint: 'entrou − contas' },
+        // mês sem entrada ainda (o que vem, ou antes do salário cair): sobra negativa assustaria à toa
+        r.entrou > 0
+          ? { label: 'Sobra', value: brl(r.sobra), tone: r.sobra >= 0 ? 'up' : 'down', hint: 'entrou − contas' }
+          : { label: 'Sobra', value: '—', tone: 'muted', hint: 'quando o salário cair' },
       ]} />
 
       <ContasLista mes={mes} resp={resp} itens={r.itens} tiradas={r.tiradas} />

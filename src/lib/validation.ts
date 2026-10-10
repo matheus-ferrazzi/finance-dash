@@ -1,4 +1,5 @@
 import type { CompromissoInput } from './queries';
+import { parseValorBR } from './format';
 
 export const CATEGORIAS_COMPROMISSO = [
   'Housing', 'Electricity', 'Water', 'Internet', 'Telecommunications', 'Gas',
@@ -37,6 +38,12 @@ export function validarMarca(body: any): { ok: true; data: MarcaInput } | { ok: 
   const valor = Number(String(body?.valor ?? '').replace(',', '.'));
   if (!Number.isFinite(valor) || valor <= 0 || valor >= 1_000_000) return { ok: false, erro: 'valor inválido' };
   return { ok: true, data: { mes, contaId: null, responsavel, nome, valor: Math.round(valor * 100) / 100, pago: true } };
+}
+
+/** Valor digitado na tela ("1.150,50" ou número); null se inválido. */
+export function validarValor(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : parseValorBR(String(v ?? ''));
+  return Number.isFinite(n) && n > 0 && n < 1_000_000 ? Math.round(n * 100) / 100 : null;
 }
 
 export function validarCompromisso(body: any): ValidacaoResult {

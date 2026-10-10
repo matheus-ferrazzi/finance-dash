@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validarMarca } from '../../src/lib/validation';
+import { validarMarca, validarValor } from '../../src/lib/validation';
 
 describe('validarMarca', () => {
   it('✓ numa conta fixa: mês e conta', () => {
@@ -26,5 +26,16 @@ describe('validarMarca', () => {
     expect(validarMarca({ mes: '2026-10', nome: 'X', valor: 2_000_000, responsavel: 'Ariane' }).ok).toBe(false);
     expect(validarMarca({ mes: '2026-10', nome: '', valor: 10, responsavel: 'Ariane' }).ok).toBe(false);
     expect(validarMarca({ mes: '2026-10', contaId: 0, responsavel: 'Ariane' }).ok).toBe(false);
+  });
+});
+
+describe('validarValor', () => {
+  it('aceita número e texto em reais; recusa zero, negativo e absurdo', () => {
+    expect(validarValor(1150)).toBe(1150);
+    expect(validarValor('1.150,50')).toBe(1150.5);
+    expect(validarValor('0')).toBeNull();
+    expect(validarValor(-5)).toBeNull();
+    expect(validarValor(2_000_000)).toBeNull();
+    expect(validarValor('abc')).toBeNull();
   });
 });

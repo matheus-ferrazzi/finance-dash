@@ -17,6 +17,8 @@ export interface ContaFixa {
   inicio: string; parcelas: number | null; ordem: number;
   /** 'YYYY-MM' do último mês ("remover de vez"); os meses anteriores continuam no histórico */
   ate: string | null;
+  /** 'YYYY-MM' em que o valor foi alterado na tela: dali em diante vale o valorPrevisto, não o histórico */
+  valorDefinidoEm: string | null;
 }
 
 /** Marcação feita na tela: ✓ numa conta fixa (contaId), conta tirada do mês (contaId + pago=false) ou avulsa (nome + valor). */
@@ -31,6 +33,8 @@ export interface ItemConta {
   contaId: number | null; marcaId: number | null; nome: string; responsavel: string;
   previsto: number; pago: number | null; status: Status; dia: number | null;
   parcela: string | null; avulsa: boolean;
+  /** pagamento do banco que confirmou (base do "repetir todo mês"); null se não pago */
+  origem: { descricao: string; banco: string } | null;
 }
 
 export interface Tirada { contaId: number; marcaId: number; nome: string; responsavel: string; }
@@ -85,7 +89,8 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
     if (k < 0 || (c.parcelas !== null && k >= c.parcelas) || (c.ate !== null && mes > c.ate)) continue;
 
     let previsto = c.valorPrevisto;
-    for (let i = 1; i <= MESES_PARA_PREVISTO; i++) {
+    const definido = c.valorDefinidoEm !== null && mes >= c.valorDefinidoEm; // valor alterado na tela vence o histórico
+    for (let i = 1; !definido && i <= MESES_PARA_PREVISTO; i++) {
       const ant = movs.filter((m) => m.data.slice(0, 7) === addMes(mes, -i));
       const pg = pagamentosDaConta(c, c.valorPrevisto, ant, new Set());
       if (pg.length) { previsto = r2(pg.reduce((s, m) => s + m.valor, 0)); break; }
@@ -105,6 +110,7 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
       status: pg.length ? 'pago' : marca ? 'a_confirmar' : 'falta',
       dia: pg.length ? Number(pg.map((m) => m.data).sort().at(-1)!.slice(8, 10)) : null,
       parcela: c.parcelas !== null ? `${k + 1}/${c.parcelas}` : null, avulsa: false,
+      origem: pg.length ? { descricao: pg[0].descricao, banco: pg[0].banco } : null,
     });
   }
 
@@ -117,6 +123,7 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
       contaId: null, marcaId: a.id, nome: a.nome ?? 'Avulsa', responsavel: a.responsavel, previsto,
       pago: m ? m.valor : null, status: m ? 'pago' : a.pago ? 'a_confirmar' : 'falta',
       dia: m ? Number(m.data.slice(8, 10)) : null, parcela: null, avulsa: true,
+      origem: m ? { descricao: m.descricao, banco: m.banco } : null,
     });
   }
 
@@ -124,4 +131,13 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
   const pago = r2(itens.reduce((s, i) => s + (i.pago ?? 0), 0));
   const aConfirmar = r2(itens.filter((i) => i.status === 'a_confirmar').reduce((s, i) => s + i.previsto, 0));
   return { mes, entrou: r2(entrou), total, pago, aConfirmar, falta: r2(total - pago), sobra: r2(entrou - total), itens, tiradas };
+}
+
+/**
+ * Padrão de conta fixa a partir da descrição real do pagamento ("repetir todo mês"): sem números
+ * (data, parcela, código que muda todo mês), regex escapada, espaço variável entre as palavras.
+ */
+export function padraoDe(descricao: string): string {
+  return descricao.replace(/[\d/]+/g, ' ').trim().split(/\s+/)
+    .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
 }

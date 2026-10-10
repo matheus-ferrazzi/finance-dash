@@ -32,7 +32,10 @@ export function ListaMeses({ linhas, resp, mostrarTodos }: { linhas: LinhaLista[
               <span className="block text-[11px] text-faint">
                 {l.tipo === 'passado' && l.previsto !== null
                   ? <>sobrou <span className="tnum money">{brl(l.sobra)}</span> · previsto <span className="tnum money">{brl(l.previsto)}</span></>
-                  : <>sobra do mês <span className="tnum money">{brl(l.sobra)}</span></>}
+                  : l.tipo === 'atual'
+                    // a projeção do mês em andamento só tem o que ainda falta acontecer
+                    ? <>daqui até o fim do mês <span className="tnum money">{brl(l.sobra)}</span></>
+                    : <>sobra do mês <span className="tnum money">{brl(l.sobra)}</span></>}
                 {l.piorCaso !== null && l.piorCaso !== l.saldoFim && <> · pior caso <span className="tnum money">{brl(l.piorCaso)}</span></>}
               </span>
             </span>

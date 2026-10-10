@@ -34,8 +34,13 @@ export interface ProjecaoBase {
   saldoContas: { total: number; contas: SaldoConta[] };
   /** fontes de receita recorrentes nos meses-base, com o valor mensal típico (mediana) */
   fontesReceita: ReceitaPrevista[];
-  /** gasto no DÉBITO (fora casa) — o que sai direto da conta */
+  /** gasto LIVRE no débito (fora casa e fora contas travadas) — o dia a dia */
   despesaVariavelMediaMensal: number;
+  /** contas travadas pagas no débito (consórcio, seguro, impostos, tarifas…): média mensal */
+  despesaFixaDebitoMedia?: number;
+  /** fração do gasto livre que historicamente sai DEPOIS do dia de hoje (perfil dos últimos 6 meses);
+   *  null/ausente = proporcional aos dias que faltam */
+  fracaoRestanteDebito?: number | null;
   /** compras novas no crédito por mês (fora parcelamentos) — vira fatura */
   creditoNovoMedio: number;
   /** média mensal por categoria da casa (aluguel/luz/água/internet/telefone/gás) */
@@ -52,7 +57,8 @@ export interface ProjecaoBase {
     receitaAgendada: number;
     /** o que ainda falta entrar de cada fonte recorrente (ex.: a 2ª parte do salário) */
     receitasAReceber: ReceitaPrevista[];
-    variavelJaGasto: number;               // no débito, fora casa
+    variavelJaGasto: number;               // gasto livre no débito (fora casa e fora contas travadas)
+    fixoJaGasto?: number;                  // contas travadas já pagas no débito neste mês
     agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
     faturaJaPaga: number;                  // fatura de cartão já paga neste mês
     casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
@@ -280,16 +286,21 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
     const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
       .filter(([cat]) => !cobertas.has(cat))
       .reduce((s, [cat, media]) => s + Math.max(0, media - (mc.casaNoMesPorCategoria[cat] ?? 0)), 0);
-    // Gasto do dia a dia é diário. Depois da 1ª semana o ritmo REAL do mês é um
-    // previsor melhor que a média histórica — se você está gastando menos, a
-    // projeção acompanha em vez de insistir que você vai recuperar o atraso.
+    // O gasto não é uniforme no mês: o começo concentra contas e compras grandes. Multiplicar o
+    // ritmo dos primeiros dias pelos dias que faltam previa, no dia 10, R$ 5 mil a mais do que saía
+    // (teste contra jun–set/2026). Agora:
+    // - conta travada (consórcio, seguro, imposto) é compromisso: média − o que já saiu, não vira ritmo;
+    // - gasto livre: fração histórica do mês que ainda falta (perfil); da 1ª semana em diante, metade
+    //   pela média e metade pelo observado até hoje escalado pelo perfil (erro médio 3.025 → 554).
     const diaHoje = Number(hoje.split('-')[2]);
     const dias = diasNoMes(anchor);
-    const ritmo = diaHoje >= 7
-      ? mc.variavelJaGasto / diaHoje
-      : base.despesaVariavelMediaMensal / dias;
-    const despesaVariavel = ritmo * (dias - diaHoje);
-    const despesaFixa = mc.agendadoRestante;
+    const fr = base.fracaoRestanteDebito ?? (dias - diaHoje) / dias;
+    const pelaMedia = base.despesaVariavelMediaMensal * fr;
+    const despesaVariavel = diaHoje >= 7
+      ? (pelaMedia + mc.variavelJaGasto * fr / Math.max(0.05, 1 - fr)) / 2
+      : pelaMedia;
+    const fixoQueFalta = Math.max(0, (base.despesaFixaDebitoMedia ?? 0) - (mc.fixoJaGasto ?? 0));
+    const despesaFixa = mc.agendadoRestante + fixoQueFalta;
     // o que ainda falta entrar de cada fonte recorrente (a 2ª parte do salário, etc) + o já agendado
     const receita = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0) + mc.receitaAgendada;
     // fatura que vence neste mês (real, se já fechou) menos o que já foi pago
@@ -319,7 +330,7 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
       .filter(([cat]) => !categoriasCobertas.has(cat))
       .reduce((s, [, v]) => s + v, 0);
 
-    const despesaVariavel = base.despesaVariavelMediaMensal;
+    const despesaVariavel = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
     const receita = receitaMensal;
     const fatura = faturaFutura(base, mes, i === 1 ? (diasAnchor - diaHojeNum) / diasAnchor : 1);
     const parcelas = Math.min(fatura, base.creditoPorVencimento[mes] ?? 0);

@@ -62,4 +62,16 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     const base = await queries.getProjecaoBase('casal', '2026-07-01');
     expect(base.fontesReceita.map((f) => [f.nome, f.valor])).toEqual([['pix recebido silva', 3000]]);
   });
+
+  it('conta travada no débito fica fora do ritmo (fixoJaGasto) e o perfil mede o que sai depois de hoje', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
+      VALUES ('p-ini', '2026-10-03', 300, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-10-03'),
+             ('p-fim', '2026-10-25', 100, 'mercado', 'Groceries', 'Débito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-10-25'),
+             ('cons', '2026-11-02', 575, 'BOLETO CONSORCIO', 'Consortium', 'Débito', 'Santander', 'Ariane', 'despesa', 'Saída', '2026-11-02'),
+             ('livre', '2026-11-05', 40, 'padaria', 'Groceries', 'Débito', 'Santander', 'Ariane', 'despesa', 'Saída', '2026-11-05')`);
+    const base = await queries.getProjecaoBase('Ariane', '2026-11-10');
+    expect(base.mesCorrente.fixoJaGasto).toBe(575);
+    expect(base.mesCorrente.variavelJaGasto).toBe(40);
+    expect(base.fracaoRestanteDebito).toBeCloseTo(0.25); // em out: 100 de 400 saiu depois do dia 10
+  });
 });

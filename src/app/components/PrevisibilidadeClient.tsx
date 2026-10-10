@@ -2,18 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Pencil, Trash2, X, Infinity as InfinityIcon, CreditCard, PiggyBank } from 'lucide-react';
-import { brl, mesLabel, currentMonthSP, traduzCategoria, parseValorBR } from '@/lib/format';
-import { SectionTitle, KpiCard, Progress, respBadge, catIcon } from './ui';
-import { ProjecaoPainel } from './ProjecaoPainel';
-import { SimuladorCompra, simularCompra } from './SimuladorCompra';
+import { Plus, Pencil, Trash2, X, Infinity as InfinityIcon } from 'lucide-react';
+import { brl, currentMonthSP, traduzCategoria, parseValorBR } from '@/lib/format';
+import { SectionTitle, Progress, respBadge, catIcon } from './ui';
 import { CATEGORIAS_COMPROMISSO } from '@/lib/validation';
-import type { Calibracao } from '@/lib/faixa';
-import { compraCabe, saiDoVermelho, textoVeredito } from '@/lib/decisoes';
-import { textoMetaAlvo } from '@/lib/meta';
-import type { ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta, ReceitaPrevista } from '@/lib/queries';
-
-const HORIZONTES = [3, 6, 12, 24] as const;
+import type { CompromissoParcelado, CompromissoManual } from '@/lib/queries';
 
 const RESPS = [
   { key: 'casal', label: 'Casal', dot: 'bg-accent' },
@@ -61,68 +54,15 @@ const FORM_VAZIO: FormState = {
   dataInicio: new Date().toISOString().slice(0, 10), mesesTotais: '', observacao: '',
 };
 
-export function PrevisibilidadeClient({
-  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null, calib = null, motivoSemFaixa = null, meta = null,
-}: {
-  /** meta de gasto no débito: em que mês sai do vermelho para cada nível de gasto */
-  meta?: { debitoAtual: number; alvo: string; alvoLabel: string; linhas: { debito: number; sai: string | null }[]; maxDebito: number | null } | null;
-  /** por que não há faixa (para dizer o motivo certo na tela) */
-  motivoSemFaixa?: 'historico_curto' | 'visao_individual' | null;
-  /** faixa 8 em 10 (F2a); null = sem calibração ou visão individual */
-  calib?: Calibracao | null;
-  patrimonioAtual: number;
-  saldoContas: { total: number; contas: SaldoConta[] };
-  receitasAReceber: ReceitaPrevista[];
-  projecao: ProjecaoMes[];
+/** Compromissos ativos (parcelas do cartão + cadastro manual) e o cadastro de gastos fixos. */
+export function PrevisibilidadeClient({ parcelados, manuais }: {
   parcelados: CompromissoParcelado[];
   manuais: CompromissoManual[];
-  /** ?mes= (link da home): mês destacado na tabela */
-  mesFoco?: string | null;
 }) {
   const router = useRouter();
-  const [horizonte, setHorizonte] = useState<number>(Math.max(6, projecao.findIndex((m) => m.mes === mesFoco) + 1));
   const [form, setForm] = useState<FormState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  // estado do simulador fica aqui em cima pra alimentar o gráfico também
-  const [valorSim, setValorSim] = useState('');
-  const [parcelasSim, setParcelasSim] = useState('1');
-
-  const simulacao = useMemo(
-    () => simularCompra(valorSim, parcelasSim, saldoContas.total, projecao),
-    [valorSim, parcelasSim, saldoContas.total, projecao],
-  );
-
-  const sai = useMemo(() => saiDoVermelho(projecao, calib), [projecao, calib]);
-  const veredito = simulacao ? textoVeredito(compraCabe(projecao, calib, simulacao.valorParcela, simulacao.parcelas), (m) => mesLabel(m)) : null;
-
-  // projecao[0] é o mês em andamento; o horizonte conta os meses à frente dele
-  const sliced = useMemo(() => {
-    const base = projecao.slice(0, horizonte + 1);
-    if (!simulacao) return base;
-    return base.map((m, i) => ({ ...m, saldoComCompra: simulacao.saldoComCompra[i] }));
-  }, [projecao, horizonte, simulacao]);
-  const mesAtual = projecao[0];
-  // o que sai de qualquer jeito: fixos + casa + parcelas JÁ contratadas.
-  // Compra futura no crédito não entra — ainda não foi feita, não é compromisso.
-  const comprometido = useMemo(
-    () => sliced.reduce((s, m) => s + m.despesaFixa + m.despesaManual + m.despesaCasa + m.parcelas, 0),
-    [sliced],
-  );
-  // média só dos meses cheios — o mês em andamento é parcial e distorceria
-  const sobraMedia = useMemo(() => {
-    const cheios = sliced.filter((m) => !m.emAndamento);
-    return cheios.length ? cheios.reduce((s, m) => s + m.saldo, 0) / cheios.length : 0;
-  }, [sliced]);
-  const saldoFuturo = sliced.length ? sliced[sliced.length - 1].saldoProjetado : saldoContas.total;
-  const primeiroMesNegativo = sliced.find((m) => m.saldoProjetado < 0);
-  // os chips mostram a BASE mensal cheia — projecao[0] é o mês em andamento
-  // e carrega só o que falta, o que daria um número menor e enganoso aqui
-  const mesCheio = projecao[1] ?? projecao[0];
-  const receitaBase = mesCheio?.receita ?? 0;
-  const variavelBase = mesCheio?.despesaVariavel ?? 0;
-  const casaBase = mesCheio?.despesaCasa ?? 0;
-  const faturaBase = mesCheio?.fatura ?? 0;
 
   const itens: ItemLista[] = useMemo(() => {
     const hojeYM = currentMonthSP();
@@ -164,7 +104,6 @@ export function PrevisibilidadeClient({
     });
   }, [parcelados, manuais]);
 
-  const compromissoMaisLongo = itens.filter((i) => i.dataFim).sort((a, b) => (a.dataFim! < b.dataFim! ? 1 : -1))[0];
 
   async function salvar() {
     if (!form) return;
@@ -218,115 +157,7 @@ export function PrevisibilidadeClient({
 
   return (
     <div>
-      {/* seletor de horizonte */}
-      <div className="mb-4 inline-flex rounded-xl border border-border bg-surface p-1">
-        {HORIZONTES.map((h) => (
-          <button
-            key={h}
-            onClick={() => setHorizonte(h)}
-            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-              horizonte === h ? 'bg-surface-3 text-text' : 'text-muted hover:text-text'
-            }`}
-          >
-            {h}m
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label={`Comprometido (${horizonte}m)`} value={comprometido} tone="down" icon={CreditCard} />
-        <KpiCard label="Sobra média/mês" value={sobraMedia} tone={sobraMedia >= 0 ? 'up' : 'down'} />
-        <KpiCard
-          label={`Vou ter em ${horizonte}m`}
-          value={saldoFuturo}
-          tone={saldoFuturo >= 0 ? 'up' : 'down'}
-          hint={primeiroMesNegativo ? `no vermelho em ${primeiroMesNegativo.mesLabel}` : 'segue no azul'}
-          icon={PiggyBank}
-        />
-        <div className="card">
-          <div className="text-xs text-muted">Compromisso mais longo</div>
-          <div className="mt-2 text-sm font-medium truncate">{compromissoMaisLongo?.nome ?? '—'}</div>
-          <div className="mt-1 text-xs text-faint">
-            {compromissoMaisLongo?.dataFim ? `até ${mesLabel(compromissoMaisLongo.dataFim.slice(0, 7))}` : 'nenhum com fim definido'}
-          </div>
-        </div>
-      </div>
-
-      {mesAtual && (
-        <div className="mt-4 card">
-          <SectionTitle>Fechamento de {mesAtual.mesLabel} (mês em andamento)</SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="card-2 px-3 py-2.5">
-              <div className="text-[11px] text-muted">Tenho hoje</div>
-              <div className="mt-1 tnum money text-sm font-medium">{brl(saldoContas.total)}</div>
-            </div>
-            <div className="card-2 px-3 py-2.5">
-              <div className="text-[11px] text-muted">Ainda entra</div>
-              <div className="mt-1 tnum money text-sm font-medium text-accent">+{brl(mesAtual.receita)}</div>
-              <div className="text-[10px] text-faint">
-                {receitasAReceber.length > 0
-                  ? receitasAReceber.map((r) => `dia ${r.diaTipico}`).join(' · ')
-                  : 'salário a receber'}
-              </div>
-            </div>
-            <div className="card-2 px-3 py-2.5">
-              <div className="text-[11px] text-muted">Ainda sai</div>
-              <div className="mt-1 tnum money text-sm font-medium text-despesa">
-                −{brl(mesAtual.despesaFixa + mesAtual.despesaManual + mesAtual.despesaCasa + mesAtual.despesaVariavel + mesAtual.fatura)}
-              </div>
-              <div className="text-[10px] text-faint">fixos + casa + débito + fatura</div>
-            </div>
-            <div className="card-2 px-3 py-2.5">
-              <div className="text-[11px] text-muted">Fecho o mês com</div>
-              <div className={`mt-1 tnum money text-sm font-semibold ${mesAtual.saldoProjetado >= 0 ? 'text-accent' : 'text-despesa'}`}>
-                {brl(mesAtual.saldoProjetado)}
-              </div>
-            </div>
-          </div>
-          <p className="mt-3 text-sm text-muted">
-            {sai.provavel ? <>Sai do vermelho em <b className="text-text">{mesLabel(sai.provavel)}</b></> : <>Não sai do vermelho nos próximos {projecao.length - 1} meses</>}
-            {calib && sai.piorCaso !== sai.provavel && <> (pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai nos próximos ${projecao.length - 1} meses`})</>}
-            {!calib && motivoSemFaixa === 'visao_individual' && <span className="text-faint"> · faixa de incerteza só na visão do casal</span>}
-            {!calib && motivoSemFaixa !== 'visao_individual' && <span className="text-faint"> · sem faixa de incerteza ainda: a fase atual tem menos de 6 meses de histórico</span>}
-          </p>
-          {meta && (
-            <div className="mt-3 rounded-lg bg-surface-2 px-3 py-2.5">
-              <div className="text-xs font-medium text-text">Meta de gasto no débito</div>
-              <p className="mt-1 text-xs text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v))}</p>
-              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
-                {meta.linhas.map((l, i) => (
-                  <div key={l.debito} className="flex justify-between gap-2">
-                    <span className="tnum money text-muted">{brl(l.debito)}/mês{i === 0 ? ' (hoje)' : ''}</span>
-                    <span className={l.sai ? 'text-accent' : 'text-despesa'}>{l.sai ? `sai em ${mesLabel(l.sai)}` : 'não sai'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {/* uma linha em vez de cinco chips: a quebra detalhada não precisa
-              competir de igual pra igual com os quatro números que importam */}
-          <p className="mt-3 text-xs leading-relaxed text-muted">
-            {receitasAReceber.length > 0 && (
-              <>
-                Entra:{' '}
-                {receitasAReceber.map((r, i) => (
-                  <span key={i} className="text-accent">
-                    {formatChave(r.nome)} dia {r.diaTipico} <span className="tnum money">{brl(r.valor)}</span>
-                    {i < receitasAReceber.length - 1 ? ', ' : ''}
-                  </span>
-                ))}
-                {' · '}
-              </>
-            )}
-            Sai: casa <span className="tnum money">{brl(mesAtual.despesaCasa)}</span>
-            {' · '}fixos <span className="tnum money">{brl(mesAtual.despesaManual)}</span>
-            {' · '}dia a dia <span className="tnum money">{brl(mesAtual.despesaVariavel)}</span>
-            {' · '}fatura <span className="tnum money text-warn">{brl(mesAtual.fatura)}</span>
-          </p>
-        </div>
-      )}
-
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div>
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <SectionTitle>Compromissos ativos</SectionTitle>
@@ -391,12 +222,6 @@ export function PrevisibilidadeClient({
           </p>
         </div>
 
-        <SimuladorCompra
-          valorStr={valorSim} setValorStr={setValorSim}
-          parcelasStr={parcelasSim} setParcelasStr={setParcelasSim}
-          resultado={simulacao}
-          veredito={veredito}
-        />
       </div>
 
       {form && (
@@ -498,18 +323,6 @@ export function PrevisibilidadeClient({
         </div>
       )}
 
-      <ProjecaoPainel
-        mesFoco={mesFoco}
-        calib={calib}
-        linhas={sliced}
-        temSimulacao={!!simulacao}
-        saldoContas={saldoContas}
-        receitaBase={receitaBase}
-        variavelBase={variavelBase}
-        casaBase={casaBase}
-        faturaBase={faturaBase}
-        patrimonioAtual={patrimonioAtual}
-      />
     </div>
   );
 }

@@ -114,6 +114,21 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(await queries.getRealizado('2033-03')).toMatchObject({ receita: 1000, debito: 800, saldo: 200 });
   });
 
+  it('coerência: a linha do mês atual na lista fecha com o mesmo valor da home; o detalhe futuro fecha com a lista', async () => {
+    const { linhasDaLista, detalheMesFuturo } = await import('../../src/lib/mesAMes');
+    const hoje = '2026-08-15';
+    const b = await queries.getProjecaoBase('casal', hoje);
+    const proj = queries.computeProjecao(b, 24, hoje);
+    const r = queries.computeRitmo(b, proj[0], hoje);
+    const l = linhasDaLista(proj, [], null, r.diasRestantes, 31);
+    expect(l[0]).toMatchObject({ tipo: 'atual', saldoFim: r.fechaCom });
+    for (const k of [1, 2, 12]) {
+      const d = detalheMesFuturo(b, proj[k], []);
+      const t = Object.fromEntries(d.linhas.map((x) => [x.chave, x.total]));
+      expect(t.entra - t.casa - t.debito - t.cartao).toBeCloseTo(l[k].sobra, 2);
+    }
+  });
+
   it('meses passados: previsto na véspera, real e saldo no fim reconstruído, por pessoa', async () => {
     await pool.query(`INSERT INTO financas_saldos (id_conta, banco, responsavel, tipo, saldo) VALUES ('mp-c', 'X', 'Ariane', 'checking', 900)`);
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES

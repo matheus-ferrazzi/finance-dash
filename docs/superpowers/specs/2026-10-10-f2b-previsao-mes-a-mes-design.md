@@ -4,7 +4,7 @@ Data: 10/10/2026 · Projeto: Finanças do Casal · Parte 2 de 2 do F2 (F2a model
 
 ## Objetivo
 
-Trocar a tela de Previsão por uma navegação mês a mês, no estilo da planilha do Breno: ver de relance como o saldo anda mês a mês (passado, mês atual e futuro), abrir qualquer mês para ver de onde vem cada número e, no passado, comparar o previsto com o que aconteceu. A tela responde no topo as decisões do F2a (quando sai do vermelho, quanto gastar no débito).
+Trocar a tela de Previsão por uma navegação mês a mês, no estilo de uma planilha mensal: ver de relance como o saldo anda mês a mês (passado, mês atual e futuro), abrir qualquer mês para ver de onde vem cada número e, no passado, comparar o previsto com o que aconteceu. A tela responde no topo as decisões do F2a (quando sai do vermelho, quanto gastar no débito).
 
 ## Decisões tomadas com o Matheus
 

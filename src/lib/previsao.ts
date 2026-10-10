@@ -233,7 +233,7 @@ export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes, hoje: strin
   };
 }
 
-function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
+export function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
   if (mes < c.dataInicio.slice(0, 7)) return false;
   if (c.dataFim && mes > c.dataFim.slice(0, 7)) return false;
   return true;

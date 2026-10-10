@@ -66,7 +66,7 @@ const CAT_PT: Record<string, string> = {
   Houseware: 'Utensílios domésticos', Housing: 'Moradia', Income: 'Renda', Insurance: 'Seguro',
   'Interests charged': 'Juros cobrados', Internet: 'Internet', Investments: 'Investimentos',
   'Kids and toys': 'Crianças e brinquedos', 'Late payment and overdraft costs': 'Juros de atraso',
-  Loans: 'Empréstimos', 'Loans and financing': 'Empréstimos e financiamentos', 'Mileage programs': 'Programas de milhas',
+  Loans: 'Empréstimos', 'Loans and financing': 'Empréstimos e financiamentos', Consortium: 'Consórcio', 'Mileage programs': 'Programas de milhas',
   'Mutual funds': 'Fundos', 'Non-recurring income': 'Renda extra', 'Online Courses': 'Cursos online',
   'Online shopping': 'Compras online', Optometry: 'Ótica', Outros: 'Outros', Parking: 'Estacionamento',
   'Pet supplies and vet': 'Pet e veterinário', Pharmacy: 'Farmácia', 'Proceeds interests and dividends': 'Juros e dividendos',

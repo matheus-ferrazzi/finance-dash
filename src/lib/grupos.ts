@@ -5,7 +5,7 @@ export const GRUPOS_GASTO: DefGrupo[] = [
   { nome: 'Casa', emoji: '🏠', travado: true, cats: ['Housing', 'Electricity', 'Water', 'Telecommunications', 'Gas'] },
   {
     nome: 'Dívida e seguro', emoji: '🏦', travado: true,
-    cats: ['Loans and financing', 'Loans', 'Insurance', 'Taxes', 'Bank fees', 'Interests charged',
+    cats: ['Loans and financing', 'Loans', 'Consortium', 'Insurance', 'Taxes', 'Bank fees', 'Interests charged',
       'Late payment and overdraft costs', 'Tax on financial operations'],
   },
   { nome: 'Mercado', emoji: '🛒', travado: false, cats: ['Groceries'] },
@@ -51,3 +51,7 @@ export function agruparGastos(porCat: ReadonlyMap<string, number>, renda: number
   if (resto > 0) grupos.push({ nome: 'Resto', emoji: '❓', total: resto, travado: false, pctRenda: pct(resto) });
   return grupos.sort((a, b) => b.total - a.total);
 }
+
+/** Contas travadas pagas no débito (consórcio, seguro, imposto, tarifa, juros): na previsão do mês
+ *  em andamento são compromisso, não ritmo do dia a dia. */
+export const FIXO_DEBITO_CATS: string[] = GRUPOS_GASTO.find((g) => g.nome === 'Dívida e seguro')!.cats;

@@ -1,6 +1,6 @@
-// Porta literal do nó "Code in JavaScript" do workflow Finance 2.0 (n8n).
-// Não "melhorar" aqui: a paridade é conferida contra o original por scripts/equivalencia.ts.
-// Mudança de classificação é o projeto B, depois da virada.
+// Nasceu como porta literal do nó "Code in JavaScript" do workflow Finance 2.0 (n8n), conferida por
+// scripts/equivalencia.ts. Depois da virada (o n8n não ingere mais), as correções do projeto B entram
+// aqui, cada uma com teste e data.
 
 export function corrigirCategoria(cat: string | null | undefined, desc: string | null | undefined): string | null | undefined {
   const d = (desc || '').toLowerCase();
@@ -8,6 +8,8 @@ export function corrigirCategoria(cat: string | null | undefined, desc: string |
     return /\d\/\d/.test(d) ? 'Gaming' : 'Digital services';
   }
   if (d.includes('kaza ribeiro')) return 'Housing';
+  // B 10/10/2026: "BRADESCO ADMINISTRADORA D(e consórcios)" — o n8n tratava como fatura de cartão
+  if (d.includes('bradesco adminis') || d.includes('consorcio') || d.includes('consórcio')) return 'Consortium';
   if (d.includes('google') && (d.includes('play') || d.includes('pokemon') || d.includes('youtube'))) return 'Digital services';
   if ((d.includes('ifood') || d.includes('ifd*') || d.includes('99food') || d.includes('99 food')) && cat !== 'Groceries' && cat !== 'Pharmacy') return 'Food delivery';
   if (d.includes('drogaria') || d.includes('drogasil') || d.includes('farmacia') || d.includes('farmácia') || d.includes('droga raia')) return 'Pharmacy';
@@ -24,7 +26,7 @@ export function classificar(cat: string | null | undefined, desc: string | null 
   const d = (desc || '').toLowerCase();
   const c = cat || 'Outros';
   const espelhoCartao = d.includes('cart') && d.includes('cred');
-  if (c === 'Credit card payment' || c === 'Credit card fees' || d.includes('bradesco adminis') || d.includes('neon pagamen') || d.includes('nu pagamentos') || (d.includes('fatura') && (d.includes('pag') || d.includes('parc'))) || (forma === 'Débito' && espelhoCartao))
+  if (c === 'Credit card payment' || c === 'Credit card fees' || d.includes('neon pagamen') || d.includes('nu pagamentos') || (d.includes('fatura') && (d.includes('pag') || d.includes('parc'))) || (forma === 'Débito' && espelhoCartao))
     return 'pagamento_fatura';
   if (forma === 'Crédito' && !saida) return d.includes('pagamento') ? 'pagamento_fatura' : 'estorno';
   if (d.includes('rdb')) return 'transferencia_interna';

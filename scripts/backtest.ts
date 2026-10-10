@@ -1,58 +1,36 @@
-// Teste contra o passado, na VPS (lê o banco com o usuário somente-leitura do painel):
+// Teste contra o passado, na VPS: 12 meses fechados × horizontes 1-3 × regras do débito.
 //   docker cp dist/backtest.js finance-dashboard:/tmp/backtest.js && docker exec finance-dashboard node /tmp/backtest.js
-// Para cada um dos 3 últimos meses fechados: previsão feita na véspera do mês × realizado.
-// Imprime só totais por componente. Sai com código 1 se algum mês reprova no critério do spec.
-import { avaliarMes, componentesPrevistos, LIMITES, type Componentes } from '../src/lib/backtest';
-import { pool, q } from '../src/lib/db';
+// Imprime só agregados (erro médio e viés), nunca lançamentos. Resultado vai para o vault.
+import { componentesPrevistos, escolherRegra, resumirErros, type LinhaErro } from '../src/lib/backtest';
+import { pool } from '../src/lib/db';
 import { currentDateSP } from '../src/lib/format';
 import { addMonths, diasNoMes } from '../src/lib/previsao';
-import { CASA_CATS, computeProjecao, getProjecaoBase } from '../src/lib/queries';
+import { computeProjecao, getProjecaoBase, getRealizado } from '../src/lib/queries';
+import type { RegraDebito } from '../src/lib/debito';
 
-const SEM_ESPELHO = `descricao NOT ILIKE '%MORA CARTAO%' AND descricao NOT ILIKE '%PROVISAO%' AND descricao NOT ILIKE '%GASTOS CART%'`;
-
-async function realizado(mes: string): Promise<Componentes> {
-  const [r] = await q<any>(
-    `SELECT
-       COALESCE(SUM(valor) FILTER (WHERE classe='receita'),0) AS receita,
-       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}),0) AS debito,
-       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND categoria = ANY($2::text[])),0) AS casa,
-       COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SEM_ESPELHO}),0) AS fatura
-     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date`,
-    [`${mes}-01`, CASA_CATS],
-  );
-  const c = { receita: Number(r.receita), debito: Number(r.debito), casa: Number(r.casa), fatura: Number(r.fatura) };
-  return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
-}
-
-const brl = (v: number) => Math.round(v).toLocaleString('pt-BR');
+const REGRAS: RegraDebito[] = ['confiaveis', 'media3', 'ponderada6', 'mediana3'];
+// previsão feita na véspera do mês (último dia do mês anterior)
+const vespera = (mes: string) => { const a = addMonths(mes, -1); return `${a}-${String(diasNoMes(a)).padStart(2, '0')}`; };
 
 async function main() {
   const atual = currentDateSP().slice(0, 7);
-  const meses = [3, 2, 1].map((i) => addMonths(atual, -i));
-  let tudoOk = true;
-  console.log(`limites: receita ±${LIMITES.receita}, fatura ±${LIMITES.fatura}, saldo ±${LIMITES.saldo}`);
-  console.log('mês      componente  previsto      real      erro');
-  for (const mes of meses) {
-    // previsão do mês INTEIRO feita na véspera (último dia do mês anterior) — é a pergunta
-    // "quanto vou ter no mês que vem". Prever "a partir do dia 1º" contava como já recebido
-    // o que cai no próprio dia 1º (a Ariane recebe nesse dia).
-    const anterior = addMonths(mes, -1);
-    const hoje = `${anterior}-${String(diasNoMes(anterior)).padStart(2, '0')}`;
-    const base = await getProjecaoBase('casal', hoje);
-    const previsto = componentesPrevistos(computeProjecao(base, 1, hoje)[1]);
-    const real = await realizado(mes);
-    const { erros, ok } = avaliarMes(previsto, real);
-    tudoOk &&= ok;
-    for (const k of Object.keys(previsto) as (keyof Componentes)[]) {
-      console.log(`${mes}  ${k.padEnd(10)} ${brl(previsto[k]).padStart(9)} ${brl(real[k]).padStart(9)} ${brl(erros[k]).padStart(9)}`);
-    }
-    console.log(`${mes}  ${ok ? 'APROVADO' : 'REPROVADO'}`);
+  const meses = Array.from({ length: 12 }, (_, i) => addMonths(atual, -(12 - i)));
+  const real = new Map(await Promise.all(meses.map(async (m) => [m, await getRealizado(m)] as const)));
+  const linhas: LinhaErro[] = [];
+  for (const regra of REGRAS) for (const h of [1, 2, 3]) for (const mes of meses) {
+    // horizonte h: a previsão do mês é feita h-1 meses antes da sua véspera
+    const hoje = vespera(addMonths(mes, -(h - 1)));
+    const proj = computeProjecao(await getProjecaoBase('casal', hoje, { regraDebito: regra }), h, hoje);
+    const p = componentesPrevistos(proj[h]);
+    const r = real.get(mes)!;
+    linhas.push({ regra, horizonte: h, mes, erros: { receita: p.receita - r.receita, debito: p.debito - r.debito, casa: p.casa - r.casa, fatura: p.fatura - r.fatura, saldo: p.saldo - r.saldo } });
   }
+  const resumo = resumirErros(linhas);
+  console.log('regra       h  componente   erro_medio   vies');
+  for (const x of resumo) console.log(`${x.regra.padEnd(11)} ${x.horizonte}  ${x.comp.padEnd(10)} ${String(Math.round(x.mae)).padStart(10)} ${String(Math.round(x.vies)).padStart(7)}`);
+  const esc = escolherRegra(resumo);
+  console.log(`\nescolhida: ${esc.regra} (${esc.motivo})`);
+  console.log(JSON.stringify({ errosSaldoH1: linhas.filter((l) => l.regra === esc.regra && l.horizonte === 1).map((l) => ({ mes: l.mes, e: Math.round(l.erros.saldo) })) }));
   await pool.end();
-  process.exitCode = tudoOk ? 0 : 1;
 }
-
-main().catch((e) => {
-  console.error(e instanceof Error ? e.message : e);
-  process.exit(2);
-});
+main();

@@ -50,3 +50,11 @@ describe('agruparGastos', () => {
     expect(agruparGastos(new Map([['Groceries', 10]]), 0)[0].pctRenda).toBe(0);
   });
 });
+
+describe('consórcio', () => {
+  it('entra em Dívida e seguro (travado) e tem nome em português', async () => {
+    const { traduzCategoria } = await import('../../src/lib/format');
+    expect(agruparGastos(new Map([['Consortium', 575]]), 1000)[0]).toMatchObject({ nome: 'Dívida e seguro', travado: true });
+    expect(traduzCategoria('Consortium')).toBe('Consórcio');
+  });
+});

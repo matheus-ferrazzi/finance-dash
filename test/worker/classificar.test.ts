@@ -58,3 +58,17 @@ describe('classificar', () => {
     expect(classificar('Groceries', 'x', false, 'Débito', 'Matheus')).toBe('estorno');
   });
 });
+
+describe('consórcio (B, 10/10/2026)', () => {
+  const boleto = 'PAGAMENTO DE BOLETO OUTROS BANCOS   BRADESCO ADMINISTRADORA D';
+  it('boleto da administradora de consórcio é despesa, não pagamento de fatura', () => {
+    expect(classificar('Transfer - Bank Slip', boleto, true, 'Débito', 'Ariane')).toBe('despesa');
+  });
+  it('categoria Consortium', () => {
+    expect(corrigirCategoria('Transfer - Bank Slip', boleto)).toBe('Consortium');
+    expect(corrigirCategoria(null, 'PGTO CONSORCIO GRUPO 123')).toBe('Consortium');
+  });
+  it('fatura do cartão Bradesco continua pagamento de fatura', () => {
+    expect(classificar('Credit card payment', 'GASTOS CARTAO DE CREDITO - DOCTO: 1', true, 'Débito', 'Matheus')).toBe('pagamento_fatura');
+  });
+});

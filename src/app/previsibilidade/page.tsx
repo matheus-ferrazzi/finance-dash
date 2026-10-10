@@ -3,6 +3,9 @@ import {
 } from '@/lib/queries';
 import { PageTitle } from '../components/ui';
 import { mesValido } from '@/lib/links';
+import { currentDateSP, mesLabel } from '@/lib/format';
+import { addMonths } from '@/lib/previsao';
+import { debitoParaSairAte, niveisMeta, tabelaMeta } from '@/lib/meta';
 import { PrevisibilidadeClient } from '../components/PrevisibilidadeClient';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +27,16 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   ]);
   const projecao = computeProjecao(base, HORIZONTE_MAX);
 
+  // meta de gasto no débito: o que mais decide "quando saio do vermelho"
+  const hoje = currentDateSP();
+  const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
+  const alvo = addMonths(hoje.slice(0, 7), 12);
+  const meta = {
+    debitoAtual, alvo, alvoLabel: mesLabel(alvo),
+    linhas: tabelaMeta(base, hoje, niveisMeta(debitoAtual)),
+    maxDebito: debitoParaSairAte(base, hoje, alvo),
+  };
+
   return (
     <div>
       <PageTitle
@@ -40,6 +53,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         mesFoco={mesValido(searchParams.mes)}
         calib={calib}
         motivoSemFaixa={motivo}
+        meta={meta}
       />
     </div>
   );

@@ -752,6 +752,42 @@ export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<C
   return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
 }
 
+export interface MesPassado { mes: string; previsto: Componentes; real: Componentes; saldoFim: number }
+
+// promessa por pessoa+mês; virou o mês, as chaves do mês anterior saem (as das outras pessoas ficam)
+const cachePassados = new Map<string, Promise<MesPassado[]>>();
+
+/** Os `n` meses fechados antes do atual: previsto na véspera × real × saldo em conta no fim (reconstruído). */
+export function getMesesPassados(resp: Resp, hoje: string = currentDateSP(), n = 3): Promise<MesPassado[]> {
+  const mesRef = hoje.slice(0, 7);
+  const chave = `${resp}|${mesRef}|${n}`;
+  const ja = cachePassados.get(chave);
+  if (ja) return ja;
+  for (const k of Array.from(cachePassados.keys())) if (k.split('|')[1] !== mesRef) cachePassados.delete(k);
+  const p = calcularPassados(resp, hoje, n);
+  cachePassados.set(chave, p);
+  p.catch(() => cachePassados.delete(chave));
+  return p;
+}
+
+async function calcularPassados(resp: Resp, hoje: string, n: number): Promise<MesPassado[]> {
+  const atual = hoje.slice(0, 7);
+  const meses = Array.from({ length: n }, (_, i) => addMonths(atual, -(n - i)));
+  const [saldo, movs] = await Promise.all([getSaldoContas(resp), getMovimentosDiarios(resp, `${meses[0]}-01`, hoje)]);
+  return Promise.all(meses.map(async (mes) => {
+    const ant = addMonths(mes, -1);
+    const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
+    // mesma régua da calibração: véspera do mês e a regra do débito em uso
+    const [base, real] = await Promise.all([getProjecaoBase(resp, vesp, { regraDebito: REGRA_DEBITO }), getRealizado(mes, resp)]);
+    const fimDoMes = `${mes}-${String(diasNoMes(mes)).padStart(2, '0')}`;
+    const depois = Object.entries(movs).filter(([d]) => d > fimDoMes).reduce((s, [, v]) => s + v, 0);
+    return {
+      mes, real, saldoFim: Math.round((saldo.total - depois) * 100) / 100,
+      previsto: componentesPrevistos(computeProjecao(base, 1, vesp)[1]),
+    };
+  }));
+}
+
 /** Débito dos `n` meses fechados antes do mês de `hoje`: livre × travado, fora casa e espelhos; mês vazio = 0. */
 export async function getDebitoMensal(resp: Resp, hoje: string, n = 6): Promise<MesDebito[]> {
   const r = rf(resp, 5);

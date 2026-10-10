@@ -113,4 +113,24 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(await queries.getRealizado('2033-03', 'Ariane')).toMatchObject({ receita: 1000, debito: 300, saldo: 700 });
     expect(await queries.getRealizado('2033-03')).toMatchObject({ receita: 1000, debito: 800, saldo: 200 });
   });
+
+  it('meses passados: previsto na véspera, real e saldo no fim reconstruído, por pessoa', async () => {
+    await pool.query(`INSERT INTO financas_saldos (id_conta, banco, responsavel, tipo, saldo) VALUES ('mp-c', 'X', 'Ariane', 'checking', 900)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('mp-1', '2034-02-10', 200, 'mercado', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2034-02-10'),
+      ('mp-2', '2034-03-10', 100, 'mercado', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2034-03-10'),
+      ('mp-3', '2034-03-11', 70, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2034-03-11')`);
+    const r = await queries.getMesesPassados('Ariane', '2034-04-15');
+    expect(r.map((m) => m.mes)).toEqual(['2034-01', '2034-02', '2034-03']);
+    expect(r[1].real.debito).toBe(200);
+    expect(r[2].saldoFim).toBe(900);       // nada depois de março
+    expect(r[1].saldoFim).toBe(1000);      // desfaz os 100 de março (os 70 são de outra pessoa)
+    expect(r[0].saldoFim).toBe(1200);
+    expect(r[0].real).toMatchObject({ receita: 0, debito: 0, saldo: 0 }); // mês sem lançamento
+    expect(typeof r[0].previsto.saldo).toBe('number');
+    // cache: mesma pessoa e mês devolve o mesmo resultado; outra pessoa no mesmo mês não apaga
+    expect(await queries.getMesesPassados('Ariane', '2034-04-15')).toBe(r);
+    await queries.getMesesPassados('Matheus', '2034-04-15');
+    expect(await queries.getMesesPassados('Ariane', '2034-04-20')).toBe(r);
+  });
 });

@@ -1,6 +1,8 @@
 // O que a Previsão mês a mês mostra (F2b). Só remonta números que já existem na projeção:
 // nenhuma regra nova de previsão mora aqui.
 import { compromissoAtivoNoMes, type ProjecaoBase, type ProjecaoMes } from './previsao';
+import { traduzCategoria } from './format';
+import { mesValido } from './links';
 import { faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import type { Componentes } from './backtest';
 import type { MesPassado } from './queries'; // só o tipo: some na compilação, não puxa o banco
@@ -37,6 +39,12 @@ export function linhasDaLista(projecao: ProjecaoMes[], passados: MesPassado[], c
   ];
 }
 
+/** Posição do mês pedido no `?mes=` dentro da lista; -1 (mostra a lista) se inválido ou fora do intervalo. */
+export function indiceDoMes(linhas: { mes: string }[], v: string | undefined): number {
+  const mes = mesValido(v);
+  return mes ? linhas.findIndex((l) => l.mes === mes) : -1;
+}
+
 /** Mês futuro: as quatro linhas com os itens de onde cada número vem. Os totais fecham com a sobra. */
 export function detalheMesFuturo(base: ProjecaoBase, m: ProjecaoMes, parcelados: Parcelado[]) {
   const ativos = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, m.mes));
@@ -49,7 +57,8 @@ export function detalheMesFuturo(base: ProjecaoBase, m: ProjecaoMes, parcelados:
     { chave: 'entra', titulo: 'Entra', total: m.receita, itens: base.fontesReceita.map((f) => ({ nome: f.nome, valor: f.valor, nota: `dia ${f.diaTipico}` })) },
     { chave: 'casa', titulo: 'Casa e fixos', total: r2(m.despesaManual + m.despesaCasa), itens: [
       ...ativos.map((c) => ({ nome: c.nome, valor: c.valor })),
-      ...Object.entries(base.despesaCasaPorCategoria).filter(([cat]) => !cobertas.has(cat)).map(([cat, v]) => ({ nome: cat, valor: r2(v) })),
+      ...Object.entries(base.despesaCasaPorCategoria).filter(([cat]) => !cobertas.has(cat))
+        .map(([cat, v]) => ({ nome: traduzCategoria(cat), valor: r2(v), nota: 'média' })),
     ] },
     // nos meses futuros despesaFixa é 0 (o travado já está em despesaVariavel); somar protege se isso mudar
     { chave: 'debito', titulo: 'Débito', total: r2(m.despesaVariavel + m.despesaFixa), itens: [

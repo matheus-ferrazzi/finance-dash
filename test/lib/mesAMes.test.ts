@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, linhasDaLista } from '../../src/lib/mesAMes';
+import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista } from '../../src/lib/mesAMes';
 import type { ProjecaoBase, ProjecaoMes } from '../../src/lib/previsao';
 
 const mes = (p: Partial<ProjecaoMes>): ProjecaoMes => ({ mes: '2027-01', mesLabel: 'jan/27', receita: 5000, despesaFixa: 0, despesaManual: 1000, despesaCasa: 500, despesaVariavel: 2000, fatura: 1200, parcelas: 300, saldo: 300, saldoProjetado: 800, ...p });
@@ -29,7 +29,7 @@ describe('detalhe do mês futuro', () => {
     const d = detalheMesFuturo(base, mes({}), parcelados);
     const it = (k: string) => d.linhas.find((l) => l.chave === k)!.itens;
     expect(it('entra')).toEqual([{ nome: 'Salário A', valor: 3000, nota: 'dia 5' }, { nome: 'Salário B', valor: 2000, nota: 'dia 20' }]);
-    expect(it('casa')).toEqual([{ nome: 'Aluguel', valor: 1000 }, { nome: 'Electricity', valor: 500 }]);
+    expect(it('casa')).toEqual([{ nome: 'Aluguel', valor: 1000 }, { nome: 'Energia', valor: 500, nota: 'média' }]);
     expect(it('debito')).toEqual([{ nome: 'Dia a dia (média)', valor: 1600 }, { nome: 'Contas travadas (média)', valor: 400 }]);
     expect(it('cartao')).toEqual([{ nome: 'loja x', valor: 300, nota: 'B1 · parcela 4/6' }, { nome: 'Compras novas (média)', valor: 900 }]);
   });
@@ -87,5 +87,17 @@ describe('lista de meses', () => {
     const l = linhasDaLista(proj, [], c, 31, 31);
     expect(l[0].piorCaso).toBe(780);
     expect(l[1].piorCaso).toBe(750);
+  });
+});
+
+describe('mês aberto pelo ?mes', () => {
+  const l = [{ mes: '2026-09' }, { mes: '2026-10' }, { mes: '2026-11' }] as any;
+  it('mês da lista abre; inválido, ausente ou fora do intervalo dá -1 (mostra a lista)', () => {
+    expect(indiceDoMes(l, '2026-10')).toBe(1);
+    expect(indiceDoMes(l, '2020-01')).toBe(-1);
+    expect(indiceDoMes(l, '2029-01')).toBe(-1);
+    expect(indiceDoMes(l, '2026-13')).toBe(-1);
+    expect(indiceDoMes(l, 'x')).toBe(-1);
+    expect(indiceDoMes(l, undefined)).toBe(-1);
   });
 });

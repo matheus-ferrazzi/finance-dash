@@ -57,6 +57,10 @@ O estimador é uma função pura `estimarDebito(meses: { mes: string; livre: num
 - O mês em andamento usa a mesma régua, proporcional aos dias que faltam: `fechaCom + p10·(diasRestantes/diasNoMes)` até `fechaCom + p90·(diasRestantes/diasNoMes)`.
 - A calibração guarda `n` (quantos meses entraram) e a data em que foi calculada.
 
+### Janela da calibração (decidido com o Matheus em 10/10/2026, durante a execução)
+
+O teste de 12 meses mostrou dois regimes: até jun/2026 (emprego anterior, dívida com faturas pagas em parte, renda irregular) a previsão errava o saldo do mês em vários milhares; desde jul/2026 (fatura paga inteira, renda estável) o erro voltou à casa das centenas. Calibrar com os dois daria uma faixa inútil. A calibração usa **só os meses desde `INICIO_REGIME` = jul/2026** dentro dos 12 últimos. Com menos de 6 desses meses (até dez/2026) a previsão sai **sem faixa** e as decisões usam o número provável; a faixa aparece sozinha a partir de jan/2027. A validação fora da amostra (cobertura 70–90%) só é possível quando houver 6 meses anteriores no regime — fica registrada como pendente até lá.
+
 ### Onde é calculada
 
 Função `getCalibracao()` no painel: roda o teste do §1 (horizonte 1) para os 12 meses, calcula p10/p90 e guarda em memória por 24 horas. A primeira consulta depois de um deploy espera o cálculo; as seguintes usam o que está em memória. Sem banco novo, sem tarefa nova no worker.

@@ -7,6 +7,7 @@ import { currentDateSP } from '../src/lib/format';
 import { addMonths, diasNoMes } from '../src/lib/previsao';
 import { computeProjecao, getProjecaoBase, getRealizado } from '../src/lib/queries';
 import type { RegraDebito } from '../src/lib/debito';
+import { calibrar, doRegime, faixaMes, INICIO_REGIME } from '../src/lib/faixa';
 
 const REGRAS: RegraDebito[] = ['confiaveis', 'media3', 'ponderada6', 'mediana3'];
 // previsão feita na véspera do mês (último dia do mês anterior)
@@ -31,6 +32,24 @@ async function main() {
   const esc = escolherRegra(resumo);
   console.log(`\nescolhida: ${esc.regra} (${esc.motivo})`);
   console.log(JSON.stringify({ errosSaldoH1: linhas.filter((l) => l.regra === esc.regra && l.horizonte === 1).map((l) => ({ mes: l.mes, e: Math.round(l.erros.saldo) })) }));
+
+  // cobertura fora da amostra, só no regime atual: cada mês M é testado com a faixa calibrada
+  // apenas nos meses do regime anteriores a M (mínimo 6) — calibrar e medir nos mesmos meses daria 80% por construção
+  const doRegimeAtual = doRegime(meses);
+  let dentro = 0, total = 0;
+  for (const h of [1, 2, 3]) for (const [i, mes] of doRegimeAtual.entries()) {
+    const anteriores = doRegimeAtual.slice(0, i)
+      .map((m) => linhas.find((l) => l.regra === esc.regra && l.horizonte === 1 && l.mes === m)!.erros.saldo);
+    const c = calibrar(anteriores, mes);
+    if (!c) continue;
+    const l = linhas.find((x) => x.regra === esc.regra && x.horizonte === h && x.mes === mes)!;
+    const r = real.get(mes)!.saldo;
+    const f = faixaMes(r + l.erros.saldo, h, c);
+    total++; if (r >= f.piorCaso && r <= f.melhorCaso) dentro++;
+  }
+  console.log(total
+    ? `cobertura fora da amostra (regime desde ${INICIO_REGIME}): ${dentro}/${total} = ${Math.round((100 * dentro) / total)}% (aceite: 70% a 90%)`
+    : `cobertura fora da amostra: pendente — ${doRegimeAtual.length} meses no regime desde ${INICIO_REGIME}, precisa de 7 para o primeiro teste`);
   await pool.end();
 }
 main();

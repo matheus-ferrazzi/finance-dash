@@ -34,7 +34,7 @@ function cicloAtual(fechamento: string | null, hojeMs: number) {
   return { start: diaDoMes(y, m - 1, closeDay), end: dThis, closeDay };
 }
 
-export default async function Faturas({ searchParams }: { searchParams: { resp?: string } }) {
+export default async function Faturas({ searchParams }: { searchParams: { resp?: string; cartao?: string } }) {
   const resp = resolveResp(searchParams.resp);
   const [faturas, creditos] = await Promise.all([getFaturas(resp), getCreditoDespesas(resp)]);
 
@@ -65,6 +65,12 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
     };
   });
 
+  // ?cartao=Nubank (link da home): o cartão vem primeiro e aberto; cartão que a pessoa não tem é ignorado
+  const pedido = searchParams.cartao;
+  const ordenadas = pedido && views.some((v) => v.banco === pedido)
+    ? [...views.filter((v) => v.banco === pedido), ...views.filter((v) => v.banco !== pedido)]
+    : views;
+
   const totalAberto = faturas.reduce((s, f) => s + f.valor, 0);
   const limiteTotal = faturas.reduce((s, f) => s + (f.limite ?? 0), 0);
   const dispTotal = faturas.reduce((s, f) => s + (f.disponivel ?? 0), 0);
@@ -83,7 +89,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {views.map((v) => <FaturaCard key={v.id} f={v} />)}
+        {ordenadas.map((v) => <FaturaCard key={v.id} f={v} abertoInicial={v.banco === pedido} />)}
       </div>
       {views.length === 0 && (
         <div className="card"><p className="text-sm text-muted">Nenhuma fatura cadastrada.</p></div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparGastos, grupoDaCategoria } from '../../src/lib/grupos';
+import { agruparGastos, categoriaNoFiltro, grupoDaCategoria } from '../../src/lib/grupos';
 
 describe('grupoDaCategoria', () => {
   it('categorias que caíam no Resto agora têm grupo', () => {
@@ -64,5 +64,23 @@ describe('presentes', () => {
     const { traduzCategoria } = await import('../../src/lib/format');
     expect(agruparGastos(new Map([['Gifts', 100]]), 1000)[0]).toMatchObject({ nome: 'Compras', travado: false });
     expect(traduzCategoria('Gifts')).toBe('Presentes');
+  });
+});
+
+describe('categoriaNoFiltro', () => {
+  it('grupo: só categorias do grupo; Resto = sem grupo', () => {
+    expect(categoriaNoFiltro('Groceries', { grupo: 'Mercado' })).toBe(true);
+    expect(categoriaNoFiltro('Eating out', { grupo: 'Mercado' })).toBe(false);
+    expect(categoriaNoFiltro('Transfer - PIX', { grupo: 'Resto' })).toBe(true);
+    expect(categoriaNoFiltro('Groceries', { grupo: 'Resto' })).toBe(false);
+  });
+  it('tipo=livre tira Casa e Dívida e seguro', () => {
+    expect(categoriaNoFiltro('Housing', { tipo: 'livre' })).toBe(false);
+    expect(categoriaNoFiltro('Consortium', { tipo: 'livre' })).toBe(false);
+    expect(categoriaNoFiltro('Groceries', { tipo: 'livre' })).toBe(true);
+  });
+  it('filtro desconhecido é ignorado', () => {
+    expect(categoriaNoFiltro('Groceries', { grupo: 'xyz' })).toBe(true);
+    expect(categoriaNoFiltro('Housing', { tipo: 'outro' })).toBe(true);
   });
 });

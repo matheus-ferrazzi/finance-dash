@@ -2,6 +2,7 @@ import {
   getProjecaoBase, computeProjecao, getCompromissosParcelados, Resp,
 } from '@/lib/queries';
 import { PageTitle } from '../components/ui';
+import { mesValido } from '@/lib/links';
 import { PrevisibilidadeClient } from '../components/PrevisibilidadeClient';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ function resolveResp(v?: string): Resp {
 
 const HORIZONTE_MAX = 24;
 
-export default async function Previsibilidade({ searchParams }: { searchParams: { resp?: string } }) {
+export default async function Previsibilidade({ searchParams }: { searchParams: { resp?: string; mes?: string } }) {
   const resp = resolveResp(searchParams.resp);
 
   // getProjecaoBase já traz saldos e compromissos manuais — não consultar de novo
@@ -35,6 +36,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         projecao={projecao}
         parcelados={parcelados}
         manuais={base.compromissosManuais}
+        mesFoco={mesValido(searchParams.mes)}
       />
     </div>
   );

@@ -59,7 +59,7 @@ const FORM_VAZIO: FormState = {
 };
 
 export function PrevisibilidadeClient({
-  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber,
+  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null,
 }: {
   patrimonioAtual: number;
   saldoContas: { total: number; contas: SaldoConta[] };
@@ -67,9 +67,11 @@ export function PrevisibilidadeClient({
   projecao: ProjecaoMes[];
   parcelados: CompromissoParcelado[];
   manuais: CompromissoManual[];
+  /** ?mes= (link da home): mês destacado na tabela */
+  mesFoco?: string | null;
 }) {
   const router = useRouter();
-  const [horizonte, setHorizonte] = useState<number>(6);
+  const [horizonte, setHorizonte] = useState<number>(Math.max(6, projecao.findIndex((m) => m.mes === mesFoco) + 1));
   const [form, setForm] = useState<FormState | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -464,6 +466,7 @@ export function PrevisibilidadeClient({
       )}
 
       <ProjecaoPainel
+        mesFoco={mesFoco}
         linhas={sliced}
         temSimulacao={!!simulacao}
         saldoContas={saldoContas}

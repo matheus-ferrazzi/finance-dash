@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
+import { qsNavegacao } from '@/lib/links';
 import {
   LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
   Telescope, Stethoscope, MoreHorizontal, ClipboardCheck,
@@ -38,7 +39,7 @@ const RESPS = [
 export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname();
   const sp = useSearchParams();
-  const qs = sp.toString();
+  const qs = qsNavegacao(sp.toString());
   return (
     <nav className="flex flex-col gap-1">
       {[...LINKS, null, ...EXTRA].map((l) => {
@@ -66,7 +67,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 export function MobileNav() {
   const path = usePathname();
   const sp = useSearchParams();
-  const qs = sp.toString();
+  const qs = qsNavegacao(sp.toString());
   const [mais, setMais] = useState(false);
   const noMais = EXTRA.some((e) => e.href === path);
   const item = 'flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px]';

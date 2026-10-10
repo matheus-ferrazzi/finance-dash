@@ -19,13 +19,18 @@ describe.skipIf(!url)('getMovimentosDiarios (integração)', () => {
       ('b', '2026-10-02', 30, 'x', 'Débito', 'B', 'Ariane', 'despesa', 'Saída'),
       ('c', '2026-10-03', 50, 'x', 'Crédito', 'B', 'Ariane', 'despesa', 'Saída'),
       ('d', '2026-10-04', 20, 'x', 'Débito', 'B', 'Matheus', 'despesa', 'Saída'),
-      ('e', '2026-10-20', 999, 'x', 'Débito', 'B', 'Ariane', 'despesa', 'Saída')`);
+      ('e', '2026-10-20', 999, 'x', 'Débito', 'B', 'Ariane', 'despesa', 'Saída'),
+      ('esp', '2026-10-05', 4000, 'MORA CARTAO DE CREDITO - DOCTO: 1', 'Débito', 'B', 'Matheus', 'pagamento_fatura', 'Saída')`);
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {
     await pool?.end();
     const db = await import('../../src/lib/db');
     await db.pool.end();
+  });
+
+  it('lançamento-espelho do cartão (MORA/PROVISAO/GASTOS CART) não move a linha', async () => {
+    expect(await queries.getMovimentosDiarios('Matheus', '2026-10-01', '2026-10-10')).toEqual({ '2026-10-04': -20 });
   });
 
   it('líquido por dia, só débito, da pessoa, até hoje (agendado não entra)', async () => {

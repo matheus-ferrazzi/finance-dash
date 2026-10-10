@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { mesLabel } from '@/lib/format';
+import { brl, mesLabel } from '@/lib/format';
 import { compraCabe, textoVeredito } from '@/lib/decisoes';
 import type { Calibracao } from '@/lib/faixa';
 import type { ProjecaoMes } from '@/lib/previsao';
@@ -12,7 +12,7 @@ export function SimuladorPagina({ projecao, saldoAtual, calib }: { projecao: Pro
   const [valor, setValor] = useState('');
   const [parcelas, setParcelas] = useState('1');
   const sim = useMemo(() => simularCompra(valor, parcelas, saldoAtual, projecao), [valor, parcelas, saldoAtual, projecao]);
-  const veredito = sim ? textoVeredito(compraCabe(projecao, calib, sim.valorParcela, sim.parcelas), (m) => mesLabel(m)) : null;
+  const veredito = sim ? textoVeredito(compraCabe(projecao, calib, sim.valorParcela, sim.parcelas), (m) => mesLabel(m), (v) => brl(v)) : null;
   return (
     <SimuladorCompra valorStr={valor} setValorStr={setValor} parcelasStr={parcelas} setParcelasStr={setParcelas}
       resultado={sim} veredito={veredito} />

@@ -50,6 +50,7 @@ export function textoVeredito(
 ): string {
   if (!r.cabe && r.mesQueFura) return `Não cabe: pelo pior caso, ${mesLabel(r.mesQueFura)} vai para o vermelho por causa dela.`;
   // cenário que já está no vermelho: "cabe" soaria como liberação — a compra só aprofunda o buraco
-  if (r.maisNegativo) return `Atenção: ${mesLabel(r.maisNegativo)} já fica no vermelho sem ela; a compra aprofunda em ${dinheiro(r.aprofunda ?? 0)}.`;
+  // maisNegativo é o fundo da curva, não o primeiro mês no vermelho: dizer "no pior mês" para não confundir
+  if (r.maisNegativo) return `Atenção: já está no vermelho sem ela; no pior mês (${mesLabel(r.maisNegativo)}) a compra aprofunda o vermelho em ${dinheiro(r.aprofunda ?? 0)}.`;
   return 'Cabe: nenhum mês vai para o vermelho por causa dela, nem pelo pior caso.';
 }

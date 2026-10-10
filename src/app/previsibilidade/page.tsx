@@ -6,7 +6,7 @@ import { brl, currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths, diasNoMes } from '@/lib/previsao';
 import { saiDoVermelho } from '@/lib/decisoes';
 import { debitoParaSairAte, niveisMeta, tabelaMeta, textoMetaAlvo } from '@/lib/meta';
-import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista } from '@/lib/mesAMes';
+import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, semPassadosSeFalhar } from '@/lib/mesAMes';
 import { ListaMeses } from '../components/ListaMeses';
 import { DetalheMes } from '../components/DetalheMes';
 import { MetaDebito } from '../components/MetaDebito';
@@ -29,7 +29,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
     getProjecaoBase(resp),
     getCompromissosParcelados(resp),
     getCalibracaoPara(resp),
-    getMesesPassados(resp, hoje),
+    semPassadosSeFalhar(getMesesPassados(resp, hoje)),
   ]);
   const projecao = computeProjecao(base, HORIZONTE_MAX);
   const ritmo = computeRitmo(base, projecao[0]);

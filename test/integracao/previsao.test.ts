@@ -144,8 +144,22 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(r[0].real).toMatchObject({ receita: 0, debito: 0, saldo: 0 }); // mês sem lançamento
     expect(typeof r[0].previsto.saldo).toBe('number');
     // cache: mesma pessoa e mês devolve o mesmo resultado; outra pessoa no mesmo mês não apaga
-    expect(await queries.getMesesPassados('Ariane', '2034-04-15')).toBe(r);
+    expect((await queries.getMesesPassados('Ariane', '2034-04-15'))[0].previsto).toBe(r[0].previsto);
     await queries.getMesesPassados('Matheus', '2034-04-15');
-    expect(await queries.getMesesPassados('Ariane', '2034-04-20')).toBe(r);
+    expect((await queries.getMesesPassados('Ariane', '2034-04-20'))[1].previsto).toBe(r[1].previsto);
+  });
+
+  it('meses passados: o real e o saldo no fim acompanham lançamento que chega depois (só o previsto fica em cache)', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('mc-1', '2035-02-10', 100, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2035-02-10')`);
+    const antes = await queries.getMesesPassados('Matheus', '2035-04-01');
+    expect(antes[2].real.debito).toBe(0);
+    // sincronização atrasada: o lançamento de 31/03 chega depois do primeiro acesso do mês
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('mc-2', '2035-03-31', 40, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2035-04-01')`);
+    const depois = await queries.getMesesPassados('Matheus', '2035-04-01');
+    expect(depois[2].real.debito).toBe(40);
+    expect(depois[1].saldoFim - antes[1].saldoFim).toBe(40); // desfaz a saída de março no saldo do fim de fevereiro
+    expect(depois[2].previsto).toBe(antes[2].previsto);
   });
 });

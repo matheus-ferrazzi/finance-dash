@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista } from '../../src/lib/mesAMes';
+import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, semPassadosSeFalhar } from '../../src/lib/mesAMes';
 import type { ProjecaoBase, ProjecaoMes } from '../../src/lib/previsao';
 
 const mes = (p: Partial<ProjecaoMes>): ProjecaoMes => ({ mes: '2027-01', mesLabel: 'jan/27', receita: 5000, despesaFixa: 0, despesaManual: 1000, despesaCasa: 500, despesaVariavel: 2000, fatura: 1200, parcelas: 300, saldo: 300, saldoProjetado: 800, ...p });
@@ -14,7 +14,7 @@ const base = {
   creditoPorVencimento: { '2027-01': 300 },
   mesCorrente: { recebidoPorFonte: { a: 3000 }, variavelJaGasto: 700, fixoJaGasto: 100, casaNoMesPorCategoria: { Housing: 1000 }, faturaJaPaga: 400, receitaAgendada: 0, receitasAReceber: [], agendadoRestante: 0 },
 } as unknown as ProjecaoBase;
-const parcelados = [{ chave: 'loja x', categoria: 'Shopping', banco: 'B1', responsavel: 'X', valorParcela: 300, restantes: 2, dataFim: '2027-02-10', parcelaAtual: 4, parcelaTotal: 6 }];
+const parcelados = [{ chave: 'loja x', categoria: 'Shopping', banco: 'B1', responsavel: 'X', valorParcela: 300, restantes: 2, dataFim: '2027-02-10', parcelaAtual: 5, parcelaTotal: 6 }];
 
 describe('detalhe do mês futuro', () => {
   it('quatro linhas cujos totais fecham com a sobra do mês', () => {
@@ -31,7 +31,7 @@ describe('detalhe do mês futuro', () => {
     expect(it('entra')).toEqual([{ nome: 'Salário A', valor: 3000, nota: 'dia 5' }, { nome: 'Salário B', valor: 2000, nota: 'dia 20' }]);
     expect(it('casa')).toEqual([{ nome: 'Aluguel', valor: 1000 }, { nome: 'Energia', valor: 500, nota: 'média' }]);
     expect(it('debito')).toEqual([{ nome: 'Dia a dia (média)', valor: 1600 }, { nome: 'Contas travadas (média)', valor: 400 }]);
-    expect(it('cartao')).toEqual([{ nome: 'loja x', valor: 300, nota: 'B1 · parcela 4/6' }, { nome: 'Compras novas (média)', valor: 900 }]);
+    expect(it('cartao')).toEqual([{ nome: 'loja x', valor: 300, nota: 'B1 · parcela 5/6' }, { nome: 'Compras novas (média)', valor: 900 }]);
   });
   it('parcelas lançadas sem compra parcelada conhecida viram "outras compras já lançadas" (itens fecham com o total)', () => {
     const d = detalheMesFuturo(base, mes({ parcelas: 500 }), parcelados);
@@ -42,6 +42,15 @@ describe('detalhe do mês futuro', () => {
   it('fonte de receita de centavos (rendimento) não vira item', () => {
     const b = { ...base, fontesReceita: [...base.fontesReceita, { fonte: 'r', nome: 'rendimentos', valor: 0.01, diaTipico: 11, responsavel: 'X' }] } as ProjecaoBase;
     expect(detalheMesFuturo(b, mes({}), []).linhas[0].itens.map((i) => i.nome)).toEqual(['Salário A', 'Salário B']);
+  });
+  it('o número da parcela anda com o mês (conta a partir da última)', () => {
+    const d = detalheMesFuturo(base, mes({ mes: '2027-02' }), parcelados);
+    expect(d.linhas.find((l) => l.chave === 'cartao')!.itens[0].nota).toBe('B1 · parcela 6/6');
+  });
+  it('compras listadas que somam mais que as parcelas do mês viram uma linha só (itens nunca passam do total)', () => {
+    const d = detalheMesFuturo(base, mes({ parcelas: 100 }), parcelados);
+    const itens = d.linhas.find((l) => l.chave === 'cartao')!.itens;
+    expect(itens.map((i) => [i.nome, i.valor])).toEqual([['Parcelas já lançadas', 100], ['Compras novas (média)', 1100]]);
   });
   it('parcela já encerrada no mês não aparece', () => {
     const d = detalheMesFuturo(base, mes({ mes: '2027-03', parcelas: 0 }), parcelados);
@@ -103,5 +112,13 @@ describe('mês aberto pelo ?mes', () => {
     expect(indiceDoMes(l, '2026-13')).toBe(-1);
     expect(indiceDoMes(l, 'x')).toBe(-1);
     expect(indiceDoMes(l, undefined)).toBe(-1);
+  });
+});
+
+describe('meses passados opcionais', () => {
+  it('falha ao buscar os passados vira lista sem passados, não derruba a tela', async () => {
+    expect(await semPassadosSeFalhar(Promise.reject(new Error('banco fora')))).toEqual([]);
+    const ok = [{ mes: '2026-09' }] as any;
+    expect(await semPassadosSeFalhar(Promise.resolve(ok))).toBe(ok);
   });
 });

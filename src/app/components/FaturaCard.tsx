@@ -15,8 +15,8 @@ export interface FaturaView {
   proxSoma: number; proxLabel: string;
 }
 
-export function FaturaCard({ f }: { f: FaturaView }) {
-  const [open, setOpen] = useState(false);
+export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; abertoInicial?: boolean }) {
+  const [open, setOpen] = useState(abertoInicial);
   const usado = f.limite > 0 ? f.limite - f.disponivel : 0;
   const d = diasAte(f.vencimento);
 

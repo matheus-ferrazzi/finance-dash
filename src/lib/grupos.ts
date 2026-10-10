@@ -55,3 +55,15 @@ export function agruparGastos(porCat: ReadonlyMap<string, number>, renda: number
 /** Contas travadas pagas no débito (consórcio, seguro, imposto, tarifa, juros): na previsão do mês
  *  em andamento são compromisso, não ritmo do dia a dia. */
 export const FIXO_DEBITO_CATS: string[] = GRUPOS_GASTO.find((g) => g.nome === 'Dívida e seguro')!.cats;
+
+export const GRUPOS_VALIDOS: string[] = [...GRUPOS_GASTO.map((g) => g.nome), 'Resto'];
+
+/** Filtro de Gastos vindo da URL (?grupo= / ?tipo=livre). Valor desconhecido não filtra. */
+export function categoriaNoFiltro(cat: string, f: { grupo?: string | null; tipo?: string | null }): boolean {
+  const g = grupoDaCategoria(cat);
+  if (f.grupo && GRUPOS_VALIDOS.includes(f.grupo)) {
+    if (f.grupo === 'Resto' ? g !== null : g?.nome !== f.grupo) return false;
+  }
+  if (f.tipo === 'livre' && g && (g.nome === 'Casa' || g.nome === 'Dívida e seguro')) return false;
+  return true;
+}

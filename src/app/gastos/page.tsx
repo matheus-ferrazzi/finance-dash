@@ -1,4 +1,7 @@
+import Link from 'next/link';
 import { getDespesas, getPorBanco, resolvePeriodo, Resp } from '@/lib/queries';
+import { categoriaNoFiltro, GRUPOS_VALIDOS } from '@/lib/grupos';
+import { linkPara } from '@/lib/links';
 import { brl, traduzCategoria } from '@/lib/format';
 import { PageTitle, SectionTitle, StatStrip } from '../components/ui';
 import { CategoriaDonut } from '../components/charts';
@@ -10,11 +13,15 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Gastos({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string } }) {
+export default async function Gastos({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string; grupo?: string; tipo?: string } }) {
   const resp = resolveResp(searchParams.resp);
   const per = resolvePeriodo(searchParams.p, searchParams.mes);
 
-  const [despesas, bancos] = await Promise.all([getDespesas(resp, per), getPorBanco(resp, per)]);
+  const [todas, bancos] = await Promise.all([getDespesas(resp, per), getPorBanco(resp, per)]);
+  // filtros da URL (links da home e do bot): ?grupo=Mercado, ?tipo=livre; valor desconhecido não filtra
+  const despesas = todas.filter((d) => categoriaNoFiltro(d.categoria, { grupo: searchParams.grupo, tipo: searchParams.tipo }));
+  const filtroAtivo = searchParams.grupo && GRUPOS_VALIDOS.includes(searchParams.grupo) ? searchParams.grupo
+    : searchParams.tipo === 'livre' ? 'Gasto livre (sem casa e dívidas)' : null;
 
   const mapa = new Map<string, CatGroup>();
   for (const d of despesas) {
@@ -30,6 +37,13 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
   return (
     <div>
       <PageTitle title="Gastos" subtitle={`${per.label} · clique numa categoria para ver os lançamentos.`} />
+
+      {filtroAtivo && (
+        <div className="mb-3 flex items-center gap-2">
+          <span className="rounded-full bg-accent/15 px-3 py-1 text-xs text-accent">{filtroAtivo}</span>
+          <Link href={linkPara('gastos', { resp, mes: searchParams.mes })} className="text-xs text-muted hover:text-text" aria-label="Limpar filtro">× limpar</Link>
+        </div>
+      )}
 
       {/* o que era o card "Resumo" — contagem e ticket médio são apoio, não manchete */}
       <StatStrip

@@ -9,8 +9,9 @@ import type { ProjecaoMes, SaldoConta } from '@/lib/queries';
 type LinhaProjecao = ProjecaoMes & { saldoComCompra?: number };
 
 export function ProjecaoPainel({
-  linhas, temSimulacao, saldoContas, receitaBase, variavelBase, casaBase, faturaBase, patrimonioAtual,
+  linhas, temSimulacao, saldoContas, receitaBase, variavelBase, casaBase, faturaBase, patrimonioAtual, mesFoco = null,
 }: {
+  mesFoco?: string | null;
   linhas: LinhaProjecao[];
   temSimulacao: boolean;
   saldoContas: { total: number; contas: SaldoConta[] };
@@ -91,7 +92,7 @@ export function ProjecaoPainel({
           </thead>
           <tbody className="divide-y divide-border/60">
             {linhas.map((m) => (
-              <tr key={m.mes}>
+              <tr key={m.mes} className={m.mes === mesFoco ? 'bg-accent/10' : undefined}>
                 <td className="py-1.5 pr-3 whitespace-nowrap">
                   {m.mesLabel}
                   {m.emAndamento && <span className="ml-1 rounded bg-surface-3 px-1 py-0.5 text-[9px] text-muted">falta</span>}

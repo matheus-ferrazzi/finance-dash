@@ -1,7 +1,7 @@
 import { q, qw, writerPool } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
-import { agruparGastos, type GrupoGasto } from './grupos';
+import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import type { MarcaInput } from './validation';
 import {
@@ -707,10 +707,14 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
 
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.
-  const r2 = rf(resp, 3);
+  // dividido em gasto livre (o dia a dia) e contas travadas (consórcio, seguro, imposto…), que
+  // no mês em andamento entram como compromisso e não como ritmo
+  const r2 = rf(resp, 4);
   const varRows = await q<any>(
-    `SELECT ROUND(AVG(m.total),2) AS media FROM (
-       SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
+    `SELECT ROUND(AVG(m.livre),2) AS media, ROUND(AVG(m.fixo),2) AS media_fixo FROM (
+       SELECT date_trunc('month',l.data_lancamento) AS mes,
+              SUM(l.valor) FILTER (WHERE NOT (l.categoria = ANY($3::text[]))) AS livre,
+              COALESCE(SUM(l.valor) FILTER (WHERE l.categoria = ANY($3::text[])),0) AS fixo
        FROM financas_lancamentos l
        WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
          AND NOT (l.categoria = ANY($1::text[]))
@@ -718,8 +722,22 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
          AND date_trunc('month',l.data_lancamento) = ANY($2::date[])${r2.sql}
        GROUP BY 1
      ) m`,
-    [CASA_CATS, meses, ...r2.p],
+    [CASA_CATS, meses, FIXO_DEBITO_CATS, ...r2.p],
   );
+  // perfil do mês: que fração do gasto livre saiu DEPOIS do dia de hoje, nos 6 meses anteriores
+  const rpf = rf(resp, 5);
+  const perfilRows = await q<any>(
+    `SELECT COALESCE(SUM(valor) FILTER (WHERE EXTRACT(day FROM data_lancamento) > $4),0)::float8 AS depois,
+            COALESCE(SUM(valor),0)::float8 AS total
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND forma_pagamento='Débito'
+       AND NOT (categoria = ANY($1::text[])) AND NOT (categoria = ANY($2::text[]))
+       AND ${SEM_ESPELHO}
+       AND data_lancamento >= date_trunc('month', $3::date) - interval '6 months'
+       AND data_lancamento < date_trunc('month', $3::date)${rpf.sql}`,
+    [CASA_CATS, FIXO_DEBITO_CATS, hoje, Number(hoje.slice(8, 10)), ...rpf.p],
+  );
+  const fracaoRestanteDebito = perfilRows[0]?.total > 0 ? perfilRows[0].depois / perfilRows[0].total : null;
 
   // compras novas no crédito (fora parcelamentos) — é o que vira fatura do mês seguinte
   const rcn = rf(resp, 2);
@@ -823,7 +841,13 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
            AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
+           AND NOT (l.categoria = ANY($${rmc.p.length + 3}::text[]))
            AND ${SEM_ESPELHO}${rmc.sql}) AS variavel_gasto,
+       (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
+         WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
+           AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
+           AND l.categoria = ANY($${rmc.p.length + 3}::text[])
+           AND ${SEM_ESPELHO}${rmc.sql}) AS fixo_gasto,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
            AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim AND l.criado_em::date <= sp.hoje
@@ -833,7 +857,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
          WHERE l.classe='pagamento_fatura' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
            AND ${SEM_ESPELHO}${rmc.sql}) AS fatura_ja_paga`,
-    [...rmc.p, CASA_CATS, hoje],
+    [...rmc.p, CASA_CATS, hoje, FIXO_DEBITO_CATS],
   );
 
   const rcm = rf(resp, 2);
@@ -860,12 +884,15 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
       receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
+      fixoJaGasto: Number(mesRows[0]?.fixo_gasto ?? 0),
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
       casaNoMesPorCategoria,
     },
     fontesReceita,
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
+    despesaFixaDebitoMedia: Number(varRows[0]?.media_fixo ?? 0),
+    fracaoRestanteDebito,
     creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,
     creditoPorVencimento,

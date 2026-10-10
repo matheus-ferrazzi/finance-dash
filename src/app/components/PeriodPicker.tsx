@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { mesLongo } from '@/lib/format';
-import { mesNoLimite, podeIrParaMesSeguinte } from '@/lib/links';
+import { mesNoLimite, podeIrParaMesSeguinte, temSeletorDeMes } from '@/lib/links';
 
 function shift(mes: string, delta: number): string {
   const [y, m] = mes.split('-').map(Number);
@@ -48,6 +48,7 @@ export function PeriodPicker() {
   const selectKind = (k: string) => (k === 'mes' ? setParams({ p: null }) : setParams({ p: k, mes: null }));
   const goMonth = (novo: string) => setParams({ p: null, mes: novo === atual ? null : novo });
   const podeAvancar = shift(mes, 1) <= (podeIrParaMesSeguinte(path) ? shift(atual, 1) : atual);
+  if (!temSeletorDeMes(path)) return null;
 
   return (
     <div className="flex items-center gap-2 flex-wrap">

@@ -39,6 +39,11 @@ export function linhasDaLista(projecao: ProjecaoMes[], passados: MesPassado[], c
   ];
 }
 
+/** Os meses passados são complemento: se a busca falhar, a lista sai sem eles em vez de a tela cair. */
+export function semPassadosSeFalhar(p: Promise<MesPassado[]>): Promise<MesPassado[]> {
+  return p.catch((e) => { console.error('meses passados da previsão falharam', e); return []; });
+}
+
 /** Posição do mês pedido no `?mes=` dentro da lista; -1 (mostra a lista) se inválido ou fora do intervalo. */
 export function indiceDoMes(linhas: { mes: string }[], v: string | undefined): number {
   const mes = mesValido(v);
@@ -53,8 +58,17 @@ export function detalheMesFuturo(base: ProjecaoBase, m: ProjecaoMes, parcelados:
   const conhecidas = m.parcelas > 0 ? parcelados.filter((p) => p.dataFim.slice(0, 7) >= m.mes) : [];
   const listadas = conhecidas.reduce((s, p) => s + p.valorParcela, 0);
   const outras = r2(m.parcelas - listadas);
+  // a lista é pela data da parcela e m.parcelas pelo vencimento da fatura: quando a lista passa do total
+  // do mês, mostra só o total, para os itens nunca somarem mais que a linha
+  const parcelasDoMes: Item[] = listadas > m.parcelas + 0.5
+    ? [{ nome: 'Parcelas já lançadas', valor: r2(m.parcelas) }]
+    : [
+      ...conhecidas.map((p) => ({ nome: p.chave, valor: p.valorParcela, nota: notaParcela(p, m.mes) })),
+      ...(outras > 0.5 ? [{ nome: 'Outras compras já lançadas', valor: outras }] : []),
+    ];
   const linhas: LinhaDetalhe[] = [
-    { chave: 'entra', titulo: 'Entra', total: m.receita, // rendimento automático de centavos é ruído na lista (o total continua com ele)
+    // rendimento automático de centavos é ruído na lista (o total continua com ele)
+    { chave: 'entra', titulo: 'Entra', total: m.receita,
       itens: base.fontesReceita.filter((f) => f.valor >= 1).map((f) => ({ nome: f.nome, valor: f.valor, nota: `dia ${f.diaTipico}` })) },
     { chave: 'casa', titulo: 'Casa e fixos', total: r2(m.despesaManual + m.despesaCasa), itens: [
       ...ativos.map((c) => ({ nome: c.nome, valor: c.valor })),
@@ -67,15 +81,20 @@ export function detalheMesFuturo(base: ProjecaoBase, m: ProjecaoMes, parcelados:
       { nome: 'Contas travadas (média)', valor: base.despesaFixaDebitoMedia ?? 0 },
     ] },
     { chave: 'cartao', titulo: 'Cartão', total: m.fatura, itens: [
-      ...conhecidas.map((p) => ({
-        nome: p.chave, valor: p.valorParcela,
-        nota: `${p.banco}${p.parcelaAtual && p.parcelaTotal ? ` · parcela ${p.parcelaAtual}/${p.parcelaTotal}` : ''}`,
-      })),
-      ...(outras > 0.5 ? [{ nome: 'Outras compras já lançadas', valor: outras }] : []),
+      ...parcelasDoMes,
       { nome: 'Compras novas (média)', valor: r2(m.fatura - m.parcelas) },
     ] },
   ];
   return { linhas, sobra: m.saldo, saldoFim: m.saldoProjetado };
+}
+
+/** "banco · parcela k/N" no mês: contada a partir da última parcela (dataFim), que não muda. */
+function notaParcela(p: Parcelado, mes: string): string {
+  if (!p.parcelaTotal) return p.banco;
+  const [fy, fm] = p.dataFim.slice(0, 7).split('-').map(Number);
+  const [y, m] = mes.split('-').map(Number);
+  const k = p.parcelaTotal - ((fy - y) * 12 + (fm - m));
+  return k >= 1 && k <= p.parcelaTotal ? `${p.banco} · parcela ${k}/${p.parcelaTotal}` : p.banco;
 }
 
 /** Mês em andamento: o que já aconteceu até hoje × o que a projeção diz que ainda falta. */

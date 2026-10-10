@@ -35,6 +35,11 @@ export function podeIrParaMesSeguinte(path: string): boolean {
   return path === '/contas' || path === '/previsibilidade';
 }
 
+/** O seletor de mês do topo: a Previsão navega pelas setas do próprio detalhe; o Simulador não tem mês. */
+export function temSeletorDeMes(path: string): boolean {
+  return path !== '/previsibilidade' && path !== '/simulador';
+}
+
 /** Mês que a tela de `path` pode mostrar: até o seguinte em Contas/Previsão, até o atual no resto. */
 export function mesNoLimite(mes: string | null | undefined, path: string, atual: string): string {
   const v = mesValido(mes ?? undefined);

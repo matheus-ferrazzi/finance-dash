@@ -4,10 +4,11 @@ import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
-import type { Componentes } from './backtest';
+import { componentesPrevistos, type Componentes } from './backtest';
+import { calibrar, doRegime, type Calibracao } from './faixa';
 import type { MarcaInput } from './validation';
 import {
-  addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -687,6 +688,36 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
     })),
   };
+}
+
+const cacheCalib = new Map<string, Calibracao | null>();
+
+/**
+ * Faixa da previsão: erros do saldo (1 mês à frente, casal, regra em uso) nos meses fechados do regime
+ * atual (desde INICIO_REGIME), dentro dos 12 últimos. Cache de 1 dia; falha de consulta = sem faixa.
+ */
+export async function getCalibracao(hoje: string = currentDateSP()): Promise<Calibracao | null> {
+  if (cacheCalib.has(hoje)) return cacheCalib.get(hoje)!;
+  let c: Calibracao | null = null;
+  try {
+    const atual = hoje.slice(0, 7);
+    const meses = doRegime(Array.from({ length: 12 }, (_, i) => addMonths(atual, -(12 - i))));
+    const erros: number[] = [];
+    for (const mes of meses) {
+      const ant = addMonths(mes, -1);
+      const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
+      const proj = computeProjecao(await getProjecaoBase('casal', vesp, { regraDebito: REGRA_DEBITO }), 1, vesp);
+      const real = await getRealizado(mes);
+      if (real.receita === 0 && real.debito === 0) continue; // mês sem dado não calibra
+      erros.push(componentesPrevistos(proj[1]).saldo - real.saldo);
+    }
+    c = calibrar(erros, hoje);
+  } catch (e) {
+    console.error('calibração da faixa falhou', e);
+  }
+  cacheCalib.clear();
+  cacheCalib.set(hoje, c);
+  return c;
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */

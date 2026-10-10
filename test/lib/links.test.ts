@@ -7,6 +7,7 @@ describe('linkPara', () => {
     expect(linkPara('previsao')).toBe('/previsibilidade');
     expect(linkPara('contas')).toBe('/contas');
     expect(linkPara('buscar')).toBe('/buscar');
+    expect(linkPara('simulador', { resp: 'Ariane' })).toBe('/simulador?resp=Ariane');
   });
   it('omite padrão: casal e mês atual', () => {
     expect(linkPara('contas', { resp: 'casal', mes: '2026-10' }, '2026-10')).toBe('/contas');

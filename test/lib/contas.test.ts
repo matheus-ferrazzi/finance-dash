@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { montarMes, type ContaFixa, type Marca, type Mov } from '../../src/lib/contas';
+import { montarMes, padraoDe, type ContaFixa, type Marca, type Mov } from '../../src/lib/contas';
 
 const conta = (p: Partial<ContaFixa> & { id: number; nome: string; padrao: string }): ContaFixa =>
-  ({ responsavel: 'Ariane', valorPrevisto: 100, banco: null, tolerancia: null, somar: false, inicio: '2026-01', ate: null, parcelas: null, ordem: p.id, ...p });
+  ({ responsavel: 'Ariane', valorPrevisto: 100, banco: null, tolerancia: null, somar: false, inicio: '2026-01', ate: null, valorDefinidoEm: null, parcelas: null, ordem: p.id, ...p });
 
 let n = 0;
 const mov = (data: string, valor: number, descricao: string, p: Partial<Mov> = {}): Mov =>
@@ -162,5 +162,42 @@ describe('montarMes — remover itens', () => {
     const curso = [conta({ id: 1, nome: 'Curso', padrao: 'Clinica', ate: '2026-09' })];
     expect(montarMes('2026-09', curso, [], []).itens).toHaveLength(1);
     expect(montarMes('2026-10', curso, [], []).itens).toEqual([]);
+  });
+});
+
+describe('repetir todo mês (avulsa vira conta fixa pelo pagamento real)', () => {
+  it('avulsa confirmada traz a descrição e o banco do pagamento que a confirmou', () => {
+    const r = montarMes('2026-09', [], [{ id: 1, mes: '2026-09', contaId: null, responsavel: 'Ariane', nome: 'Academia', valor: 99.9, pago: true }],
+      [mov('2026-09-05', 99.9, 'PIX ENVIADO   Academia Exemplo Ltda', { banco: 'Nubank' })]);
+    expect(r.itens[0].origem).toEqual({ descricao: 'PIX ENVIADO   Academia Exemplo Ltda', banco: 'Nubank' });
+  });
+
+  it('conta fixa paga também traz a origem; sem pagamento, origem é null', () => {
+    const r = montarMes('2026-09', [conta({ id: 1, nome: 'A', padrao: 'LOJA' }), conta({ id: 2, nome: 'B', padrao: 'NADA' })], [],
+      [mov('2026-09-05', 100, 'LOJA X')]);
+    expect(r.itens.map((i) => i.origem?.descricao ?? null)).toEqual(['LOJA X', null]);
+  });
+
+  it('padraoDe: tira número, data e parcela, escapa regex e aceita espaço variável', () => {
+    expect(padraoDe('PIX ENVIADO   Academia Exemplo Ltda')).toBe('PIX\\s+ENVIADO\\s+Academia\\s+Exemplo\\s+Ltda');
+    expect(padraoDe('PAGAMENTO DE BOLETO 12/09 CURSO (ONLINE) 3/10')).toBe('PAGAMENTO\\s+DE\\s+BOLETO\\s+CURSO\\s+\\(ONLINE\\)');
+    expect(new RegExp(padraoDe('PIX QRS SABESP13/02'), 'i').test('PIX QRS SABESP20/03')).toBe(true);
+  });
+});
+
+describe('alterar valor previsto', () => {
+  const pagos = [mov('2026-08-03', 1050, 'PIX ENVIADO Fulano'), mov('2026-09-01', 1071.5, 'PIX ENVIADO Fulano')];
+
+  it('valor alterado vale do mês da alteração em diante, acima do histórico; antes, continua o histórico', () => {
+    const c = [conta({ id: 1, nome: 'Aluguel', padrao: 'Fulano', valorPrevisto: 1150, valorDefinidoEm: '2026-10', tolerancia: 0.1 })];
+    expect(montarMes('2026-10', c, [], pagos).itens[0].previsto).toBe(1150);
+    expect(montarMes('2026-11', c, [], pagos).itens[0].previsto).toBe(1150);
+    expect(montarMes('2026-09', c, [], pagos).itens[0].previsto).toBe(1050); // último pago antes de set (ago)
+  });
+
+  it('a tolerância passa a valer em torno do valor novo', () => {
+    const c = [conta({ id: 1, nome: 'Aluguel', padrao: 'Fulano', valorPrevisto: 1500, valorDefinidoEm: '2026-10', tolerancia: 0.1 })];
+    const r = montarMes('2026-10', c, [], [...pagos, mov('2026-10-02', 1071.5, 'PIX ENVIADO Fulano')]);
+    expect(r.itens[0].status).toBe('falta');
   });
 });

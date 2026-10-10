@@ -19,9 +19,11 @@ describe.skipIf(!url)('contas do mês (integração)', () => {
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/003_contas_do_mes.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/004_contas_pela_tela.sql', 'utf8'));
     await pool.query(`INSERT INTO financas_contas_fixas (id, nome, responsavel, valor_previsto, padrao, inicio, ordem) VALUES
       (1, 'Seguro', 'Ariane', 330.35, 'SEGURADORA', '2026-01-01', 1), (2, 'Sabesp', 'Ariane', 86, 'SABESP', '2026-01-01', 2),
       (3, 'Internet', 'Matheus', 120, 'VIVO FIBRA', '2026-01-01', 1)`);
+    await pool.query(`SELECT setval('financas_contas_fixas_id_seq', 3)`); // ids fixos acima: a sequência continua depois deles
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento) VALUES
       ('s', '2026-09-01', 330.35, 'BOLETO SEGURADORA EXEMPLO', 'Insurance', 'Débito', 'Santander', 'Ariane', 'despesa', 'Saída'),
       ('r', '2026-09-01', 4000, 'PIX RECEBIDO SALARIO', 'Income', 'Débito', 'Santander', 'Ariane', 'receita', 'Entrada'),
@@ -74,6 +76,34 @@ describe.skipIf(!url)('contas do mês (integração)', () => {
     await queries.apagarMarca(id);
     r = await queries.getContasDoMes('Ariane', '2026-08');
     expect(r.itens.find((i) => i.nome === 'Sabesp')?.status).toBe('falta');
+  });
+
+  it('repetir todo mês: avulsa confirmada vira conta fixa pelo pagamento real; sem confirmação, recusa', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento) VALUES
+      ('acad9', '2026-07-05', 99.9, 'PIX ENVIADO Academia Exemplo 07/26', 'Sports', 'Débito', 'Nubank', 'Ariane', 'despesa', 'Saída'),
+      ('acad10', '2026-08-06', 99.9, 'PIX ENVIADO Academia Exemplo 08/26', 'Sports', 'Débito', 'Nubank', 'Ariane', 'despesa', 'Saída')`);
+    const semBanco = await queries.criarMarca({ mes: '2026-07', contaId: null, responsavel: 'Ariane', nome: 'Curso', valor: 10, pago: true });
+    await expect(queries.repetirTodoMes(semBanco)).rejects.toThrow(/banco/);
+
+    const id = await queries.criarMarca({ mes: '2026-07', contaId: null, responsavel: 'Ariane', nome: 'Academia', valor: 99.9, pago: true });
+    await queries.repetirTodoMes(id);
+    const jul = await queries.getContasDoMes('Ariane', '2026-07');
+    expect(jul.itens.filter((i) => i.nome === 'Academia')).toMatchObject([{ status: 'pago', avulsa: false, pago: 99.9 }]);
+    const ago = await queries.getContasDoMes('Ariane', '2026-08');
+    expect(ago.itens.find((i) => i.nome === 'Academia')).toMatchObject({ status: 'pago', pago: 99.9 });
+  });
+
+  it('alterar valor da conta fixa vale do mês em diante; avulsa só se o banco ainda não confirmou', async () => {
+    await queries.alterarValorConta(1, 400, '2026-11');
+    expect((await queries.getContasDoMes('Ariane', '2026-11')).itens.find((i) => i.nome === 'Seguro')?.previsto).toBe(400);
+    expect((await queries.getContasDoMes('Ariane', '2026-10')).itens.find((i) => i.nome === 'Seguro')?.previsto).toBe(330.35);
+
+    const aberta = await queries.criarMarca({ mes: '2026-11', contaId: null, responsavel: 'Ariane', nome: 'Presente', valor: 50, pago: true });
+    await queries.alterarValorAvulsa(aberta, 80);
+    expect((await queries.getContasDoMes('Ariane', '2026-11')).itens.find((i) => i.nome === 'Presente')?.previsto).toBe(80);
+
+    const ipva = (await queries.getContasDoMes('Ariane', '2026-09')).itens.find((i) => i.nome === 'IPVA')!;
+    await expect(queries.alterarValorAvulsa(ipva.marcaId!, 1)).rejects.toThrow(/banco/);
   });
 
   it('remover de vez: some a partir do mês seguinte ao último, e o histórico continua', async () => {

@@ -21,6 +21,7 @@ export function ContasLista({ mes, resp, itens, tiradas }: { mes: string; resp: 
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [editando, setEditando] = useState<{ chave: string; valor: string } | null>(null);
   const [nova, setNova] = useState<{ nome: string; valor: string; responsavel: string } | null>(null);
 
   async function chamar(url: string, init: RequestInit) {
@@ -58,6 +59,20 @@ export function ContasLista({ mes, resp, itens, tiradas }: { mes: string; resp: 
   async function removerAvulsa(i: ItemConta) {
     if (i.marcaId === null || !confirm(`Remover "${i.nome}" deste mês?`)) return;
     await apagarMarca(i.marcaId);
+  }
+
+  async function salvarValor(i: ItemConta) {
+    if (!editando) return;
+    const valor = parseValorBR(editando.valor);
+    const ok = i.avulsa
+      ? await chamar(`/api/contas/marcas/${i.marcaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valor }) })
+      : await chamar(`/api/contas/fixas/${i.contaId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ valor, aPartirDe: mes }) });
+    if (ok) setEditando(null);
+  }
+
+  async function repetir(i: ItemConta) {
+    if (!confirm(`"${i.nome}" vai aparecer todo mês, reconhecida pelo pagamento "${i.origem?.descricao}". Confirma?`)) return;
+    await chamar('/api/contas/fixas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ marcaId: i.marcaId }) });
   }
 
   async function salvarNova() {
@@ -105,15 +120,38 @@ export function ContasLista({ mes, resp, itens, tiradas }: { mes: string; resp: 
                   </div>
                 </button>
                 <button
-                  onClick={() => setAberto(aberto === chave ? null : chave)}
+                  onClick={() => { setAberto(aberto === chave ? null : chave); setEditando(null); }}
                   className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-faint hover:text-text"
                   aria-label={`Opções de ${i.nome}`}
                 >
                   <MoreVertical size={18} />
                 </button>
               </div>
-              {aberto === chave && (
+              {aberto === chave && editando?.chave === chave && (
+                <div className="mt-2 space-y-1.5 pl-9">
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus inputMode="decimal" value={editando.valor}
+                      onChange={(e) => setEditando({ chave, valor: e.target.value })}
+                      className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-base tnum"
+                    />
+                    <button disabled={ocupado || !editando.valor.trim()} onClick={() => salvarValor(i)}
+                      className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Salvar</button>
+                    <button onClick={() => setEditando(null)} className={`${acao} text-muted`}>Cancelar</button>
+                  </div>
+                  <p className="text-[11px] text-faint">
+                    {i.avulsa ? 'Valor que vai ser procurado no banco.' : 'Valor previsto deste mês em diante. O pago continua vindo do banco.'}
+                  </p>
+                </div>
+              )}
+              {aberto === chave && editando?.chave !== chave && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 pl-9">
+                  {!(i.avulsa && i.status === 'pago') && (
+                    <button disabled={ocupado} className={`${acao} text-text`}
+                      onClick={() => setEditando({ chave, valor: i.previsto.toFixed(2).replace('.', ',') })}>
+                      Alterar valor
+                    </button>
+                  )}
                   {!i.avulsa && i.status !== 'pago' && (
                     <button disabled={ocupado} className={`${acao} text-muted`}
                       onClick={() => post({ contaId: i.contaId, responsavel: i.responsavel, pago: false })}>
@@ -125,10 +163,18 @@ export function ContasLista({ mes, resp, itens, tiradas }: { mes: string; resp: 
                       Remover de vez
                     </button>
                   )}
+                  {i.avulsa && i.status === 'pago' && (
+                    <button disabled={ocupado} className={`${acao} text-accent`} onClick={() => repetir(i)}>
+                      Repetir todo mês
+                    </button>
+                  )}
                   {i.avulsa && (
                     <button disabled={ocupado} className={`${acao} text-despesa`} onClick={() => removerAvulsa(i)}>
                       Remover
                     </button>
+                  )}
+                  {i.avulsa && i.status !== 'pago' && (
+                    <span className="text-[11px] text-faint">dá para repetir todo mês depois que o banco confirmar</span>
                   )}
                   {!i.avulsa && i.status === 'pago' && <span className="text-[11px] text-faint">paga no banco: fica neste mês</span>}
                 </div>

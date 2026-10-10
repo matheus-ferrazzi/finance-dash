@@ -35,7 +35,7 @@ export function LinhaDoMes({ serie, titulo, href }: { serie: SerieMes; titulo: s
       </svg>
       {hoje && !serie.passado && (
         <div className="mt-1 flex justify-between text-[11px] text-muted">
-          <span>hoje {brl(hoje.saldo)}</span><span>dia {dias}</span>
+          <span>hoje <span className="money">{brl(hoje.saldo)}</span></span><span>dia {dias}</span>
         </div>
       )}
     </Link>

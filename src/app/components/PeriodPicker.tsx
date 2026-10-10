@@ -3,7 +3,7 @@
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { mesLongo } from '@/lib/format';
-import { podeIrParaMesSeguinte } from '@/lib/links';
+import { mesNoLimite, podeIrParaMesSeguinte } from '@/lib/links';
 
 function shift(mes: string, delta: number): string {
   const [y, m] = mes.split('-').map(Number);
@@ -33,7 +33,8 @@ export function PeriodPicker() {
   const emGastos = path === '/gastos';
   const kind = emGastos && (p === '7d' || p === '15d' || p === '30d') ? p : 'mes';
   const rawMes = sp.get('mes');
-  const mes = rawMes && /^\d{4}-\d{2}$/.test(rawMes) ? rawMes : atual;
+  // o seletor mostra o mesmo mês que a tela usa (a home não passa do mês atual, por exemplo)
+  const mes = mesNoLimite(rawMes, path, atual);
 
   function setParams(updates: Record<string, string | null>) {
     const params = new URLSearchParams(Array.from(sp.entries()));

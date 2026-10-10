@@ -25,8 +25,10 @@ export function serieDoMes(e: {
 
   const hojeDia = ultimoPassado;
   const restantes = D - hojeDia;
-  // receita atrasada (dia típico já passou) entra amanhã
-  const entradaNoDia = (d: number) => e.receitas.reduce((s, r) => s + (Math.max(r.dia, hojeDia + 1) === d ? r.valor : 0), 0);
+  // receita atrasada (dia típico já passou) entra amanhã; dia típico além do fim do mês (31 em mês
+  // de 30) entra no último dia — senão sumiria e o fechamento deixaria de bater com a previsão
+  const diaDaReceita = (dia: number) => Math.min(Math.max(dia, hojeDia + 1), D);
+  const entradaNoDia = (d: number) => e.receitas.reduce((s, r) => s + (diaDaReceita(r.dia) === d ? r.valor : 0), 0);
   if (restantes === 0) {
     const fechamento = e.saldoHoje + e.receitas.reduce((s, r) => s + r.valor, 0) - e.aindaSai;
     return { pontos, fechamento, passado };

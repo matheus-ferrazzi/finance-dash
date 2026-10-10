@@ -34,3 +34,21 @@ export function linkPara(tela: Tela, f: Filtros = {}, mesAtual: string = current
 export function podeIrParaMesSeguinte(path: string): boolean {
   return path === '/contas' || path === '/previsibilidade';
 }
+
+/** Mês que a tela de `path` pode mostrar: até o seguinte em Contas/Previsão, até o atual no resto. */
+export function mesNoLimite(mes: string | null | undefined, path: string, atual: string): string {
+  const v = mesValido(mes ?? undefined);
+  if (!v) return atual;
+  const [y, m] = atual.split('-').map(Number);
+  const seguinte = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const max = podeIrParaMesSeguinte(path) ? seguinte : atual;
+  return v > max ? max : v;
+}
+
+/** A barra de navegação leva só pessoa e mês; filtros de uma tela (grupo, cartão…) não grudam na outra. */
+export function qsNavegacao(qs: string): string {
+  const de = new URLSearchParams(qs);
+  const p = new URLSearchParams();
+  for (const k of ['resp', 'mes']) { const v = de.get(k); if (v) p.set(k, v); }
+  return p.toString();
+}

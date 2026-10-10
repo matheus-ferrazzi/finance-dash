@@ -50,14 +50,14 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
       <div className="grid grid-cols-2 gap-3">
         <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre' }, atual)}
           valor={ritmo ? `${brl(ritmo.ritmoSeguroDia)}/dia` : '—'}
-          detalhe={ritmo ? `gastando ${brl(ritmo.ritmoAtualDia)}/dia` : 'mês fechado'}
+          detalhe={ritmo ? <>gastando <span className="money">{brl(ritmo.ritmoAtualDia)}</span>/dia</> : 'mês fechado'}
           tom={ritmo ? (ritmo.ritmoAtualDia > ritmo.ritmoSeguroDia ? 'atencao' : 'bom') : 'neutro'} />
         <BlocoHome titulo="Contas do mês" href={linkPara('contas', f, atual)}
-          valor={cr ? `${cr.pagas}/${cr.total}` : '—'}
-          detalhe={cr ? (cr.falta > 0 ? `falta ${brl(cr.falta)}` : 'tudo pago') : 'nenhuma conta cadastrada'}
+          valor={cr ? `${cr.pagas}/${cr.total}` : '—'} valorEhDinheiro={false}
+          detalhe={cr ? (cr.falta > 0 ? <>falta <span className="money">{brl(cr.falta)}</span></> : 'tudo pago') : 'nenhuma conta cadastrada'}
           tom={cr ? (cr.falta > 0 ? 'atencao' : 'bom') : 'neutro'} />
         {/* sem href no bloco: cada grupo é o seu link (a spec pede um destino por pedaço) */}
-        <BlocoHome titulo="Para onde vai" valor={grupos[0] ? grupos[0].nome : '—'}
+        <BlocoHome titulo="Para onde vai" valor={grupos[0] ? grupos[0].nome : '—'} valorEhDinheiro={false}
           detalhe={grupos.length ? undefined : 'sem gasto no mês'}>
           {grupos.length > 0 && (
             <>

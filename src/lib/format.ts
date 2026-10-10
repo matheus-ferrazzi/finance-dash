@@ -45,7 +45,8 @@ export function currentMonthSP(): string {
 }
 
 export function normalizeMes(mes?: string): string {
-  return mes && /^\d{4}-\d{2}$/.test(mes) ? mes : currentMonthSP();
+  // mês 13 vindo de link errado viraria '2026-13-01'::date e derrubaria a consulta
+  return mes && /^\d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : currentMonthSP();
 }
 
 export function dataBR(d: string | Date | null | undefined): string {

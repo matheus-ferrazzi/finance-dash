@@ -44,3 +44,11 @@ describe('serieDoMes', () => {
     expect(s.pontos.find((p) => p.dia === 29)!.saldo).toBe(700);
   });
 });
+
+describe('revisão final', () => {
+  it('receita com dia típico além do fim do mês (31 em novembro) entra no último dia e o fechamento a inclui', () => {
+    const s = serieDoMes({ ...base, mes: '2026-11', hoje: '2026-11-10', receitas: [{ dia: 31, valor: 500 }] });
+    expect(s.fechamento).toBe(1500);
+    expect(s.pontos.at(-1)).toMatchObject({ dia: 30, saldo: 1500 });
+  });
+});

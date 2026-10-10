@@ -476,7 +476,8 @@ export async function getMovimentosDiarios(resp: Resp, desde: string, hoje: stri
     `SELECT to_char(data_lancamento,'YYYY-MM-DD') AS dia,
             SUM(CASE WHEN tipo_movimento='Entrada' THEN valor ELSE -valor END)::float8 AS liquido
      FROM financas_lancamentos
-     WHERE forma_pagamento='Débito' AND data_lancamento >= $1::date AND data_lancamento <= $2::date${r.sql}
+     WHERE forma_pagamento='Débito' AND data_lancamento >= $1::date AND data_lancamento <= $2::date
+       AND ${SEM_ESPELHO}${r.sql}
      GROUP BY 1`,
     [desde, hoje, ...r.p],
   );

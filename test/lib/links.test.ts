@@ -38,3 +38,20 @@ describe('mês', () => {
     expect(podeIrParaMesSeguinte('/gastos')).toBe(false);
   });
 });
+
+describe('revisão final: mês e filtros na navegação', () => {
+  it('mesNoLimite: home e Gastos param no mês atual; Contas e Previsão vão até o seguinte; inválido vira o atual', async () => {
+    const { mesNoLimite } = await import('../../src/lib/links');
+    expect(mesNoLimite('2026-11', '/', '2026-10')).toBe('2026-10');
+    expect(mesNoLimite('2026-11', '/contas', '2026-10')).toBe('2026-11');
+    expect(mesNoLimite('2026-12', '/contas', '2026-10')).toBe('2026-11');
+    expect(mesNoLimite('2026-09', '/', '2026-10')).toBe('2026-09');
+    expect(mesNoLimite('2026-13', '/contas', '2026-10')).toBe('2026-10');
+    expect(mesNoLimite(null, '/gastos', '2026-10')).toBe('2026-10');
+  });
+  it('qsNavegacao: a barra leva só pessoa e mês, não os filtros da tela', async () => {
+    const { qsNavegacao } = await import('../../src/lib/links');
+    expect(qsNavegacao('resp=Ariane&mes=2026-09&grupo=Mercado&cartao=X&tipo=livre&p=7d')).toBe('resp=Ariane&mes=2026-09');
+    expect(qsNavegacao('grupo=Mercado')).toBe('');
+  });
+});

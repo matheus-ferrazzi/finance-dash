@@ -54,7 +54,8 @@ export function detalheMesFuturo(base: ProjecaoBase, m: ProjecaoMes, parcelados:
   const listadas = conhecidas.reduce((s, p) => s + p.valorParcela, 0);
   const outras = r2(m.parcelas - listadas);
   const linhas: LinhaDetalhe[] = [
-    { chave: 'entra', titulo: 'Entra', total: m.receita, itens: base.fontesReceita.map((f) => ({ nome: f.nome, valor: f.valor, nota: `dia ${f.diaTipico}` })) },
+    { chave: 'entra', titulo: 'Entra', total: m.receita, // rendimento automático de centavos é ruído na lista (o total continua com ele)
+      itens: base.fontesReceita.filter((f) => f.valor >= 1).map((f) => ({ nome: f.nome, valor: f.valor, nota: `dia ${f.diaTipico}` })) },
     { chave: 'casa', titulo: 'Casa e fixos', total: r2(m.despesaManual + m.despesaCasa), itens: [
       ...ativos.map((c) => ({ nome: c.nome, valor: c.valor })),
       ...Object.entries(base.despesaCasaPorCategoria).filter(([cat]) => !cobertas.has(cat))

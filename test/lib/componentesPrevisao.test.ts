@@ -22,6 +22,8 @@ describe('lista de meses', () => {
     expect(h).toContain('ver até 24 meses');
     expect(h).toContain('href="/previsibilidade?todos=1"');
     expect(h).toContain('money');
+    // no mês atual a projeção só tem o que falta acontecer: não chamar de "sobra do mês"
+    expect(h).toMatch(/em andamento[\s\S]*?até o fim do mês/);
   });
   it('com todos, mostra os 14 futuros e some o botão; a pessoa vai no link', () => {
     const h = renderToStaticMarkup(createElement(ListaMeses, { linhas, resp: 'Ariane', mostrarTodos: true }));

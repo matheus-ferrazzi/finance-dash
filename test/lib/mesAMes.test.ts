@@ -39,6 +39,10 @@ describe('detalhe do mês futuro', () => {
     expect(itens.map((i) => [i.nome, i.valor])).toEqual([['loja x', 300], ['Outras compras já lançadas', 200], ['Compras novas (média)', 700]]);
     expect(itens.reduce((s, i) => s + i.valor, 0)).toBe(1200);
   });
+  it('fonte de receita de centavos (rendimento) não vira item', () => {
+    const b = { ...base, fontesReceita: [...base.fontesReceita, { fonte: 'r', nome: 'rendimentos', valor: 0.01, diaTipico: 11, responsavel: 'X' }] } as ProjecaoBase;
+    expect(detalheMesFuturo(b, mes({}), []).linhas[0].itens.map((i) => i.nome)).toEqual(['Salário A', 'Salário B']);
+  });
   it('parcela já encerrada no mês não aparece', () => {
     const d = detalheMesFuturo(base, mes({ mes: '2027-03', parcelas: 0 }), parcelados);
     expect(d.linhas.find((l) => l.chave === 'cartao')!.itens).toEqual([{ nome: 'Compras novas (média)', valor: 1200 }]);

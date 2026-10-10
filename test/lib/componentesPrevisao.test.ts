@@ -70,3 +70,12 @@ describe('detalhe do mês', () => {
     expect(h).toContain('href="/gastos?mes=2026-09"');
   });
 });
+
+describe('simulador em tela própria', () => {
+  it('não fala de gráfico (a tela não tem gráfico)', async () => {
+    const { SimuladorCompra } = await import('../../src/app/components/SimuladorCompra');
+    const sim = { valorParcela: 100, parcelas: 1, meses: [{ mes: '2026-10', mesLabel: 'out/26', saldo: -1 }], mesesVermelho: 1, ultimaParcela: 'out/26', saldoComCompra: [-1] } as any;
+    const h = renderToStaticMarkup(createElement(SimuladorCompra, { valorStr: '100', setValorStr: () => {}, parcelasStr: '1', setParcelasStr: () => {}, resultado: sim, veredito: 'Atenção: x' }));
+    expect(h).not.toContain('gráfico');
+  });
+});

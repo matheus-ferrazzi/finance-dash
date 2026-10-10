@@ -2,7 +2,7 @@
 import { currentMonthSP } from './format';
 
 export type Tela = 'inicio' | 'previsao' | 'contas' | 'gastos' | 'faturas' | 'diagnostico' | 'assinaturas'
-  | 'investimentos' | 'orcamento' | 'casa' | 'buscar';
+  | 'investimentos' | 'orcamento' | 'casa' | 'buscar' | 'simulador';
 
 export interface Filtros {
   resp?: 'casal' | 'Matheus' | 'Ariane'; mes?: string; grupo?: string; cartao?: string; tipo?: 'livre';
@@ -11,7 +11,7 @@ export interface Filtros {
 const CAMINHO: Record<Tela, string> = {
   inicio: '/', previsao: '/previsibilidade', contas: '/contas', gastos: '/gastos', faturas: '/faturas',
   diagnostico: '/diagnostico', assinaturas: '/assinaturas', investimentos: '/investimentos',
-  orcamento: '/orcamento', casa: '/casa', buscar: '/buscar',
+  orcamento: '/orcamento', casa: '/casa', buscar: '/buscar', simulador: '/simulador',
 };
 
 export function mesValido(v: string | undefined): string | null {

@@ -2,6 +2,8 @@ import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, type GrupoGasto } from './grupos';
+import { montarMes, type ResumoMes } from './contas';
+import type { MarcaInput } from './validation';
 import {
   addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
@@ -366,6 +368,59 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
     chave: x.chave, valor: Number(x.valor), categoria: x.categoria, banco: x.banco, data: x.data, parcelado: Boolean(x.parcelado),
     responsavel: x.responsavel,
   })), currentDateSP());
+}
+
+/** Contas do mês (G): contas fixas + marcações da tela, conferidas com as saídas do banco. */
+export async function getContasDoMes(resp: Resp, mes: string): Promise<ResumoMes> {
+  const r = rf(resp, 2);
+  const inicioMes = `${mes}-01`;
+  const [contas, marcas, movs, entrou] = await Promise.all([
+    q<any>(`SELECT id, nome, responsavel, valor_previsto::float8 AS valor, padrao, banco, tolerancia::float8 AS tolerancia, somar,
+                   to_char(inicio,'YYYY-MM') AS inicio, parcelas, ordem, to_char(ate,'YYYY-MM') AS ate
+            FROM financas_contas_fixas WHERE ativo${rf(resp, 1).sql}`, rf(resp, 1).p),
+    q<any>(`SELECT id, mes, conta_id, responsavel, nome, valor::float8 AS valor, pago
+            FROM financas_contas_marcas WHERE mes = $1${r.sql} ORDER BY id`, [mes, ...r.p]),
+    // 3 meses antes: o previsto da conta variável é o último valor pago
+    q<any>(`SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor,
+                   coalesce(descricao,'') AS descricao, coalesce(banco,'') AS banco, responsavel
+            FROM financas_lancamentos
+            WHERE tipo_movimento = 'Saída'
+              AND data_lancamento >= $1::date - interval '3 months' AND data_lancamento < $1::date + interval '1 month'
+              AND data_lancamento <= ${HOJE}${r.sql}`, [inicioMes, ...r.p]),
+    q<any>(`SELECT coalesce(sum(valor),0)::float8 AS v FROM financas_lancamentos
+            WHERE classe = 'receita' AND data_lancamento >= $1::date AND data_lancamento < $1::date + interval '1 month'
+              AND data_lancamento <= ${HOJE}${r.sql}`, [inicioMes, ...r.p]),
+  ]);
+  return montarMes(
+    mes,
+    contas.map((c) => ({ id: c.id, nome: c.nome, responsavel: c.responsavel, valorPrevisto: c.valor, padrao: c.padrao, banco: c.banco,
+      tolerancia: c.tolerancia, somar: c.somar, inicio: c.inicio, parcelas: c.parcelas, ordem: c.ordem, ate: c.ate })),
+    marcas.map((m) => ({ id: m.id, mes: m.mes, contaId: m.conta_id, responsavel: m.responsavel, nome: m.nome, valor: m.valor, pago: m.pago })),
+    movs,
+    entrou[0].v,
+  );
+}
+
+/** Grava um ✓, um "tirar do mês" ou uma avulsa. Na conta fixa há uma marcação por mês: a nova troca a anterior. */
+export async function criarMarca(m: MarcaInput): Promise<number> {
+  if (m.contaId !== null) {
+    const ja = await qw<any>(`UPDATE financas_contas_marcas SET pago = $3 WHERE mes = $1 AND conta_id = $2 RETURNING id`, [m.mes, m.contaId, m.pago]);
+    if (ja.length) return Number(ja[0].id);
+  }
+  const rows = await qw<any>(
+    `INSERT INTO financas_contas_marcas (mes, conta_id, responsavel, nome, valor, pago) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [m.mes, m.contaId, m.responsavel, m.nome, m.valor, m.pago],
+  );
+  return Number(rows[0].id);
+}
+
+export async function apagarMarca(id: number): Promise<void> {
+  await qw(`DELETE FROM financas_contas_marcas WHERE id = $1`, [id]);
+}
+
+/** "Remover de vez": `ultimoMes` ('YYYY-MM') é o último mês em que a conta aparece. */
+export async function encerrarConta(id: number, ultimoMes: string): Promise<void> {
+  await qw(`UPDATE financas_contas_fixas SET ate = ($2 || '-01')::date WHERE id = $1`, [id, ultimoMes]);
 }
 
 export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {

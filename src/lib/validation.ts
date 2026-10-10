@@ -12,6 +12,33 @@ export type ValidacaoResult =
   | { ok: true; data: CompromissoInput }
   | { ok: false; erro: string };
 
+export interface MarcaInput {
+  mes: string; contaId: number | null; responsavel: 'Matheus' | 'Ariane'; nome: string | null; valor: number | null;
+  /** false = conta fixa tirada só deste mês */
+  pago: boolean;
+}
+
+/** Marcação da tela Contas do mês: ✓ ou "tirar do mês" numa conta fixa (contaId), ou conta avulsa (nome + valor). */
+export function validarMarca(body: any): { ok: true; data: MarcaInput } | { ok: false; erro: string } {
+  const mes = String(body?.mes ?? '');
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) return { ok: false, erro: 'mês inválido' };
+  const responsavel = String(body?.responsavel ?? '');
+  if (responsavel !== 'Matheus' && responsavel !== 'Ariane') return { ok: false, erro: 'responsável inválido' };
+  const pago = body?.pago !== false;
+
+  if (body?.contaId !== undefined && body?.contaId !== null) {
+    const contaId = Number(body.contaId);
+    if (!Number.isInteger(contaId) || contaId <= 0) return { ok: false, erro: 'conta inválida' };
+    return { ok: true, data: { mes, contaId, responsavel, nome: null, valor: null, pago } };
+  }
+  if (!pago) return { ok: false, erro: 'só conta fixa pode ser tirada do mês' };
+  const nome = String(body?.nome ?? '').trim();
+  if (!nome || nome.length > 120) return { ok: false, erro: 'nome inválido' };
+  const valor = Number(String(body?.valor ?? '').replace(',', '.'));
+  if (!Number.isFinite(valor) || valor <= 0 || valor >= 1_000_000) return { ok: false, erro: 'valor inválido' };
+  return { ok: true, data: { mes, contaId: null, responsavel, nome, valor: Math.round(valor * 100) / 100, pago: true } };
+}
+
 export function validarCompromisso(body: any): ValidacaoResult {
   const nome = String(body?.nome ?? '').trim();
   if (!nome || nome.length > 200) return { ok: false, erro: 'nome inválido' };

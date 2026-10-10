@@ -25,3 +25,33 @@ export function avaliarMes(previsto: Componentes, real: Componentes) {
     && Math.abs(erros.saldo) <= LIMITES.saldo;
   return { erros, ok };
 }
+
+export interface LinhaErro { regra: string; horizonte: number; mes: string; erros: Componentes }
+const COMPS: (keyof Componentes)[] = ['receita', 'debito', 'casa', 'fatura', 'saldo'];
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** Erro absoluto médio e viés (média com sinal) por regra × horizonte × componente. */
+export function resumirErros(linhas: LinhaErro[]) {
+  const grupos = new Map<string, LinhaErro[]>();
+  for (const l of linhas) grupos.set(`${l.regra}|${l.horizonte}`, [...(grupos.get(`${l.regra}|${l.horizonte}`) ?? []), l]);
+  return [...grupos.entries()].flatMap(([k, ls]) => {
+    const [regra, h] = k.split('|');
+    return COMPS.map((comp) => ({
+      regra, horizonte: Number(h), comp,
+      mae: r2(ls.reduce((s, l) => s + Math.abs(l.erros[comp]), 0) / ls.length),
+      vies: r2(ls.reduce((s, l) => s + l.erros[comp], 0) / ls.length),
+    }));
+  });
+}
+
+/** Critério da spec: menor erro do saldo no horizonte 1, sem piorar nenhuma medida da regra atual. */
+export function escolherRegra(resumo: ReturnType<typeof resumirErros>, atual = 'confiaveis'): { regra: string; motivo: string } {
+  const de = (regra: string) => resumo.filter((x) => x.regra === regra);
+  const base = de(atual);
+  const mae = (regra: string) => de(regra).find((x) => x.horizonte === 1 && x.comp === 'saldo')?.mae ?? Infinity;
+  const candidatas = [...new Set(resumo.map((x) => x.regra))].filter((r) => r !== atual)
+    .filter((r) => base.every((b) => (de(r).find((x) => x.horizonte === b.horizonte && x.comp === b.comp)?.mae ?? Infinity) <= b.mae))
+    .sort((a, b) => mae(a) - mae(b));
+  if (!candidatas.length) return { regra: atual, motivo: 'nenhuma candidata sem piorar alguma medida' };
+  return { regra: candidatas[0], motivo: `saldo h1 ${mae(atual)} -> ${mae(candidatas[0])}` };
+}

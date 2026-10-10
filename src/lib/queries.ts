@@ -4,6 +4,7 @@ import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
+import type { Componentes } from './backtest';
 import type { MarcaInput } from './validation';
 import {
   addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
@@ -686,6 +687,21 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
     })),
   };
+}
+
+/** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
+export async function getRealizado(mes: string): Promise<Componentes> {
+  const [r] = await q<any>(
+    `SELECT
+       COALESCE(SUM(valor) FILTER (WHERE classe='receita'),0) AS receita,
+       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}),0) AS debito,
+       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND categoria = ANY($2::text[])),0) AS casa,
+       COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SEM_ESPELHO}),0) AS fatura
+     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date`,
+    [`${mes}-01`, CASA_CATS],
+  );
+  const c = { receita: Number(r.receita), debito: Number(r.debito), casa: Number(r.casa), fatura: Number(r.fatura) };
+  return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
 }
 
 /** Débito dos `n` meses fechados antes do mês de `hoje`: livre × travado, fora casa e espelhos; mês vazio = 0. */

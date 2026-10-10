@@ -737,15 +737,16 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
-export async function getRealizado(mes: string): Promise<Componentes> {
+export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<Componentes> {
+  const rr = rf(resp, 3);
   const [r] = await q<any>(
     `SELECT
        COALESCE(SUM(valor) FILTER (WHERE classe='receita'),0) AS receita,
        COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}),0) AS debito,
        COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND categoria = ANY($2::text[])),0) AS casa,
        COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SEM_ESPELHO}),0) AS fatura
-     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date`,
-    [`${mes}-01`, CASA_CATS],
+     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date${rr.sql}`,
+    [`${mes}-01`, CASA_CATS, ...rr.p],
   );
   const c = { receita: Number(r.receita), debito: Number(r.debito), casa: Number(r.casa), fatura: Number(r.fatura) };
   return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };

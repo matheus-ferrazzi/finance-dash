@@ -20,3 +20,13 @@ describe('privacidade dos valores na home', () => {
     expect(h).toMatch(/hoje <span class="money">R\$/);
   });
 });
+
+describe('revisão final F2a: simulador com uma mensagem só', () => {
+  it('com veredito novo, o aviso antigo ("Fica/Não fica no vermelho") não aparece', async () => {
+    const { SimuladorCompra } = await import('../../src/app/components/SimuladorCompra');
+    const resultado = { valorParcela: 100, parcelas: 1, meses: [{ label: 'agora', depois: -10 }], mesesVermelho: 1, ultimaParcela: 'x', saldoComCompra: [-10] };
+    const h = renderToStaticMarkup(createElement(SimuladorCompra, { valorStr: '100', setValorStr: () => {}, parcelasStr: '1', setParcelasStr: () => {}, resultado, veredito: 'Não cabe: x' }));
+    expect(h).toContain('Não cabe: x');
+    expect(h).not.toMatch(/Fica no vermelho em|Não fica no vermelho/);
+  });
+});

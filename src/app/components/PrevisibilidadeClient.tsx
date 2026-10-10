@@ -61,8 +61,10 @@ const FORM_VAZIO: FormState = {
 };
 
 export function PrevisibilidadeClient({
-  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null, calib = null,
+  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null, calib = null, motivoSemFaixa = null,
 }: {
+  /** por que não há faixa (para dizer o motivo certo na tela) */
+  motivoSemFaixa?: 'historico_curto' | 'visao_individual' | null;
   /** faixa 8 em 10 (F2a); null = sem calibração ou visão individual */
   calib?: Calibracao | null;
   patrimonioAtual: number;
@@ -281,7 +283,8 @@ export function PrevisibilidadeClient({
           <p className="mt-3 text-sm text-muted">
             {sai.provavel ? <>Sai do vermelho em <b className="text-text">{mesLabel(sai.provavel)}</b></> : <>Não sai do vermelho nos próximos {projecao.length - 1} meses</>}
             {calib && sai.piorCaso !== sai.provavel && <> (pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai nos próximos ${projecao.length - 1} meses`})</>}
-            {!calib && <span className="text-faint"> · sem faixa de incerteza ainda: o histórico da fase atual é curto</span>}
+            {!calib && motivoSemFaixa === 'visao_individual' && <span className="text-faint"> · faixa de incerteza só na visão do casal</span>}
+            {!calib && motivoSemFaixa !== 'visao_individual' && <span className="text-faint"> · sem faixa de incerteza ainda: a fase atual tem menos de 6 meses de histórico</span>}
           </p>
           {/* uma linha em vez de cinco chips: a quebra detalhada não precisa
               competir de igual pra igual com os quatro números que importam */}

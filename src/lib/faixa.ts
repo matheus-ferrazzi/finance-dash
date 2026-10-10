@@ -3,8 +3,8 @@
 export interface Calibracao { p10: number; p90: number; n: number; calculadaEm: string }
 
 /**
- * Início do regime financeiro atual (decidido em 10/10/2026): antes disso, emprego anterior e dívida
- * com faturas pagas em parte — a previsão errava em milhares e não serve para calibrar a faixa de hoje.
+ * Início da fase atual (decidido em 10/10/2026): antes disso o padrão de renda e de pagamento era
+ * outro e a previsão daquela época não serve para calibrar a faixa de hoje.
  */
 export const INICIO_REGIME = '2026-07';
 
@@ -25,16 +25,22 @@ export function calibrar(erros: number[], calculadaEm: string): Calibracao | nul
   return { p10: r2(percentil(erros, 10)), p90: r2(percentil(erros, 90)), n: erros.length, calculadaEm };
 }
 
+// erro todo de um lado (previsão sempre pessimista, p90 < 0) inverteria a faixa: o pior caso ficaria
+// acima do provável e o "pelo pior caso" afrouxaria as decisões. A faixa sempre contém o provável.
+function entre(provavel: number, pior: number, melhor: number) {
+  return { piorCaso: r2(Math.min(provavel, pior)), melhorCaso: r2(Math.max(provavel, melhor)) };
+}
+
 // erro = previsto − real: p90 positivo = previsão otimista demais → o pior caso desconta p90
 export function faixaMes(saldoProjetado: number, k: number, c: Calibracao | null) {
   if (!c) return { piorCaso: saldoProjetado, melhorCaso: saldoProjetado };
   const f = Math.sqrt(Math.max(1, k));
-  return { piorCaso: r2(saldoProjetado - c.p90 * f), melhorCaso: r2(saldoProjetado - c.p10 * f) };
+  return entre(saldoProjetado, saldoProjetado - c.p90 * f, saldoProjetado - c.p10 * f);
 }
 
 /** Mês em andamento: só o que ainda falta pode errar, proporcional aos dias que faltam. */
 export function faixaMesCorrente(fechaCom: number, diasRestantes: number, diasNoMes: number, c: Calibracao | null) {
   if (!c || diasNoMes <= 0) return { piorCaso: fechaCom, melhorCaso: fechaCom };
   const f = Math.max(0, diasRestantes) / diasNoMes;
-  return { piorCaso: r2(fechaCom - c.p90 * f), melhorCaso: r2(fechaCom - c.p10 * f) };
+  return entre(fechaCom, fechaCom - c.p90 * f, fechaCom - c.p10 * f);
 }

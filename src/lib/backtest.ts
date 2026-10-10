@@ -1,5 +1,6 @@
 // Teste contra o passado: o que a previsão diria no dia 1º × o que aconteceu no mês.
 import type { ProjecaoMes } from './previsao';
+import { calibrar } from './faixa';
 
 export interface Componentes { receita: number; debito: number; casa: number; fatura: number; saldo: number }
 
@@ -54,4 +55,23 @@ export function escolherRegra(resumo: ReturnType<typeof resumirErros>, atual = '
     .sort((a, b) => mae(a) - mae(b));
   if (!candidatas.length) return { regra: atual, motivo: 'nenhuma candidata sem piorar alguma medida' };
   return { regra: candidatas[0], motivo: `saldo h1 ${mae(atual)} -> ${mae(candidatas[0])}` };
+}
+
+/**
+ * Validação da faixa (aceite da spec: 1 mês à frente), fora da amostra: cada mês é testado com a faixa
+ * calibrada só nos meses anteriores (mínimo 6). Calibrar e medir nos mesmos meses daria 80% por construção.
+ */
+export function coberturaH1(linhas: LinhaErro[], meses: string[], regra: string): { dentro: number; total: number } {
+  const erroDe = (mes: string) => linhas.find((l) => l.regra === regra && l.horizonte === 1 && l.mes === mes)?.erros.saldo;
+  let dentro = 0, total = 0;
+  meses.forEach((mes, i) => {
+    const anteriores = meses.slice(0, i).map(erroDe).filter((e): e is number => e !== undefined);
+    const c = calibrar(anteriores, mes);
+    const e = erroDe(mes);
+    if (!c || e === undefined) return;
+    total++;
+    // real dentro da faixa de 1 mês ⇔ o erro do mês cai entre p10 e p90 da calibração
+    if (e >= c.p10 && e <= c.p90) dentro++;
+  });
+  return { dentro, total };
 }

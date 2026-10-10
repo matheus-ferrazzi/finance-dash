@@ -40,4 +40,14 @@ describe.skipIf(!url)('getCalibracao (integração)', () => {
     expect(c!.p10).toBeLessThanOrEqual(c!.p90);
     expect(await queries.getCalibracao('2032-06-15')).toBe(c); // mesmo objeto: cache
   });
+
+  it('revisão final: chamadas simultâneas no 1º acesso do dia esperam o mesmo cálculo', async () => {
+    const [a, b] = await Promise.all([queries.getCalibracao('2032-07-15'), queries.getCalibracao('2032-07-15')]);
+    expect(a).not.toBeNull();
+    expect(a).toBe(b);
+  });
+
+  it('revisão final: visão individual não tem faixa, e o motivo vem junto', async () => {
+    expect(await queries.getCalibracaoPara('Ariane')).toEqual({ calib: null, motivo: 'visao_individual' });
+  });
 });

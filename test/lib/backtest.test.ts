@@ -46,3 +46,15 @@ describe('resumo e escolha da regra', () => {
     expect(escolherRegra(resumirErros(piora)).regra).toBe('confiaveis');
   });
 });
+
+describe('revisão final F2a: cobertura fora da amostra', () => {
+  it('só horizonte 1, faixa calibrada com os meses anteriores (mínimo 6)', async () => {
+    const { coberturaH1 } = await import('../../src/lib/backtest');
+    const meses = Array.from({ length: 8 }, (_, i) => `2027-0${i + 1}`);
+    const e = (saldo: number) => ({ receita: 0, debito: 0, casa: 0, fatura: 0, saldo });
+    const linhas = meses.map((mes, i) => ({ regra: 'r', horizonte: 1, mes, erros: e([10, -10, 20, -20, 5, -5, 0, 999][i]) }))
+      .concat([{ regra: 'r', horizonte: 2, mes: '2027-07', erros: e(0) }]);
+    // mês 7 (erro 0) cai dentro; mês 8 (erro 999) cai fora — h2 não entra na conta
+    expect(coberturaH1(linhas, meses, 'r')).toEqual({ dentro: 1, total: 2 });
+  });
+});

@@ -25,9 +25,9 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   const corrente = mes === atual;
   const hoje = currentDateSP();
 
-  const [base, contas, despesas, faturas, movimentos, calib] = await Promise.all([
+  const [base, contas, despesas, faturas, movimentos, { calib }] = await Promise.all([
     getProjecaoBase(resp), getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
-    getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje), corrente ? getCalibracaoPara(resp) : Promise.resolve(null),
+    getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje), corrente ? getCalibracaoPara(resp) : Promise.resolve({ calib: null }),
   ]);
   const mesProj = computeProjecao(base, 1)[0];
   const ritmo = corrente && mesProj ? computeRitmo(base, mesProj) : null;

@@ -181,7 +181,7 @@ export async function getDespesas(resp: Resp, per: Periodo): Promise<Lanc[]> {
   const r = rf(resp, 3);
   const rows = await q<any>(
     `SELECT id_transacao AS id, data_lancamento AS data, valor, descricao,
-            categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+            categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
      FROM financas_lancamentos WHERE classe='despesa' AND ${RANGE}${r.sql}
      ORDER BY valor DESC`,
     [per.start, per.endExcl, ...r.p],
@@ -193,7 +193,7 @@ export async function getRecentes(resp: Resp, per: Periodo, limit = 10): Promise
   const r = rf(resp, 3);
   const rows = await q<any>(
     `SELECT id_transacao AS id, data_lancamento AS data, valor, descricao,
-            categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+            categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
      FROM financas_lancamentos
      WHERE classe IN ('despesa','receita') AND ${RANGE}${r.sql}
      ORDER BY data_lancamento DESC, criado_em DESC LIMIT ${limit}`,
@@ -316,7 +316,7 @@ export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
   const r = rf(resp, 1);
   const rows = await q<any>(
     `SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor, descricao,
-            categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+            categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
      FROM financas_lancamentos
      WHERE classe='despesa' AND forma_pagamento='Crédito'
        AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - 75
@@ -349,7 +349,7 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
      ),
      base AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
-              valor::float8 AS valor, categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco,
+              valor::float8 AS valor, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco,
               to_char(data_lancamento,'YYYY-MM-DD') AS data, responsavel,
               (COALESCE(parcela_total,0) > 1 OR descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$') AS parcelado
        FROM financas_lancamentos
@@ -473,7 +473,7 @@ export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {
   const r = rf(resp, 2);
   const rows = await q<any>(
     `SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor, descricao,
-            categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+            categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
      FROM financas_lancamentos
      WHERE descricao ILIKE '%' || $1 || '%'
        AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
@@ -510,7 +510,7 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
   const rows = await q<any>(
     `WITH fut AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
-              descricao, valor, data_lancamento, categoria_efetiva(descricao, categoria) AS categoria,
+              descricao, valor, data_lancamento, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
               COALESCE(banco,'—') AS banco, responsavel
        FROM financas_lancamentos
        WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
@@ -765,7 +765,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   const rc = rf(resp, 3);
   const casaRows = await q<any>(
     `SELECT categoria, ROUND(AVG(total),2) AS media FROM (
-       SELECT categoria_efetiva(descricao, categoria) AS categoria,
+       SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
               date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
        FROM financas_lancamentos
        WHERE classe='despesa' AND categoria = ANY($1::text[])
@@ -863,7 +863,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   const rcm = rf(resp, 2);
   const hcm = `$${rcm.p.length + 2}::date`;
   const casaMesRows = await q<any>(
-    `SELECT categoria_efetiva(descricao, categoria) AS categoria, ROUND(SUM(valor),2) AS total
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
      FROM financas_lancamentos
      WHERE classe='despesa' AND categoria = ANY($1::text[])
        AND data_lancamento >= date_trunc('month',${hcm})
@@ -932,7 +932,7 @@ export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
 
   const r1 = rf(resp, 2);
   const catRows = await q<any>(
-    `SELECT categoria_efetiva(descricao, categoria) AS categoria, ROUND(SUM(valor),2) AS total
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
      FROM financas_lancamentos
      WHERE classe='despesa' AND ${SEM_ESPELHO}
        AND date_trunc('month',data_lancamento) = $1::date${r1.sql}
@@ -961,7 +961,7 @@ export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
   const diaComparacao = Number(diaStr);
   const r3 = rf(resp, 4);
   const varRows = await q<any>(
-    `SELECT categoria_efetiva(descricao, categoria) AS categoria,
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
        ROUND(COALESCE(SUM(valor) FILTER (WHERE date_trunc('month',data_lancamento) = $1::date),0),2) AS anterior,
        ROUND(COALESCE(SUM(valor) FILTER (WHERE date_trunc('month',data_lancamento) = $2::date),0),2) AS atual
      FROM financas_lancamentos
@@ -990,7 +990,7 @@ export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
             to_char(MAX(data_lancamento),'YYYY-MM-DD') AS data
      FROM financas_lancamentos
      WHERE classe='despesa' AND ${SEM_ESPELHO}
-       AND categoria_vaga(categoria_efetiva(descricao, categoria))
+       AND categoria_vaga(categoria_efetiva(descricao, categoria, contraparte_doc))
        AND date_trunc('month',data_lancamento) = $1::date${r4.sql}
      GROUP BY 1 ORDER BY valor DESC LIMIT 8`,
     [`${mesRef}-01`, ...r4.p],

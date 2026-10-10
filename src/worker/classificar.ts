@@ -26,7 +26,9 @@ export function classificar(cat: string | null | undefined, desc: string | null 
   const d = (desc || '').toLowerCase();
   const c = cat || 'Outros';
   const espelhoCartao = d.includes('cart') && d.includes('cred');
-  if (c === 'Credit card payment' || c === 'Credit card fees' || d.includes('neon pagamen') || d.includes('nu pagamentos') || (d.includes('fatura') && (d.includes('pag') || d.includes('parc'))) || (forma === 'Débito' && espelhoCartao))
+  // B 10/10/2026: fatura do cartão Santander paga por PIX QR no Itaú (o cartão registra "PAGAMENTO DE FATURA")
+  const faturaPorQr = d.includes('qr code') && d.includes('banco santander');
+  if (c === 'Credit card payment' || c === 'Credit card fees' || d.includes('neon pagamen') || d.includes('nu pagamentos') || (d.includes('fatura') && (d.includes('pag') || d.includes('parc'))) || (forma === 'Débito' && espelhoCartao) || faturaPorQr)
     return 'pagamento_fatura';
   if (forma === 'Crédito' && !saida) return d.includes('pagamento') ? 'pagamento_fatura' : 'estorno';
   if (d.includes('rdb')) return 'transferencia_interna';

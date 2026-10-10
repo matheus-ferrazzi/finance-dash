@@ -22,7 +22,7 @@ export const GRUPOS_GASTO: DefGrupo[] = [
     cats: ['Gas stations', 'Automotive', 'Taxi and ride-hailing', 'Public transportation', 'Parking',
       'Tolls and in vehicle payment', 'Vehicle maintenance', 'Transportation'],
   },
-  { nome: 'Compras', emoji: '🛍️', travado: false, cats: ['Shopping', 'Clothing', 'Online shopping', 'Electronics', 'Houseware', 'Services'] },
+  { nome: 'Compras', emoji: '🛍️', travado: false, cats: ['Shopping', 'Clothing', 'Online shopping', 'Electronics', 'Houseware', 'Services', 'Gifts'] },
 ];
 
 const POR_CATEGORIA = new Map(GRUPOS_GASTO.flatMap((g) => g.cats.map((c) => [c, g] as const)));

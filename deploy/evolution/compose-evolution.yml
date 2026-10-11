@@ -3,7 +3,7 @@
 # gerado por scripts/d-evolution-env.sh — nada de segredo aqui.
 services:
   evolution:
-    image: evoapicloud/evolution-api:v2.3.4
+    image: evoapicloud/evolution-api:v2.3.7
     container_name: evolution
     restart: unless-stopped
     # sem depends_on: com ele, "compose up evolution" recriou o postgres-hub (config divergente). Subir com --no-deps.

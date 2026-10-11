@@ -6,11 +6,11 @@ services:
     image: evoapicloud/evolution-api:v2.3.4
     container_name: evolution
     restart: unless-stopped
+    # sem depends_on: com ele, "compose up evolution" recriou o postgres-hub (config divergente). Subir com --no-deps.
     env_file:
       - /root/n8n-docker/.env.evolution
     environment:
       - SERVER_URL=http://evolution:8080
-      - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_CLIENT_NAME=evolution
       # só envio: nada de mensagem, contato, chat, etiqueta ou histórico gravado

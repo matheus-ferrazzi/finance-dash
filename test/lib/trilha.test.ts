@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparDividas, avaliarTrilha, ehAtraso, ehDivida, mesesComContaNegativa, type DadosTrilha } from '../../src/lib/trilha';
+import { agruparDividas, avaliarTrilha, ehAtraso, ehDivida, marcaDinheiro, mesesComContaNegativa, partesDoTexto, type DadosTrilha } from '../../src/lib/trilha';
 
 describe('o que é dívida', () => {
   it('renegociação, parcelamento de fatura, empréstimo e financiamento são dívida', () => {
@@ -116,3 +116,14 @@ describe('avaliar a trilha', () => {
     expect(t.fases.map((f) => f.status)).toEqual(['atual', 'cumprida', 'cumprida', 'depois']);
   });
 });
+
+describe('valor dentro do texto (para o olho de esconder valores)', () => {
+  it('o próximo passo marca o valor em vez de formatá-lo; as partes separam texto e valor', () => {
+    const t = avaliarTrilha(dados());
+    expect(t.fases[2].proximoPasso).toBe(`Aplicar ${marcaDinheiro(100)}/mês completa a reserva em out/27.`);
+    expect(partesDoTexto(t.fases[2].proximoPasso)).toEqual(['Aplicar ', 100, '/mês completa a reserva em out/27.']);
+    expect(partesDoTexto('sem valor')).toEqual(['sem valor']);
+    expect(partesDoTexto(`${marcaDinheiro(-12.5)} e ${marcaDinheiro(3)}`)).toEqual([-12.5, ' e ', 3]);
+  });
+});
+

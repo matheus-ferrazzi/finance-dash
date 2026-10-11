@@ -27,11 +27,13 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   const corrente = mes === atual;
   const hoje = currentDateSP();
 
+  const basePromise = getProjecaoBase(resp);
   const [base, contas, despesas, faturas, movimentos, { calib }, trilhaDados] = await Promise.all([
-    getProjecaoBase(resp), getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
+    basePromise, getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
     getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje), corrente ? getCalibracaoPara(resp) : Promise.resolve({ calib: null }),
     // a trilha é do casal e é complemento: se falhar, a home abre sem ela
-    getTrilhaDados(hoje).catch((e) => { console.error('trilha falhou', e); return null; }),
+    // na visão do casal, a trilha reaproveita a base que a home já está buscando
+    (resp === 'casal' ? basePromise.then((b) => getTrilhaDados(hoje, b)) : getTrilhaDados(hoje)).catch((e) => { console.error('trilha falhou', e); return null; }),
   ]);
   const mesProj = computeProjecao(base, 1)[0];
   const ritmo = corrente && mesProj ? computeRitmo(base, mesProj) : null;

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { linkPara } from '@/lib/links';
 import type { Trilha } from '@/lib/trilha';
+import { TextoComValores } from './TextoComValores';
 
 const COR = { cumprida: 'bg-accent', atual: 'bg-warn', depois: 'bg-surface-3' } as const;
 
@@ -18,7 +19,7 @@ export function FaixaTrilha({ trilha }: { trilha: Trilha }) {
       <div className="text-sm">
         <b>{f.titulo}</b>{f.quando && <span className="text-muted">{` — ${f.quando}`}</span>}
       </div>
-      <div className="mt-0.5 text-[11px] text-muted">{f.proximoPasso}</div>
+      <div className="mt-0.5 text-[11px] text-muted"><TextoComValores texto={f.proximoPasso} /></div>
     </Link>
   );
 }

@@ -71,7 +71,8 @@ export interface SaudeDados {
   h_lancamentos: number | null; h_investimentos: number | null; h_faturas: number | null;
   h_worker_ok: number | null; worker_falhas_24h: number | null; ultimo_lancamento: string | null;
 }
-export function montarSaude(s: SaudeDados): string | null {
+/** As linhas de problema da saúde (usadas também no aviso técnico do D). */
+export function linhasSaude(s: SaudeDados): string[] {
   const LIM = 36;
   const probs: string[] = [];
   if ((s.h_faturas ?? 999) > LIM) probs.push(`• Faturas: sem atualizar há ${s.h_faturas}h`);
@@ -79,6 +80,11 @@ export function montarSaude(s: SaudeDados): string | null {
   if ((s.h_lancamentos ?? 999) > 72) probs.push(`• Lançamentos: nada novo há ${s.h_lancamentos}h (pode ser normal se sem gastos)`);
   if ((s.h_worker_ok ?? 999) > 19) probs.push(`• Ingestão (worker): última rodada completa há ${s.h_worker_ok ?? '—'}h`);
   if ((s.worker_falhas_24h ?? 0) > 0) probs.push(`• Ingestão (worker): ${s.worker_falhas_24h} rodada(s) com falha nas últimas 24h`);
+  return probs;
+}
+
+export function montarSaude(s: SaudeDados): string | null {
+  const probs = linhasSaude(s);
   if (!probs.length) return null;
   return `⚠️ *Alerta de sincronização*\n\nAlgo pode ter parado de atualizar:\n${probs.join('\n')}\n\nÚltimo lançamento: ${s.ultimo_lancamento || '—'}`;
 }
@@ -88,7 +94,8 @@ export interface BackupDados {
   h_desde_ok: number | null; h_desde_n8n: number | null; n8n_workflows: number | null; h_desde_offsite: number | null;
   tamanho: number | null; tabelas: number | null; falhas_24h: number | null; ultimo_erro: string | null;
 }
-export function montarBackup(s: BackupDados): string | null {
+/** As linhas de problema do backup (usadas também no aviso técnico do D). */
+export function linhasBackup(s: BackupDados): string[] {
   const probs: string[] = [];
   // o backup roda 1x/dia às 04h UTC: 30h de folga cobre um atraso sem alarme falso
   const hOk = s.h_desde_ok ?? 9999;
@@ -102,6 +109,11 @@ export function montarBackup(s: BackupDados): string | null {
   if ((s.falhas_24h || 0) > 0) {
     probs.push(`• ${s.falhas_24h} falha(s) em 24h` + (s.ultimo_erro ? ` — ultima: ${clean(s.ultimo_erro)}` : ''));
   }
+  return probs;
+}
+
+export function montarBackup(s: BackupDados): string | null {
+  const probs = linhasBackup(s);
   if (!probs.length) return null;
   const mb = s.tamanho ? (s.tamanho / 1048576).toFixed(2) + ' MB' : '?';
   // paridade com o n8n: o "\b" abaixo é o mesmo do original (vira o caractere de controle backspace, não uma

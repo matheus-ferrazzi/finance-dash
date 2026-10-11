@@ -1,5 +1,7 @@
 import { q, qw, writerPool } from './db';
-import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
+import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP, brl } from './format';
+import { agruparDividas, ehAtraso, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, type DadosTrilha } from './trilha';
+import { debitoParaSairAte, textoMetaAlvo } from './meta';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
@@ -1176,5 +1178,61 @@ export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
     semClassificacao: { total: itens.reduce((s, i) => s + i.valor, 0), itens },
     sobraMensalProjetada: mesCheio?.saldo ?? 0,
     saldoProjetadoFim: proj[0]?.saldoProjetado ?? 0,
+  };
+}
+
+// ==================== TRILHA (F3) ====================
+
+/** Tudo que a trilha precisa, sempre na visão do casal. */
+export async function getTrilhaDados(hoje: string = currentDateSP()): Promise<DadosTrilha> {
+  const mesAtual = hoje.slice(0, 7);
+  const desde = `${addMonths(mesAtual, -(MESES_ATRASO - 1))}-01`; // janela de atraso: o mês anterior e o atual
+  const iniPassados = `${addMonths(mesAtual, -MESES_SOBRA)}-01`;
+  const [base, passados, saldo, movs, divRows, aplRows] = await Promise.all([
+    getProjecaoBase('casal', hoje),
+    getMesesPassados('casal', hoje),
+    getSaldoContas('casal'),
+    getMovimentosDiarios('casal', desde, hoje),
+    // lançamentos da janela e parcelas futuras já conhecidas em hoje: dívidas e juros saem daqui
+    q<any>(
+      `SELECT descricao, categoria, COALESCE(banco,'—') AS banco, forma_pagamento AS forma,
+              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor
+       FROM financas_lancamentos
+       WHERE classe = 'despesa' AND ${SEM_ESPELHO}
+         AND data_lancamento >= $1::date
+         AND (data_lancamento <= $2::date OR criado_em::date <= $2::date)`,
+      [desde, hoje],
+    ),
+    // aplicação líquida por mês: aplicar soma, resgatar subtrai; rendimento (receita) fica fora
+    q<any>(
+      `SELECT to_char(data_lancamento,'YYYY-MM') AS mes,
+              SUM(CASE WHEN tipo_movimento = 'Entrada' THEN -valor ELSE valor END)::float8 AS liq
+       FROM financas_lancamentos
+       WHERE forma_pagamento = 'Débito' AND classe <> 'receita'
+         AND (classe = 'aporte' OR categoria = 'Investments')
+         AND data_lancamento >= $1::date AND data_lancamento < date_trunc('month', $2::date)
+       GROUP BY 1`,
+      [iniPassados, hoje],
+    ),
+  ]);
+  const proj = computeProjecao(base, 24, hoje);
+  const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
+  const alvo = addMonths(mesAtual, 12);
+  const lancs = divRows.map((x) => ({ descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor) }));
+  const juros = lancs.filter((l) => l.data <= hoje && ehAtraso(l.descricao, l.categoria)).map((l) => l.data.slice(0, 7));
+  const porMes = new Map(aplRows.map((x) => [x.mes as string, Math.round(Number(x.liq) * 100) / 100]));
+  return {
+    hoje,
+    dividas: agruparDividas(lancs, hoje),
+    atrasos: [
+      ...Array.from(new Set(juros)).sort().map((mes) => ({ mes, motivo: 'juros' as const })),
+      ...mesesComContaNegativa(saldo.total, movs, desde, hoje).map((mes) => ({ mes, motivo: 'conta_negativa' as const })),
+    ],
+    passados: passados.map((p) => ({ mes: p.mes, sobra: p.real.saldo, receita: p.real.receita })),
+    sobraPrevista: proj.slice(1).map((m) => ({ mes: m.mes, sobra: m.saldo })),
+    textoMeta: textoMetaAlvo(debitoParaSairAte(base, hoje, alvo), debitoAtual, mesLabel(alvo), (v) => brl(v)),
+    gastoTravado: { fixos: proj[1]?.despesaManual ?? 0, casa: proj[1]?.despesaCasa ?? 0, debitoTravado: base.despesaFixaDebitoMedia ?? 0 },
+    aplicado: base.patrimonioAtual,
+    aplicacaoMensal: Array.from({ length: MESES_SOBRA }, (_, i) => addMonths(mesAtual, -(MESES_SOBRA - i))).map((mes) => ({ mes, valor: porMes.get(mes) ?? 0 })),
   };
 }

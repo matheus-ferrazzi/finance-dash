@@ -35,44 +35,44 @@ describe('modo por bot', () => {
 describe('motor', () => {
   it('sombra grava sem enviar; o estado da sombra vale quando vira real (não repete o aviso)', async () => {
     const { reg, linhas } = registroFake(); const { canal, enviados } = canalFake();
-    expect((await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal, modo: 'sombra' })).enviado).toBe(false);
+    expect((await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'sombra' })).enviado).toBe(false);
     expect(linhas).toHaveLength(1);
     expect(linhas[0]).toMatchObject({ bot: 'fatura', modo: 'sombra', enviado: false });
     expect(enviados).toEqual([]);
-    const r = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal, modo: 'real' });
+    const r = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'real' });
     expect(r.texto).toBeNull();
     expect(enviados).toEqual([]);
     expect(linhas).toHaveLength(1);
   });
   it('real envia e grava enviado; Telegram recusando grava o erro e não lança', async () => {
     const { reg, linhas } = registroFake(); const { canal, enviados } = canalFake();
-    expect((await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canal, modo: 'real' })).enviado).toBe(true);
+    expect((await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'real' })).enviado).toBe(true);
     expect(enviados).toHaveLength(1);
     expect(linhas.at(-1)).toMatchObject({ modo: 'real', enviado: true, erro: null });
     const ruim = { async enviar() { throw new Error('Telegram HTTP 400: Bad Request'); } };
-    const r = await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canal: ruim, modo: 'real' });
+    const r = await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canais: { grupo: ruim, matheus: null }, modo: 'real' });
     expect(r).toMatchObject({ enviado: false, erro: 'Telegram HTTP 400: Bad Request' });
     expect(linhas.at(-1)).toMatchObject({ enviado: false, erro: 'Telegram HTTP 400: Bad Request' });
   });
   it('fonte falhando (painel fora): grava o erro, sem texto, sem lançar', async () => {
     const { reg, linhas } = registroFake(); const { canal } = canalFake();
-    const r = await rodarNotificacao('ritmo', { fontes: fontes({ ritmo: async () => { throw new Error('fetch failed'); } }), registro: reg, canal, modo: 'real' });
+    const r = await rodarNotificacao('ritmo', { fontes: fontes({ ritmo: async () => { throw new Error('fetch failed'); } }), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'real' });
     expect(r).toMatchObject({ texto: null, enviado: false, erro: 'fetch failed' });
     expect(linhas).toHaveLength(1);
   });
   it('gasto: primeira execução só grava a marca; dry-run não grava nem envia', async () => {
     const { reg, linhas } = registroFake(); const { canal, enviados } = canalFake();
     const g = fontes({ gasto: async () => [{ id_transacao: 'a', criado_em: '2026-10-10T10:00:00', valor: 600, descricao: 'X', banco: 'B', responsavel: 'Y', data: '10/10' }] });
-    await rodarNotificacao('gasto', { fontes: g, registro: reg, canal, modo: 'real' });
+    await rodarNotificacao('gasto', { fontes: g, registro: reg, canais: { grupo: canal, matheus: null }, modo: 'real' });
     expect(linhas).toEqual([{ bot: 'gasto', modo: 'real', texto: null, enviado: false, erro: null, estado: { lastCriadoEm: '2026-10-10T10:00:00' } }]);
-    const d = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal, modo: 'dry-run' });
+    const d = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'dry-run' });
     expect(d.texto).not.toBeNull();
     expect(linhas).toHaveLength(1);
     expect(enviados).toEqual([]);
   });
   it('real sem canal configurado: grava como sombra, sem lançar', async () => {
     const { reg, linhas } = registroFake();
-    const r = await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canal: null, modo: 'real' });
+    const r = await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canais: { grupo: null, matheus: null }, modo: 'real' });
     expect(r.enviado).toBe(false);
     expect(linhas[0]).toMatchObject({ modo: 'sombra' });
   });
@@ -82,20 +82,38 @@ describe('motor: falhas não perdem aviso (revisão C2)', () => {
   it('envio real falhando NÃO avança o estado: a próxima execução tenta de novo', async () => {
     const { reg, linhas } = registroFake();
     const ruim = { async enviar() { throw new Error('Telegram HTTP 502: Bad Gateway'); } };
-    const r1 = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal: ruim, modo: 'real' });
+    const r1 = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canais: { grupo: ruim, matheus: null }, modo: 'real' });
     expect(r1).toMatchObject({ enviado: false, erro: 'Telegram HTTP 502: Bad Gateway' });
     expect(linhas.at(-1)).toMatchObject({ estado: null });
     const { canal, enviados } = canalFake();
-    const r2 = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal, modo: 'real' });
+    const r2 = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'real' });
     expect(r2.enviado).toBe(true);
     expect(enviados).toHaveLength(1);
   });
   it('dados inesperados (painel responde null) viram erro gravado, sem lançar', async () => {
     const { reg, linhas } = registroFake(); const { canal } = canalFake();
-    const r = await rodarNotificacao('ritmo', { fontes: fontes({ ritmo: async () => null }), registro: reg, canal, modo: 'real' });
+    const r = await rodarNotificacao('ritmo', { fontes: fontes({ ritmo: async () => null }), registro: reg, canais: { grupo: canal, matheus: null }, modo: 'real' });
     expect(r.texto).toBeNull();
     expect(r.erro).toBeTruthy();
     expect(linhas).toHaveLength(1);
+  });
+});
+
+describe('destinos (D)', () => {
+  it('técnico vai para o canal do Matheus; sem esse canal fica em sombra', async () => {
+    const { reg } = registroFake(); const grupo = canalFake(); const matheus = canalFake();
+    const f = fontes({ tecnico: async () => ({ saude: { h_lancamentos: 5, h_investimentos: 5, h_faturas: 5, h_worker_ok: 30, worker_falhas_24h: 0, ultimo_lancamento: 'x' }, backup: { h_desde_ok: 5, h_desde_n8n: 5, n8n_workflows: 1, h_desde_offsite: 1, tamanho: 1, tabelas: 1, falhas_24h: 0, ultimo_erro: null }, consentimentos: [] }) });
+    await rodarNotificacao('tecnico', { fontes: f, registro: reg, canais: { grupo: grupo.canal, matheus: matheus.canal }, modo: 'real' });
+    expect(matheus.enviados).toHaveLength(1);
+    expect(grupo.enviados).toHaveLength(0);
+    const r = await rodarNotificacao('tecnico', { fontes: f, registro: reg, canais: { grupo: grupo.canal, matheus: null }, modo: 'real' });
+    expect(r.modo).toBe('sombra');
+  });
+  it('diário vai para o grupo, com o link do painel', async () => {
+    const { reg } = registroFake(); const grupo = canalFake();
+    const f = fontes({ diario: async () => ({ mesLabel: 'out/26', fechaCom: 1, diasRestantes: 5, ritmoSeguroDia: 10, ritmoAtualDia: 5, contas: [] }) });
+    await rodarNotificacao('diario', { fontes: f, registro: reg, canais: { grupo: grupo.canal, matheus: null }, modo: 'real', painelUrl: 'https://painel.exemplo' });
+    expect(grupo.enviados[0].endsWith('https://painel.exemplo/')).toBe(true);
   });
 });
 

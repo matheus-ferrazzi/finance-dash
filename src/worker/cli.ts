@@ -19,6 +19,11 @@ export const AGENDA_NOTIF: readonly [string, Bot][] = [
   ['45 16,22 * * *', 'gasto'],
   ['30 12 * * *', 'saude'],
   ['0 10 * * *', 'backup'],
+  // D (WhatsApp): grupo do casal; técnico no privado do Matheus
+  ['0 8 * * *', 'diario'],
+  ['0 9 * * 1', 'semanal'],
+  ['0 9 1 * *', 'mensal'],
+  ['30 12 * * *', 'tecnico'],
 ];
 export type TarefaNotif = `notif-${Bot}`;
 const NOTIFS = new Set<string>(BOTS.map((b) => `notif-${b}`));

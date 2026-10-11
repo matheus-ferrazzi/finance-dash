@@ -2,8 +2,9 @@ import { Cron } from 'croner';
 import { Pool } from 'pg';
 import { AGENDA, AGENDA_NOTIF, lerArgs, lerModo } from './cli';
 import { CanalTelegram } from './notificacoes/canal';
+import { CanalWhatsApp } from './notificacoes/whatsapp';
 import { criarFontes } from './notificacoes/fontes';
-import { modoDoBot, rodarNotificacao } from './notificacoes/motor';
+import { destinoDe, modoDoBot, rodarNotificacao } from './notificacoes/motor';
 import { PgRegistroNotif } from './notificacoes/registro';
 import type { Bot } from './notificacoes/textos';
 import { PluggyClient } from './pluggy';
@@ -38,10 +39,19 @@ async function main() {
   // notificações (C2): sem token/chat do Telegram, tudo em sombra (registra, não envia)
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chat = process.env.TELEGRAM_CHAT_ID;
-  const canal = token && chat ? new CanalTelegram(token, chat) : null;
-  const notif = { fontes: criarFontes(pool), registro: new PgRegistroNotif(pool), canal };
+  const telegram = token && chat ? new CanalTelegram(token, chat) : null;
+  // D: WhatsApp (Evolution API na rede interna); o grupo do casal substitui o Telegram quando configurado
+  const waUrl = process.env.WA_URL ?? 'http://evolution:8080';
+  const waKey = process.env.WA_API_KEY;
+  const waInst = process.env.WA_INSTANCIA ?? 'financas';
+  const wa = (destino: string | undefined) => (waKey && destino ? new CanalWhatsApp(waUrl, waKey, waInst, destino) : null);
+  const canais = { grupo: wa(process.env.WA_GRUPO) ?? telegram, matheus: wa(process.env.WA_MATHEUS) };
+  const notif = {
+    fontes: criarFontes(pool, process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000'),
+    registro: new PgRegistroNotif(pool), canais, painelUrl: process.env.PAINEL_URL ?? '',
+  };
   const notificar = async (bot: Bot, dryRun: boolean) => {
-    const modo = dryRun ? 'dry-run' as const : modoDoBot(bot, process.env.NOTIF_REAL, !!canal);
+    const modo = dryRun ? 'dry-run' as const : modoDoBot(bot, process.env.NOTIF_REAL, !!canais[destinoDe(bot)]);
     return rodarNotificacao(bot, { ...notif, modo });
   };
 
@@ -63,7 +73,8 @@ async function main() {
         }
       });
     }
-    if (!canal) log('notificações em sombra: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID ausentes');
+    if (!canais.grupo) log('notificações do grupo em sombra: sem WhatsApp (WA_API_KEY/WA_GRUPO) nem Telegram');
+    if (!canais.matheus) log('aviso técnico em sombra: sem WA_MATHEUS');
     log(`worker no ar, modo=${modo}, ${AGENDA.length} tarefas + ${AGENDA_NOTIF.length} notificações agendadas (${TZ})`);
     return;
   }

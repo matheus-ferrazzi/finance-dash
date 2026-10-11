@@ -3,7 +3,7 @@
 import type { Pool } from 'pg';
 import type { Fontes } from './motor';
 
-type Fetcher = (url: string) => Promise<{ ok: boolean; status?: number; json: () => Promise<any> }>;
+type Fetcher = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status?: number; json: () => Promise<any> }>;
 
 const SQL_FATURA = `SELECT COALESCE(json_agg(f ORDER BY f.dias), '[]') AS faturas FROM (
   SELECT COALESCE(banco,'Cartão') AS banco, COALESCE(responsavel,'—') AS responsavel,
@@ -51,7 +51,7 @@ export function criarFontes(pool: Pool, urlPrevisao = 'http://finance-dashboard:
   const um = async (sql: string, campo: string) => (await pool.query(sql)).rows[0]?.[campo];
   return {
     ritmo: async () => {
-      const r = await fetcher(urlPrevisao);
+      const r = await fetcher(urlPrevisao, { signal: AbortSignal.timeout(15000) });
       if (!r.ok) throw new Error(`painel HTTP ${r.status}`);
       return r.json();
     },

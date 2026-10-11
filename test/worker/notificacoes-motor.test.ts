@@ -78,6 +78,27 @@ describe('motor', () => {
   });
 });
 
+describe('motor: falhas não perdem aviso (revisão C2)', () => {
+  it('envio real falhando NÃO avança o estado: a próxima execução tenta de novo', async () => {
+    const { reg, linhas } = registroFake();
+    const ruim = { async enviar() { throw new Error('Telegram HTTP 502: Bad Gateway'); } };
+    const r1 = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal: ruim, modo: 'real' });
+    expect(r1).toMatchObject({ enviado: false, erro: 'Telegram HTTP 502: Bad Gateway' });
+    expect(linhas.at(-1)).toMatchObject({ estado: null });
+    const { canal, enviados } = canalFake();
+    const r2 = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canal, modo: 'real' });
+    expect(r2.enviado).toBe(true);
+    expect(enviados).toHaveLength(1);
+  });
+  it('dados inesperados (painel responde null) viram erro gravado, sem lançar', async () => {
+    const { reg, linhas } = registroFake(); const { canal } = canalFake();
+    const r = await rodarNotificacao('ritmo', { fontes: fontes({ ritmo: async () => null }), registro: reg, canal, modo: 'real' });
+    expect(r.texto).toBeNull();
+    expect(r.erro).toBeTruthy();
+    expect(linhas).toHaveLength(1);
+  });
+});
+
 describe('canal Telegram', () => {
   it('manda Markdown para o chat; erro não expõe o token', async () => {
     const chamadas: any[] = [];

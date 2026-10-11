@@ -1,6 +1,8 @@
 // Dados das mensagens do D (diário, semanal, mensal): só remonta o que o painel já calcula.
 import type { ItemConta } from './contas';
 import type { GrupoGasto } from './grupos';
+import { mesLabel } from './format';
+import type { MesPassado } from './queries';
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
@@ -67,4 +69,11 @@ export function acumular(porDia: { dia: number; valor: number }[], ateDia: numbe
     out.push({ dia: d, acumulado: r2(s) });
   }
   return out;
+}
+
+/** Sobra real dos meses fechados para o gráfico do mensal; mês sem receita nem débito (antes do histórico) fica fora. */
+export function historicoDe(passados: MesPassado[]): { mes: string; mesLabel: string; sobra: number }[] {
+  return passados
+    .filter((m) => m.real.receita !== 0 || m.real.debito !== 0)
+    .map((m) => ({ mes: m.mes, mesLabel: mesLabel(m.mes), sobra: m.real.saldo }));
 }

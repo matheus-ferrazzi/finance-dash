@@ -31,16 +31,21 @@ export function graficoDiario(r: ResumoDiario): string | null {
   const pts = [{ dia: 0, acumulado: 0 }, ...s].map((p) => `${f(X(p.dia))},${f(Y(p.acumulado))}`).join(' ');
   return svg([
     texto(40, 56, `${r.mesLabel} · dia ${hoje.dia}`, 24, SUAVE),
-    texto(40, 106, `hoje: ${brlCurto(r.ritmoSeguroDia)}`, 44, TEXTO, ' font-weight="bold"'),
+    // último dia: não há "hoje dá pra gastar"; o destaque é como o mês fecha
+    texto(40, 106, r.diasRestantes > 0 ? `hoje: ${brlCurto(r.ritmoSeguroDia)}` : `fecha em ${brlCurto(r.fechaCom)}`, 44, TEXTO, ' font-weight="bold"'),
     `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="${GRADE}" stroke-width="2"/>`,
     `<line x1="${f(X(0))}" y1="${f(Y(0))}" x2="${f(X(dias))}" y2="${f(Y(r.cabeNoMes))}" stroke="${CINZA}" stroke-width="3" stroke-dasharray="10 8"/>`,
-    texto(X(dias) - 150, Y(r.cabeNoMes) - 14, 'o que cabe', 20, SUAVE),
+    // do lado oposto do gasto: abaixo da reta quando o gasto está acima, e vice-versa
+    texto(X(dias) - 150, cor === VERM ? Y((r.cabeNoMes * (dias - 150 / ((x1 - x0) / dias))) / dias) + 30 : Y(r.cabeNoMes) - 14, 'o que cabe', 20, SUAVE),
     hoje.dia < dias
       ? `<line x1="${f(X(hoje.dia))}" y1="${f(Y(hoje.acumulado))}" x2="${f(X(dias))}" y2="${f(Y(projFim))}" stroke="${cor}" stroke-width="3" stroke-dasharray="4 8" stroke-opacity="0.6"/>`
       : '',
     `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`,
     `<circle cx="${f(X(hoje.dia))}" cy="${f(Y(hoje.acumulado))}" r="10" fill="${cor}"/>`,
-    texto(X(hoje.dia) + 16, Y(hoje.acumulado) - 14, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor),
+    // perto da borda direita o rótulo vai para a esquerda do ponto (não sai da imagem)
+    X(hoje.dia) > W - 220
+      ? texto(X(hoje.dia) - 16, Y(hoje.acumulado) - 14, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor, ' text-anchor="end"')
+      : texto(X(hoje.dia) + 16, Y(hoje.acumulado) - 14, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor),
     texto(x0, y0 + 34, 'dia 1', 18, SUAVE),
     texto(x1 - 70, y0 + 34, `dia ${dias}`, 18, SUAVE),
   ]);
@@ -53,7 +58,7 @@ export function graficoSemanal(r: ResumoSemanal): string | null {
     .slice(0, 6);
   if (!gs.length) return null;
   const max = Math.max(...gs.map((g) => Math.max(g.semana, g.media)), 1) * 1.15;
-  const xb = 250, xf = W - 120, topo = 100, alt = (H - topo - 30) / 6;
+  const xb = 250, xf = W - 150, topo = 100, alt = (H - topo - 30) / 6;
   const L = (v: number) => ((xf - xb) * v) / max;
   const corpo = [texto(40, 56, 'semana × média (traço)', 24, SUAVE)];
   gs.forEach((g, i) => {
@@ -62,7 +67,8 @@ export function graficoSemanal(r: ResumoSemanal): string | null {
       texto(40, y + alt / 2 + 8, g.nome, 22, TEXTO),
       `<rect class="barra" x="${xb}" y="${f(y + 10)}" width="${f(Math.max(4, L(g.semana)))}" height="${f(alt - 20)}" rx="8" fill="${cor}"/>`,
       `<line class="media" x1="${f(xb + L(g.media))}" y1="${f(y + 2)}" x2="${f(xb + L(g.media))}" y2="${f(y + alt - 2)}" stroke="${TEXTO}" stroke-width="4"/>`,
-      texto(xb + Math.max(L(g.semana), L(g.media)) + 14, y + alt / 2 + 8, brlCurto(g.semana), 20, SUAVE),
+      // valor da semana numa coluna fixa à direita: não encosta no traço nem parece ser a média
+      texto(W - 30, y + alt / 2 + 8, brlCurto(g.semana), 20, SUAVE, ' text-anchor="end"'),
     );
   });
   return svg(corpo);

@@ -61,12 +61,13 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const LIMITE_LEGENDA = 1000;
+type Renderizar = (svg: string) => Buffer | Promise<Buffer>;
 
 /** Imagem + legenda quando dá; qualquer falha da imagem cai para o texto (a mensagem não se perde pelo gráfico). */
-async function entregar(canal: Canal, texto: string, svg: string | null | undefined, renderizar: (s: string) => Buffer): Promise<string | null> {
+async function entregar(canal: Canal, texto: string, svg: string | null | undefined, renderizar: Renderizar): Promise<string | null> {
   if (svg && canal.enviarImagem) {
     try {
-      const png = renderizar(svg);
+      const png = await renderizar(svg);
       if (texto.length <= LIMITE_LEGENDA) { await canal.enviarImagem(png, texto); return null; }
       await canal.enviarImagem(png, '');
     } catch (e) {
@@ -82,7 +83,7 @@ export async function rodarNotificacao(
   bot: Bot,
   d: {
     fontes: Fontes; registro: RegistroNotif; canais: Canais; modo: 'sombra' | 'real' | 'dry-run'; painelUrl?: string;
-    renderizar?: (svg: string) => Buffer;
+    renderizar?: Renderizar;
   },
 ): Promise<ResultadoNotif> {
   // sem canal para o destino não há como enviar: o que seria real vira sombra (registra, não envia)

@@ -87,7 +87,7 @@ async function main() {
   if (args.tarefa.startsWith('notif-')) {
     const r = await notificar(args.tarefa.slice('notif-'.length) as Bot, args.dryRun);
     if (args.png) {
-      if (r.svg) { writeFileSync(args.png, paraPng(r.svg)); console.log(`gráfico gravado em ${args.png}`); }
+      if (r.svg) { writeFileSync(args.png, await paraPng(r.svg)); console.log(`gráfico gravado em ${args.png}`); }
       else console.log('sem gráfico para esta mensagem');
     }
     const { svg: _svg, ...semSvg } = r;

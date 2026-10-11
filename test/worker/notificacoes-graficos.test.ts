@@ -80,17 +80,44 @@ describe('gráfico do mensal', () => {
 });
 
 describe('PNG', () => {
-  it('cada gráfico vira PNG 800×480 com a fonte do pacote', () => {
+  it('cada gráfico vira PNG 800×480 com a fonte do pacote', async () => {
     const svgs = [
       graficoDiario(dia())!,
       graficoSemanal(sem([{ nome: 'Mercado', emoji: '🛒', semana: 10, media: 5 }]))!,
       graficoMensal(mes([{ mes: '2026-08', mesLabel: 'ago/26', sobra: -3 }, { mes: '2026-09', mesLabel: 'set/26', sobra: 2 }]))!,
     ];
     for (const s of svgs) {
-      const png = paraPng(s);
+      const png = await paraPng(s);
       expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
       expect(png.readUInt32BE(16)).toBe(800);
       expect(png.readUInt32BE(20)).toBe(480);
     }
+  });
+});
+
+describe('rótulos (revisão D2)', () => {
+  it('último dia do mês: título mostra como fecha, não "hoje: R$ 0"', () => {
+    const s = graficoDiario(dia({ diasRestantes: 0, ritmoSeguroDia: 0, serie: Array.from({ length: 31 }, (_, i) => ({ dia: i + 1, acumulado: (i + 1) * 10 })) }))!;
+    expect(s).not.toContain('hoje:');
+    expect(s).toContain('fecha em -R$ 500');
+  });
+  it('fim do mês: rótulo do gasto ancorado à direita (não sai da imagem)', () => {
+    const s = graficoDiario(dia({ serie: Array.from({ length: 28 }, (_, i) => ({ dia: i + 1, acumulado: (i + 1) * 10 })) }))!;
+    expect(s).toMatch(/text-anchor="end"[^>]*>gasto R\$/);
+  });
+  it('semanal: valores numa coluna à direita, alinhados, depois de toda barra e traço (não encostam no traço)', () => {
+    const s = graficoSemanal(sem([{ nome: 'Mercado', emoji: '•', semana: 0, media: 500 }, { nome: 'Lazer', emoji: '•', semana: 280, media: 320 }]))!;
+    const xs = [...s.matchAll(/<text x="([\d.]+)"[^>]*text-anchor="end">R\$/g)].map((m) => Number(m[1]));
+    expect(xs).toHaveLength(2);
+    expect(new Set(xs).size).toBe(1);
+    const fimBarras = Math.max(...[...s.matchAll(/class="media" x1="([\d.]+)"/g)].map((m) => Number(m[1])),
+      ...[...s.matchAll(/class="barra" x="([\d.]+)" y="[\d.]+" width="([\d.]+)"/g)].map((m) => Number(m[1]) + Number(m[2])));
+    expect(xs[0] - 90).toBeGreaterThan(fimBarras);
+  });
+  it('diário: "o que cabe" fica do lado oposto do gasto (abaixo da reta quando o gasto está acima)', () => {
+    const s = graficoDiario(dia())!; // acima do que cabe
+    const yCabe = Number(s.match(/<text x="[\d.]+" y="([\d.]+)"[^>]*>o que cabe/)![1]);
+    const yFimReta = Number(s.match(/stroke-dasharray="10 8"/) && s.match(/<line x1="[\d.]+" y1="[\d.]+" x2="[\d.]+" y2="([\d.]+)" stroke="#888780"/)![1]);
+    expect(yCabe).toBeGreaterThan(yFimReta);
   });
 });

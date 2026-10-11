@@ -1,6 +1,10 @@
 // Canal de envio (C2): Telegram hoje; o D acrescenta o WhatsApp sem mexer nos bots.
 
-export interface Canal { enviar(texto: string): Promise<void> }
+export interface Canal {
+  enviar(texto: string): Promise<void>;
+  /** D2: imagem com legenda (só o WhatsApp); sem isto, o motor manda só o texto */
+  enviarImagem?(png: Buffer, legenda: string): Promise<void>;
+}
 
 type Fetcher = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{
   ok: boolean; status?: number; json: () => Promise<any>;

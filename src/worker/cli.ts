@@ -37,15 +37,26 @@ export interface Args {
   dryRun: boolean;
   desde?: string;
   limite?: number;
+  /** D2: grava o gráfico da notificação (só com --dry-run) */
+  png?: string;
 }
 
 export function lerArgs(argv: string[]): Args {
   const [primeiro, ...resto] = argv;
   if (!primeiro || primeiro === 'agendar') return { tarefa: 'agendar', dryRun: false };
   if (NOTIFS.has(primeiro)) {
-    // notificação: só --dry-run (monta e mostra, não grava nem envia)
-    for (const a of resto) if (a !== '--dry-run') throw new Error(`opção desconhecida: ${a}`);
-    return { tarefa: primeiro as TarefaNotif, dryRun: resto.includes('--dry-run') };
+    // notificação: --dry-run (monta e mostra, não grava nem envia) e --png <arquivo> (grava o gráfico)
+    const out: Args = { tarefa: primeiro as TarefaNotif, dryRun: false };
+    for (let i = 0; i < resto.length; i++) {
+      if (resto[i] === '--dry-run') out.dryRun = true;
+      else if (resto[i] === '--png') {
+        const v = resto[++i];
+        if (!v || v.startsWith('--')) throw new Error('--png precisa de um arquivo');
+        out.png = v;
+      } else throw new Error(`opção desconhecida: ${resto[i]}`);
+    }
+    if (out.png && !out.dryRun) throw new Error('--png só com --dry-run');
+    return out;
   }
   if (!(primeiro in TAREFAS)) throw new Error(`tarefa desconhecida: ${primeiro}. Use: ${[...Object.keys(TAREFAS), ...NOTIFS].join(', ')}`);
   const out: Args = { tarefa: primeiro as NomeTarefa, dryRun: false };

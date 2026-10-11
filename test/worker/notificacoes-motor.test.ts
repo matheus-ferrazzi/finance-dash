@@ -147,3 +147,61 @@ describe('canal Telegram', () => {
     expect(msg).not.toContain('TOKEN-FALSO');
   });
 });
+
+function canalComImagem(falhaImagem = false) {
+  const textos: string[] = []; const imagens: [Buffer, string][] = [];
+  const canal = {
+    enviar: async (t: string) => { textos.push(t); },
+    enviarImagem: async (p: Buffer, l: string) => { if (falhaImagem) throw new Error('WhatsApp HTTP 400: media'); imagens.push([p, l]); },
+  };
+  return { canal, textos, imagens };
+}
+const diarioComSerie = async () => ({ mesLabel: 'out/26', fechaCom: 1, diasRestantes: 5, ritmoSeguroDia: 10, ritmoAtualDia: 5, contas: [],
+  serie: [{ dia: 1, acumulado: 5 }], cabeNoMes: 100, diasNoMes: 31 });
+const png = () => Buffer.from('PNG');
+
+describe('imagem (D2)', () => {
+  it('canal com imagem: um envio com legenda = texto; nada de texto separado', async () => {
+    const { reg } = registroFake(); const c = canalComImagem();
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(r.enviado).toBe(true);
+    expect(c.imagens).toHaveLength(1);
+    expect(c.imagens[0][1]).toBe(r.texto);
+    expect(c.textos).toHaveLength(0);
+  });
+  it('imagem recusada: vai o texto e o erro fica com "imagem:"', async () => {
+    const { reg, linhas } = registroFake(); const c = canalComImagem(true);
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(c.textos).toHaveLength(1);
+    expect(r.enviado).toBe(true);
+    expect(r.erro).toMatch(/^imagem: WhatsApp HTTP 400/);
+    expect(linhas.at(-1)!.erro).toMatch(/^imagem:/);
+  });
+  it('gerar o PNG falhou: vai o texto', async () => {
+    const c = canalComImagem(); const { reg } = registroFake();
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real', renderizar: () => { throw new Error('resvg'); } });
+    expect(c.textos).toHaveLength(1);
+    expect(r.erro).toBe('imagem: resvg');
+  });
+  it('painel sem série (sem gráfico) ou canal sem imagem (Telegram): só texto', async () => {
+    const c = canalComImagem(); const { reg } = registroFake();
+    await rodarNotificacao('diario', { fontes: fontes({ diario: async () => ({ ...(await diarioComSerie()), serie: undefined }) }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(c.textos).toHaveLength(1);
+    const t = canalFake();
+    await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: t.canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(t.enviados).toHaveLength(1);
+  });
+  it('legenda acima de 1000 caracteres: imagem sem legenda e o texto em seguida', async () => {
+    const c = canalComImagem(); const { reg } = registroFake();
+    const muitas = Array.from({ length: 40 }, (_, i) => ({ nome: `Conta numero ${i}`, valor: 10, quando: 'hoje' as const }));
+    await rodarNotificacao('diario', { fontes: fontes({ diario: async () => ({ ...(await diarioComSerie()), contas: muitas }) }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(c.imagens[0][1]).toBe('');
+    expect(c.textos).toHaveLength(1);
+  });
+  it('dry-run devolve o SVG e não renderiza', async () => {
+    const { reg } = registroFake(); let chamou = false;
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: null, matheus: null, telegram: null }, modo: 'dry-run', renderizar: () => { chamou = true; return png(); } });
+    expect(r.svg).toContain('<svg');
+    expect(chamou).toBe(false);
+  });
+});

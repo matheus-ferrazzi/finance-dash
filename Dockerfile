@@ -24,6 +24,9 @@ FROM node:20-alpine AS worker
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=worker-build /app/dist/worker.js /app/dist/equivalencia.js ./
+# D2: resvg e nativo (binario musl) e fica fora do bundle; a fonte do grafico vem do pacote dejavu
+COPY --from=worker-build /app/node_modules/@resvg ./node_modules/@resvg
+COPY --from=worker-build /app/node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf /app/node_modules/dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf ./fonts/
 USER node
 CMD ["node", "worker.js"]
 

@@ -13,7 +13,7 @@ export async function GET() {
   const anterior = addMonths(fechado, -1);
   // "mudou de fase": a trilha hoje × no fim do mês anterior ao que fechou (início do mês fechado)
   const [passados, agora, antes, p] = await Promise.all([
-    getMesesPassados('casal', hoje),
+    getMesesPassados('casal', hoje, 6),
     getTrilhaDados(hoje),
     getTrilhaDados(`${anterior}-${String(diasNoMes(anterior)).padStart(2, '0')}`),
     getPrevisaoResumo('casal'),
@@ -29,5 +29,6 @@ export async function GET() {
       mudou: tAgora.atual !== tAntes.atual, faseAntes: tAntes.atual,
     },
     mesNovo: { mesLabel: p.mesLabel, fechaCom: p.fechaCom },
+    historico: passados.map((x) => ({ mes: x.mes, mesLabel: mesLabel(x.mes), sobra: x.real.saldo })),
   });
 }

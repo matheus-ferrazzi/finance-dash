@@ -57,3 +57,14 @@ export function semanaAnterior(hoje: string): { inicio: string; fim: string } {
 export function somaDias(data: string, n: number): string {
   return new Date(new Date(`${data}T12:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
 }
+
+/** Gasto acumulado por dia do mês, de 1 até `ateDia` (dias sem gasto repetem o acumulado). */
+export function acumular(porDia: { dia: number; valor: number }[], ateDia: number): { dia: number; acumulado: number }[] {
+  const out: { dia: number; acumulado: number }[] = [];
+  let s = 0;
+  for (let d = 1; d <= ateDia; d++) {
+    s += porDia.filter((p) => p.dia === d).reduce((a, p) => a + p.valor, 0);
+    out.push({ dia: d, acumulado: r2(s) });
+  }
+  return out;
+}

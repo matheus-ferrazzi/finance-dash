@@ -1,6 +1,6 @@
 // Trilha do casal (F3): sair das dívidas → fazer sobrar → reserva → patrimônio. Regras e textos puros.
 import { addMonths } from './previsao';
-import { brl, mesLabel } from './format';
+import { mesLabel } from './format';
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 
@@ -95,6 +95,15 @@ export interface Trilha {
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
+// Valor dentro de uma frase: marcado no texto e desenhado à parte (com a classe "money", que o olho
+// de esconder valores borra); formatado dentro da string, o valor ficaria sempre visível.
+export const marcaDinheiro = (v: number) => `{{${r2(v)}}}`;
+
+/** Separa uma frase com valores marcados em texto e números, na ordem. */
+export function partesDoTexto(s: string): (string | number)[] {
+  return s.split(/\{\{(-?[0-9.]+)\}\}/).map((p, i) => (i % 2 ? Number(p) : p)).filter((p) => p !== '');
+}
+
 /** As quatro fases: cumprida pelo que já aconteceu, "quando" pela previsão; a atual é a primeira não cumprida. */
 export function avaliarTrilha(d: DadosTrilha): Trilha {
   const mesAtual = d.hoje.slice(0, 7);
@@ -129,7 +138,7 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
   const falta = Math.max(0, meta - d.aplicado);
   const q3 = f3ok ? null : ritmo > 0 ? mesLabel(addMonths(mesAtual, Math.ceil(falta / ritmo))) : 'sem previsão';
   const p3 = f3ok ? 'Reserva completa: manter.'
-    : `Aplicar ${brl(Math.ceil(falta / 12))}/mês completa a reserva em ${mesLabel(addMonths(mesAtual, 12))}.`;
+    : `Aplicar ${marcaDinheiro(Math.ceil(falta / 12))}/mês completa a reserva em ${mesLabel(addMonths(mesAtual, 12))}.`;
 
   // 4. patrimônio
   const receita = d.passados.reduce((s, m) => s + m.receita, 0);
@@ -146,7 +155,7 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
       { n: 1, titulo: 'Sair das dívidas', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
       { n: 2, titulo: 'Fazer sobrar', status: st(2, f2ok), quando: f2ok ? null : q2, proximoPasso: d.textoMeta },
       { n: 3, titulo: 'Reserva de emergência', status: st(3, f3ok), quando: q3, proximoPasso: p3 },
-      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar 10% do que entra (${brl(r2(receitaMedia * META_PATRIMONIO))}/mês).` },
+      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar 10% do que entra (${marcaDinheiro(receitaMedia * META_PATRIMONIO)}/mês).` },
     ],
     reserva: { meta, aplicado: d.aplicado, ritmo },
     patrimonio: { pct, meta: META_PATRIMONIO },

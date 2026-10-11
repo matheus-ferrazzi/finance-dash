@@ -10,7 +10,7 @@ const trilha: Trilha = {
   fases: [
     { n: 1, titulo: 'Sair das dívidas', status: 'atual', quando: 'mar/27', proximoPasso: 'Manter a fatura paga inteira.' },
     { n: 2, titulo: 'Fazer sobrar', status: 'depois', quando: 'pela previsão, não acontece em 24 meses', proximoPasso: 'meta' },
-    { n: 3, titulo: 'Reserva de emergência', status: 'depois', quando: 'sem previsão', proximoPasso: 'Aplicar' },
+    { n: 3, titulo: 'Reserva de emergência', status: 'depois', quando: 'sem previsão', proximoPasso: 'Aplicar {{150}}/mês' },
     { n: 4, titulo: 'Construir patrimônio', status: 'depois', quando: null, proximoPasso: 'Aplicar 10%' },
   ],
   reserva: { meta: 1200, aplicado: 300, ritmo: 0 }, patrimonio: { pct: 0, meta: 0.1 }, sobra: { cumpridos: 1, meses: [{ mes: '2026-09', sobra: 5 }] },
@@ -35,6 +35,8 @@ describe('cartão de fase', () => {
     expect(h).toContain('Reserva de emergência');
     expect(h).toContain('money');
     expect(h).toContain('role="progressbar"');
+    // o valor do próximo passo vai com "money" (o olho esconde), o texto não
+    expect(h).toMatch(/Aplicar <span class="tnum money">R\$\s?150,00<\/span>\/mês/);
   });
   it('dívidas: cada dívida com parcela, quantas faltam e até quando; sem fim conhecido; atraso com o mês', () => {
     const h = renderToStaticMarkup(createElement(CartaoFase, {

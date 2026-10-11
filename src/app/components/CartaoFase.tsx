@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { brl, mesLabel } from '@/lib/format';
 import { linkPara } from '@/lib/links';
 import type { DadosTrilha, Fase, Trilha } from '@/lib/trilha';
+import { TextoComValores } from './TextoComValores';
 
 type Props = { fase: Fase; trilha: Trilha } & Pick<DadosTrilha, 'dividas' | 'atrasos' | 'gastoTravado' | 'aplicacaoMensal'>;
 const ROTULO = { cumprida: '✓ cumprida', atual: 'agora', depois: 'depois' } as const;
@@ -73,7 +74,7 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
         </div>
       )}
 
-      <div className="mt-2 text-xs">{fase.proximoPasso}</div>
+      <div className="mt-2 text-xs"><TextoComValores texto={fase.proximoPasso} /></div>
     </div>
   );
 }

@@ -225,4 +225,17 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(typeof d.textoMeta).toBe('string');
     expect(d.aplicado).toBeGreaterThanOrEqual(0);
   });
+  it('dados da trilha: parcelamento de fatura e encargo vêm como pagamento_fatura no cartão; pagar a fatura pelo débito não é dívida', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('tf-1', '2039-05-08', 70, 'PARCELAMENTO DE FATURA 4/6', 'Credit card payment', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-01'),
+      ('tf-2', '2039-03-09', 12, 'ENC ATRASO PARC FATURA', 'Credit card fees', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-03-09'),
+      ('tf-3', '2039-04-05', 900, 'PAGAMENTO FATURA PARC CARTAO', 'Credit card payment', 'Débito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-05')`);
+    const d = await queries.getTrilhaDados('2039-04-15');
+    expect(d.dividas).toEqual([{ nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
+    expect(d.atrasos).toContainEqual({ mes: '2039-03', motivo: 'juros' });
+  });
+  it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {
+    const base = await queries.getProjecaoBase('casal', '2038-04-15');
+    expect(await queries.getTrilhaDados('2038-04-15', base)).toEqual(await queries.getTrilhaDados('2038-04-15'));
+  });
 });

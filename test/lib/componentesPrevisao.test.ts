@@ -66,7 +66,7 @@ describe('detalhe do mês', () => {
       passado: { linhas: [{ chave: 'saldo', titulo: 'Sobra do mês', previsto: 20, real: 50, diferenca: 30 }], saldoFim: 5,
         conciliacao: { saldoInicio: 100, sobra: 50, transferencias: -145, saldoFim: 5 } },
     }));
-    expect(h).toMatch(/Saldo no início[\s\S]*Sobra do mês[\s\S]*Transferências e aplicações[\s\S]*Saldo no fim/);
+    expect(h).toMatch(/Saldo no início[\s\S]*Sobra do mês[\s\S]*Transferências, aplicações e ajustes[\s\S]*Saldo no fim/);
     expect(h).toMatch(/Previsto[\s\S]*Real[\s\S]*Diferença/);
     expect(h).not.toContain('Mês anterior');
     expect(h).toContain('href="/gastos?mes=2026-09"');

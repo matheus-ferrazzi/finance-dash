@@ -989,20 +989,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     [...rmc.p, CASA_CATS, hoje, FIXO_DEBITO_CATS],
   );
 
-  const rcm = rf(resp, 2);
-  const hcm = `$${rcm.p.length + 2}::date`;
-  const casaMesRows = await q<any>(
-    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
-     FROM financas_lancamentos
-     WHERE classe='despesa' AND categoria = ANY($1::text[])
-       AND data_lancamento >= date_trunc('month',${hcm})
-       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
-       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
-     GROUP BY 1`,
-    [CASA_CATS, ...rcm.p, hoje],
-  );
-  const casaNoMesPorCategoria: Record<string, number> = {};
-  casaMesRows.forEach((x) => { casaNoMesPorCategoria[x.categoria] = Number(x.total); });
+  const casaNoMesPorCategoria = await getCasaNoMes(resp, hoje);
+  // visão individual: o que o casal já pagou da casa, para abater os compromissos do casal
+  const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : await getCasaNoMes('casal', hoje);
 
   return {
     patrimonioAtual,
@@ -1017,6 +1006,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
       casaNoMesPorCategoria,
+      ...(casaNoMesCasalPorCategoria ? { casaNoMesCasalPorCategoria } : {}),
     },
     fontesReceita,
     despesaVariavelMediaMensal: debito.livre,
@@ -1031,18 +1021,41 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   };
 }
 
+/** Casa do mês de `hoje` por categoria: o que já saiu e o que já está agendado (conhecido em hoje). */
+async function getCasaNoMes(resp: Resp, hoje: string): Promise<Record<string, number>> {
+  const rcm = rf(resp, 2);
+  const hcm = `$${rcm.p.length + 2}::date`;
+  const rows = await q<any>(
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND categoria = ANY($1::text[])
+       AND data_lancamento >= date_trunc('month',${hcm})
+       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
+       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
+     GROUP BY 1`,
+    [CASA_CATS, ...rcm.p, hoje],
+  );
+  const porCategoria: Record<string, number> = {};
+  rows.forEach((x) => { porCategoria[x.categoria] = Number(x.total); });
+  return porCategoria;
+}
+
 /**
- * Que fração de cada categoria dos compromissos do casal a pessoa pagou nos 6 meses fechados antes de
- * `hoje` (qualquer forma de pagamento). Categoria que ninguém pagou fica de fora (vira meio a meio).
+ * Que fração de cada conta da casa (CASA_CATS) dos compromissos do casal a pessoa pagou nos 6 meses
+ * fechados antes de `hoje` (qualquer forma de pagamento), com o mesmo filtro da média da casa.
+ * Fora da casa (empréstimo, seguro…) o gasto pessoal da categoria não diz nada sobre o compromisso:
+ * fica de fora, e categoria fora do resultado vira meio a meio.
  */
 async function getPartesDoCasal(resp: Resp, compromissos: CompromissoManual[], hoje: string): Promise<Record<string, number>> {
-  const cats = Array.from(new Set(compromissos.filter((c) => c.responsavel === 'casal').map((c) => c.categoria)));
+  const cats = Array.from(new Set(compromissos.filter((c) => c.responsavel === 'casal').map((c) => c.categoria)))
+    .filter((c) => CASA_CATS.includes(c));
   if (cats.length === 0) return {};
   const rows = await q<any>(
-    `SELECT cat, SUM(valor) FILTER (WHERE responsavel = $3)::float8 AS pessoa, SUM(valor)::float8 AS total
+    `SELECT cat, SUM(valor) FILTER (WHERE responsavel = $3)::float8 AS pessoa,
+            SUM(valor) FILTER (WHERE responsavel IN ('Matheus','Ariane'))::float8 AS total
      FROM (SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS cat, valor, responsavel
            FROM financas_lancamentos
-           WHERE classe = 'despesa'
+           WHERE classe = 'despesa' AND categoria = ANY($1::text[])
              AND data_lancamento >= date_trunc('month', $2::date) - interval '6 months'
              AND data_lancamento <  date_trunc('month', $2::date)) x
      WHERE cat = ANY($1::text[])

@@ -81,7 +81,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MetaDebito meta={meta} />
-        <PrevisibilidadeClient parcelados={parcelados} manuais={base.compromissosCadastrados ?? base.compromissosManuais} />
+        <PrevisibilidadeClient parcelados={parcelados} manuais={base.compromissosCadastrados} />
       </div>
     </div>
   );

@@ -1,0 +1,35 @@
+# D (WhatsApp): serviço da Evolution API para o /root/n8n-docker/docker-compose.yml da VPS.
+# Sem "ports": só a rede interna (o worker fala com http://evolution:8080). Segredos no env_file (600),
+# gerado por scripts/d-evolution-env.sh — nada de segredo aqui.
+services:
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.4
+    container_name: evolution
+    restart: unless-stopped
+    env_file:
+      - /root/n8n-docker/.env.evolution
+    environment:
+      - SERVER_URL=http://evolution:8080
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution
+      # só envio: nada de mensagem, contato, chat, etiqueta ou histórico gravado
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=false
+      - DATABASE_SAVE_MESSAGE_UPDATE=false
+      - DATABASE_SAVE_DATA_CONTACTS=false
+      - DATABASE_SAVE_DATA_CHATS=false
+      - DATABASE_SAVE_DATA_LABELS=false
+      - DATABASE_SAVE_DATA_HISTORIC=false
+      - CACHE_REDIS_ENABLED=false
+      - CACHE_LOCAL_ENABLED=true
+      - WEBHOOK_GLOBAL_ENABLED=false
+      - LOG_LEVEL=ERROR,WARN
+      - LOG_BAILEYS=error
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - n8n_network
+
+volumes:
+  evolution_instances:

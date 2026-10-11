@@ -65,3 +65,17 @@ describe('montarLinha', () => {
     expect(montarLinha(tx(), conta, casal).transferencia_casal).toBe(false);
   });
 });
+
+describe('montarLinha com regras do painel (F4)', () => {
+  it('regra do painel: grava a categoria efetiva e a classe dela; categoria_banco guarda a do banco', () => {
+    const l = montarLinha(tx({ category: 'Shopping', description: 'LOJA DO BICHO' }), { ...conta, forma: 'Débito' }, new Set(), [{ id: 1, tipo: 'texto', chave: 'BICHO', categoria: 'Investments' }]);
+    expect(l.categoria_banco).toBe('Shopping');
+    expect(l.categoria).toBe('Investments');
+    expect(l.classe).toBe('aporte');
+  });
+  it('sem regra do painel: categoria = categoria_banco (nada muda na ingestão)', () => {
+    const l = montarLinha(tx({ category: 'Shopping', description: 'LOJA X' }), conta, new Set());
+    expect(l.categoria).toBe('Shopping');
+    expect(l.categoria_banco).toBe('Shopping');
+  });
+});

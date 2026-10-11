@@ -91,11 +91,12 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
     contagens.desde = desde;
     const contas = await contasComItem(ctx, (c) => c.coleta_transacoes);
     const docs = await documentosDoCasal(ctx, contas);
+    const regras = await ctx.repo.regrasPainel();
     const porConta: Record<string, unknown> = {};
     for (const c of contas) {
       try {
         const txs = await ctx.pluggy.transacoes(c.account_id, desde);
-        const linhas = txs.map((t) => montarLinha(t, c, docs));
+        const linhas = txs.map((t) => montarLinha(t, c, docs, regras));
         const banco = await ctx.repo.lancamentosDaConta(c, desde);
         const dif = contarDiferencas(banco, linhas);
         // Só é candidata a remoção a linha dentro do que a Pluggy de fato cobriu:

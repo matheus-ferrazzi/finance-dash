@@ -45,6 +45,7 @@ export class RepoFake implements Repo {
   async definirItemDaConta(a: string, i: string) { this.chamadas.push(`definirItem ${a} ${i}`); }
   async inserirConta(c: Conta) { this.chamadas.push(`inserirConta ${c.account_id} ${c.forma}`); }
   async lancamentosDaConta() { return new Map(this.banco); }
+  async regrasPainel() { return []; }
   async gravarCruas(t: readonly PluggyTransacao[]) { this.chamadas.push(`gravarCruas ${t.length}`); }
   async aplicarConta(l: readonly { id_transacao: string }[], r: readonly string[]) {
     this.chamadas.push('aplicarConta');

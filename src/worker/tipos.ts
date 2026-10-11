@@ -119,6 +119,8 @@ export interface Lancamento {
   categoria_id: string | null;
   tipo_operacao: string | null;
   transferencia_casal: boolean;
+  /** a categoria do banco (com as correções fixas do código); `categoria` é a efetiva, com as regras do painel */
+  categoria_banco: string;
 }
 
 export interface FaturaAtual {

@@ -27,3 +27,17 @@ describe('AGENDA', () => {
     expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens', 'atualizar-itens']));
   });
 });
+
+describe('notificações (C2)', () => {
+  it('aceita notif-<bot> com --dry-run; recusa bot desconhecido e opção de ingestão', async () => {
+    expect(lerArgs(['notif-ritmo', '--dry-run'])).toEqual({ tarefa: 'notif-ritmo', dryRun: true });
+    expect(lerArgs(['notif-backup'])).toEqual({ tarefa: 'notif-backup', dryRun: false });
+    expect(() => lerArgs(['notif-xyz'])).toThrow('tarefa desconhecida');
+    expect(() => lerArgs(['notif-gasto', '--desde', '2026-01-01'])).toThrow('opção desconhecida');
+  });
+  it('agenda nos horários do n8n', async () => {
+    const { AGENDA_NOTIF } = await import('../../src/worker/cli');
+    expect(AGENDA_NOTIF).toEqual([['0 8 * * *', 'ritmo'], ['0 9 * * *', 'fatura'], ['45 16,22 * * *', 'gasto'], ['30 12 * * *', 'saude'], ['0 10 * * *', 'backup']]);
+  });
+});
+

@@ -1,5 +1,6 @@
 import { TAREFAS, type NomeTarefa } from './tarefas';
 import type { Modo } from './tipos';
+import { BOTS, type Bot } from './notificacoes/textos';
 
 /** Horário de São Paulo. Cada tarefa fica alguns minutos depois do horário do workflow que substitui. */
 export const AGENDA: readonly [string, NomeTarefa][] = [
@@ -11,12 +12,23 @@ export const AGENDA: readonly [string, NomeTarefa][] = [
   ['0 13 * * *', 'atualizar-itens'],
 ];
 
+/** Notificações (C2), no horário (SP) dos bots do n8n que substituem. */
+export const AGENDA_NOTIF: readonly [string, Bot][] = [
+  ['0 8 * * *', 'ritmo'],
+  ['0 9 * * *', 'fatura'],
+  ['45 16,22 * * *', 'gasto'],
+  ['30 12 * * *', 'saude'],
+  ['0 10 * * *', 'backup'],
+];
+export type TarefaNotif = `notif-${Bot}`;
+const NOTIFS = new Set<string>(BOTS.map((b) => `notif-${b}`));
+
 export function lerModo(v: string | undefined): Modo {
   return v === 'real' ? 'real' : 'sombra';
 }
 
 export interface Args {
-  tarefa: NomeTarefa | 'agendar';
+  tarefa: NomeTarefa | TarefaNotif | 'agendar';
   dryRun: boolean;
   desde?: string;
   limite?: number;
@@ -25,7 +37,12 @@ export interface Args {
 export function lerArgs(argv: string[]): Args {
   const [primeiro, ...resto] = argv;
   if (!primeiro || primeiro === 'agendar') return { tarefa: 'agendar', dryRun: false };
-  if (!(primeiro in TAREFAS)) throw new Error(`tarefa desconhecida: ${primeiro}. Use: ${Object.keys(TAREFAS).join(', ')}`);
+  if (NOTIFS.has(primeiro)) {
+    // notificação: só --dry-run (monta e mostra, não grava nem envia)
+    for (const a of resto) if (a !== '--dry-run') throw new Error(`opção desconhecida: ${a}`);
+    return { tarefa: primeiro as TarefaNotif, dryRun: resto.includes('--dry-run') };
+  }
+  if (!(primeiro in TAREFAS)) throw new Error(`tarefa desconhecida: ${primeiro}. Use: ${[...Object.keys(TAREFAS), ...NOTIFS].join(', ')}`);
   const out: Args = { tarefa: primeiro as NomeTarefa, dryRun: false };
   for (let i = 0; i < resto.length; i++) {
     const a = resto[i];

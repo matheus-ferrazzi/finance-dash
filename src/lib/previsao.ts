@@ -8,6 +8,22 @@ import { currentDateSP, mesLabel } from './format';
 export interface CompromissoManual {
   id: number; nome: string; categoria: string; valor: number; responsavel: string;
   dataInicio: string; mesesTotais: number | null; observacao: string | null; dataFim: string | null;
+  /** na visão individual, a fração de um compromisso do casal que cabe à pessoa (valor já multiplicado) */
+  parte?: number;
+}
+
+/**
+ * Visão individual: compromisso do CASAL entra com a parte que a pessoa de fato paga daquela categoria
+ * (`partes`, medido no histórico); sem histórico de ninguém, meio a meio. O da própria pessoa entra
+ * inteiro; a visão do casal não muda. Assim as duas visões individuais somam o casal.
+ */
+export function aplicarParteDoCasal(lista: CompromissoManual[], resp: string, partes: Record<string, number>): CompromissoManual[] {
+  if (resp === 'casal') return lista;
+  return lista.map((c) => {
+    if (c.responsavel !== 'casal') return c;
+    const parte = partes[c.categoria] ?? 0.5;
+    return { ...c, valor: Math.round(c.valor * parte * 100) / 100, parte };
+  });
 }
 
 export interface SaldoConta {
@@ -50,6 +66,8 @@ export interface ProjecaoBase {
   /** 'AAAA-MM' do vencimento -> total real da fatura (histórico da Pluggy), só as que vencem até o mês de hoje */
   faturaReal: Record<string, number>;
   compromissosManuais: CompromissoManual[];
+  /** o cadastro como está (valor cheio), para a tela de cadastro; compromissosManuais já vem com a parte da pessoa */
+  compromissosCadastrados?: CompromissoManual[];
   /** o que já aconteceu no mês em andamento — usado pra fechar o mês corrente */
   mesCorrente: {
     /** o que cada fonte já pagou no mês */

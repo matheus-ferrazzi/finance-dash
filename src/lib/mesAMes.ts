@@ -71,7 +71,7 @@ export function detalheMesFuturo(base: ProjecaoBase, m: ProjecaoMes, parcelados:
     { chave: 'entra', titulo: 'Entra', total: m.receita,
       itens: base.fontesReceita.filter((f) => f.valor >= 1).map((f) => ({ nome: f.nome, valor: f.valor, nota: `dia ${f.diaTipico}` })) },
     { chave: 'casa', titulo: 'Casa e fixos', total: r2(m.despesaManual + m.despesaCasa), itens: [
-      ...ativos.map((c) => ({ nome: c.nome, valor: c.valor })),
+      ...ativos.map((c) => (c.parte === undefined ? { nome: c.nome, valor: c.valor } : { nome: c.nome, valor: c.valor, nota: `parte ${Math.round(c.parte * 100)}%` })),
       ...Object.entries(base.despesaCasaPorCategoria).filter(([cat]) => !cobertas.has(cat))
         .map(([cat, v]) => ({ nome: traduzCategoria(cat), valor: r2(v), nota: 'média' })),
     ] },

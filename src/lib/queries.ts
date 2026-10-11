@@ -1,6 +1,9 @@
 import { q, qw, writerPool } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
-import { agruparDividas, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, type DadosTrilha } from './trilha';
+import {
+  agruparDividas, chaveDivida, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, METAS_PADRAO,
+  type ChaveMeta, type DadosTrilha, type MarcasDivida, type MetasTrilha,
+} from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
 import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
@@ -1189,7 +1192,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   const mesAtual = hoje.slice(0, 7);
   const desde = `${addMonths(mesAtual, -(MESES_ATRASO - 1))}-01`; // janela de atraso: o mês anterior e o atual
   const iniPassados = `${addMonths(mesAtual, -MESES_SOBRA)}-01`;
-  const [base, passados, saldo, movs, divRows, aplRows] = await Promise.all([
+  const [base, passados, saldo, movs, divRows, aplRows, marcas, metas] = await Promise.all([
     baseCasal ?? getProjecaoBase('casal', hoje),
     getMesesPassados('casal', hoje),
     getSaldoContas('casal'),
@@ -1218,6 +1221,8 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
        GROUP BY 1`,
       [iniPassados, hoje],
     ),
+    getMarcasDivida(),
+    getMetasTrilha(),
   ]);
   const proj = computeProjecao(base, 24, hoje);
   const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
@@ -1227,7 +1232,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   const porMes = new Map(aplRows.map((x) => [x.mes as string, Math.round(Number(x.liq) * 100) / 100]));
   return {
     hoje,
-    dividas: agruparDividas(lancs, hoje),
+    dividas: agruparDividas(lancs, hoje, marcas),
     atrasos: [
       ...Array.from(new Set(juros)).sort().map((mes) => ({ mes, motivo: 'juros' as const })),
       ...mesesComContaNegativa(saldo.total, movs, desde, hoje).map((mes) => ({ mes, motivo: 'conta_negativa' as const })),
@@ -1237,6 +1242,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     textoMeta: textoMetaAlvo(debitoParaSairAte(base, hoje, alvo), debitoAtual, mesLabel(alvo), marcaDinheiro),
     gastoTravado: { fixos: proj[1]?.despesaManual ?? 0, casa: proj[1]?.despesaCasa ?? 0, debitoTravado: base.despesaFixaDebitoMedia ?? 0 },
     aplicado: base.patrimonioAtual,
+    metas,
     aplicacaoMensal: Array.from({ length: MESES_SOBRA }, (_, i) => addMonths(mesAtual, -(MESES_SOBRA - i))).map((mes) => ({ mes, valor: porMes.get(mes) ?? 0 })),
   };
 }
@@ -1394,6 +1400,94 @@ export async function getLancamentoParaCorrigir(id: string): Promise<LancCorrigi
     id: r.id_transacao, data: r.data, valor: Number(r.valor), descricao: r.descricao ?? '', categoria: r.categoria, origem: e.origem,
     temDoc: !!r.contraparte_doc, nomeContraparte: r.contraparte_doc ? nomeSemDocumento(r.contraparte_nome) : null,
     sugestaoTexto: sugerirTexto(r.descricao ?? ''), maisUsadas: usadas.map((x) => x.categoria),
+  };
+}
+
+// ==================== AJUSTES DA TRILHA (F4b) ====================
+
+/** Metas ajustadas pelo casal; sem linha gravada, o padrão do código. */
+export async function getMetasTrilha(): Promise<MetasTrilha> {
+  const rows = await q<any>(`SELECT chave, valor::float8 AS valor FROM financas_trilha_config`);
+  const m = new Map(rows.map((r) => [r.chave as string, Number(r.valor)]));
+  return {
+    mesesReserva: m.get('meses_reserva') ?? METAS_PADRAO.mesesReserva,
+    metaPatrimonio: m.get('meta_patrimonio') ?? METAS_PADRAO.metaPatrimonio,
+  };
+}
+
+async function getMarcasDivida(): Promise<MarcasDivida> {
+  const rows = await q<any>(`SELECT tipo, chave FROM financas_divida_marcacao`);
+  return {
+    nao: new Set(rows.filter((r) => r.tipo === 'nao_divida').map((r) => r.chave)),
+    sim: new Set(rows.filter((r) => r.tipo === 'divida').map((r) => r.chave)),
+  };
+}
+
+/** "É dívida" vem da folha (a chave sai do lançamento, no servidor); "não é dívida" vem da trilha, com a chave
+ *  do grupo exibido (descrição + banco, sem documento). Marcar um tipo apaga o oposto da mesma chave. */
+export async function marcarDivida(
+  p: { tipo: 'divida'; idTransacao: string } | { tipo: 'nao_divida'; chave: string; nome: string },
+): Promise<{ id: number } | { erro: string }> {
+  let chave: string;
+  let nome: string;
+  if (p.tipo === 'divida') {
+    const [l] = await q<any>(`SELECT descricao, COALESCE(banco,'—') AS banco FROM financas_lancamentos WHERE id_transacao = $1`, [p.idTransacao]);
+    if (!l) return { erro: 'Lançamento não encontrado.' };
+    chave = chaveDivida(l.descricao ?? '', l.banco);
+    nome = chave.split('|')[0];
+  } else {
+    if (!p.chave || !p.chave.includes('|')) return { erro: 'Dívida inválida.' };
+    chave = p.chave;
+    nome = p.nome || chave.split('|')[0];
+  }
+  const oposto = p.tipo === 'divida' ? 'nao_divida' : 'divida';
+  const cli = await writerPool.connect();
+  try {
+    await cli.query('BEGIN');
+    await cli.query(`DELETE FROM financas_divida_marcacao WHERE tipo = $1 AND chave = $2`, [oposto, chave]);
+    const { rows } = await cli.query(
+      `INSERT INTO financas_divida_marcacao (tipo, chave, nome) VALUES ($1, $2, $3)
+       ON CONFLICT (tipo, chave) DO UPDATE SET nome = EXCLUDED.nome, criado_em = now() RETURNING id`,
+      [p.tipo, chave, nome],
+    );
+    await cli.query('COMMIT');
+    return { id: Number(rows[0].id) };
+  } catch (e) {
+    await cli.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    cli.release();
+  }
+}
+
+export async function apagarMarcacao(id: number): Promise<boolean> {
+  return (await qw(`DELETE FROM financas_divida_marcacao WHERE id = $1 RETURNING id`, [id])).length > 0;
+}
+
+export async function salvarMeta(chave: ChaveMeta, valor: number): Promise<void> {
+  await qw(
+    `INSERT INTO financas_trilha_config (chave, valor) VALUES ($1, $2)
+     ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()`,
+    [chave, valor],
+  );
+}
+
+export async function apagarMeta(chave: ChaveMeta): Promise<boolean> {
+  return (await qw(`DELETE FROM financas_trilha_config WHERE chave = $1 RETURNING chave`, [chave])).length > 0;
+}
+
+export interface AjustesTrilha {
+  marcacoes: { id: number; tipo: 'nao_divida' | 'divida'; nome: string; criadoEm: string }[];
+  metas: { chave: ChaveMeta; valor: number }[];
+}
+export async function listarAjustesTrilha(): Promise<AjustesTrilha> {
+  const [m, c] = await Promise.all([
+    q<any>(`SELECT id, tipo, nome, to_char(criado_em,'YYYY-MM-DD') AS criado FROM financas_divida_marcacao ORDER BY criado_em DESC, id DESC`),
+    q<any>(`SELECT chave, valor::float8 AS valor FROM financas_trilha_config ORDER BY chave`),
+  ]);
+  return {
+    marcacoes: m.map((x) => ({ id: Number(x.id), tipo: x.tipo, nome: x.nome ?? '', criadoEm: x.criado })),
+    metas: c.map((x) => ({ chave: x.chave, valor: Number(x.valor) })),
   };
 }
 

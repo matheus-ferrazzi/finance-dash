@@ -111,11 +111,21 @@ export function detalheMesAtual(base: ProjecaoBase, m0: ProjecaoMes): { linhas: 
   };
 }
 
-/** Mês fechado: previsto na véspera × real × diferença (real − previsto). */
-export function detalheMesPassado(p: MesPassado): { linhas: LinhaPassado[]; saldoFim: number } {
+export interface Conciliacao { saldoInicio: number; sobra: number; transferencias: number; saldoFim: number }
+
+/**
+ * Mês fechado: previsto na véspera × real × diferença (real − previsto), e a conta que fecha o saldo:
+ * a sobra é receita − despesas; o saldo em conta também mexe com transferências entre contas que não
+ * se anulam, aplicações/resgates e o que não passa pela conta (casa no crédito). Isso é o resíduo.
+ */
+export function detalheMesPassado(p: MesPassado): { linhas: LinhaPassado[]; saldoFim: number; conciliacao: Conciliacao } {
   const L: [keyof Componentes, string][] = [['receita', 'Entra'], ['casa', 'Casa e fixos'], ['debito', 'Débito'], ['fatura', 'Cartão'], ['saldo', 'Sobra do mês']];
   return {
     linhas: L.map(([k, titulo]) => ({ chave: k, titulo, previsto: r2(p.previsto[k]), real: r2(p.real[k]), diferenca: r2(p.real[k] - p.previsto[k]) })),
     saldoFim: p.saldoFim,
+    conciliacao: {
+      saldoInicio: p.saldoInicio, sobra: r2(p.real.saldo),
+      transferencias: r2(p.saldoFim - p.saldoInicio - p.real.saldo), saldoFim: p.saldoFim,
+    },
   };
 }

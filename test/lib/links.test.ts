@@ -8,6 +8,7 @@ describe('linkPara', () => {
     expect(linkPara('contas')).toBe('/contas');
     expect(linkPara('buscar')).toBe('/buscar');
     expect(linkPara('simulador', { resp: 'Ariane' })).toBe('/simulador?resp=Ariane');
+    expect(linkPara('trilha')).toBe('/trilha');
   });
   it('omite padrão: casal e mês atual', () => {
     expect(linkPara('contas', { resp: 'casal', mes: '2026-10' }, '2026-10')).toBe('/contas');
@@ -61,6 +62,7 @@ describe('seletor de mês do topo', () => {
   it('some na Previsão (as setas do detalhe navegam) e no Simulador (não tem mês); fica no resto', () => {
     expect(temSeletorDeMes('/previsibilidade')).toBe(false);
     expect(temSeletorDeMes('/simulador')).toBe(false);
+    expect(temSeletorDeMes('/trilha')).toBe(false);
     expect(temSeletorDeMes('/gastos')).toBe(true);
     expect(temSeletorDeMes('/')).toBe(true);
     expect(temSeletorDeMes('/contas')).toBe(true);

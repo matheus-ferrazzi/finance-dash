@@ -205,3 +205,18 @@ describe('imagem (D2)', () => {
     expect(chamou).toBe(false);
   });
 });
+
+describe('resvg carregado sob demanda (revisão D2)', () => {
+  it('renderizar assíncrono que falha (biblioteca nativa não carregou): vai o texto', async () => {
+    const c = canalComImagem(); const { reg } = registroFake();
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real',
+      renderizar: async () => { throw new Error('Failed to load native binding'); } });
+    expect(c.imagens).toHaveLength(0);
+    expect(c.textos).toHaveLength(1);
+    expect(r.erro).toBe('imagem: Failed to load native binding');
+  });
+  it('o módulo do PNG não carrega o resvg ao ser importado', async () => {
+    const fonte = (await import('node:fs')).readFileSync('src/worker/notificacoes/png.ts', 'utf8');
+    expect(fonte).not.toMatch(/^import .*@resvg\/resvg-js/m);
+  });
+});

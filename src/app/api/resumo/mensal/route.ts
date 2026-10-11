@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { diasNoMes, getMesesPassados, getPrevisaoResumo, getTrilhaDados } from '@/lib/queries';
 import { currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths } from '@/lib/previsao';
+import { historicoDe } from '@/lib/resumos';
 import { avaliarTrilha } from '@/lib/trilha';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,8 @@ export async function GET() {
   const anterior = addMonths(fechado, -1);
   // "mudou de fase": a trilha hoje × no fim do mês anterior ao que fechou (início do mês fechado)
   const [passados, agora, antes, p] = await Promise.all([
-    getMesesPassados('casal', hoje, 6),
+    // 6 meses para o gráfico; se algum mês antigo falhar, volta aos 3 de antes (a mensagem não se perde)
+    getMesesPassados('casal', hoje, 6).catch(() => getMesesPassados('casal', hoje)),
     getTrilhaDados(hoje),
     getTrilhaDados(`${anterior}-${String(diasNoMes(anterior)).padStart(2, '0')}`),
     getPrevisaoResumo('casal'),
@@ -29,6 +31,6 @@ export async function GET() {
       mudou: tAgora.atual !== tAntes.atual, faseAntes: tAntes.atual,
     },
     mesNovo: { mesLabel: p.mesLabel, fechaCom: p.fechaCom },
-    historico: passados.map((x) => ({ mes: x.mes, mesLabel: mesLabel(x.mes), sobra: x.real.saldo })),
+    historico: historicoDe(passados),
   });
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acumular, contasDoDia, gruposDaSemana, semanaAnterior } from '../../src/lib/resumos';
+import { acumular, contasDoDia, gruposDaSemana, historicoDe, semanaAnterior } from '../../src/lib/resumos';
 
 // conta não paga não tem `dia` (é o dia do pagamento no banco): o vencimento vem de `vence`
 const item = (nome: string, vence: number | null, status: 'pago' | 'a_confirmar' | 'falta', previsto = 100) =>
@@ -50,5 +50,17 @@ describe('acumular', () => {
   });
   it('dia 1 sem gasto: um ponto com zero', () => {
     expect(acumular([], 1)).toEqual([{ dia: 1, acumulado: 0 }]);
+  });
+});
+
+describe('histórico do mensal', () => {
+  const c = (receita: number, debito: number, saldo: number) => ({ receita, debito, casa: 0, fatura: 0, saldo });
+  it('meses sem dado (antes do histórico) ficam fora; rótulo do mês', () => {
+    const r = historicoDe([
+      { mes: '2026-04', previsto: c(0, 0, 0), real: c(0, 0, 0), saldoInicio: 0, saldoFim: 0 },
+      { mes: '2026-08', previsto: c(1, 1, 0), real: c(100, 400, -300), saldoInicio: 0, saldoFim: 0 },
+      { mes: '2026-09', previsto: c(1, 1, 0), real: c(500, 200, 300), saldoInicio: 0, saldoFim: 0 },
+    ]);
+    expect(r).toEqual([{ mes: '2026-08', mesLabel: 'ago/26', sobra: -300 }, { mes: '2026-09', mesLabel: 'set/26', sobra: 300 }]);
   });
 });

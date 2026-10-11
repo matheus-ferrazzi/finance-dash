@@ -1,7 +1,6 @@
 // D2: SVG → PNG com resvg (nativo, sem navegador). Fonte DejaVu do pacote npm; nada de fonte do sistema.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { Resvg } from '@resvg/resvg-js';
 
 const ARQUIVOS = ['DejaVuSans.ttf', 'DejaVuSans-Bold.ttf'];
 
@@ -12,7 +11,10 @@ export function fontesPadrao(): string[] {
   throw new Error('fonte DejaVuSans.ttf não encontrada');
 }
 
-export function paraPng(svg: string, fontes: string[] = fontesPadrao()): Buffer {
+/** O resvg (nativo) carrega só aqui: se o binário faltar, falha a imagem (vai o texto), não o worker. */
+export async function paraPng(svg: string, fontes: string[] = fontesPadrao()): Promise<Buffer> {
+  const m: any = await import('@resvg/resvg-js');
+  const Resvg: typeof import('@resvg/resvg-js').Resvg = m.Resvg ?? m.default?.Resvg; // pacote CommonJS
   const r = new Resvg(svg, {
     font: { fontFiles: fontes, loadSystemFonts: false, defaultFontFamily: 'DejaVu Sans' },
     fitTo: { mode: 'width', value: 800 },

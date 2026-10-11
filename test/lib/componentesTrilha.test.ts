@@ -13,7 +13,7 @@ const trilha: Trilha = {
     { n: 3, titulo: 'Reserva de emergência', status: 'depois', quando: 'sem previsão', proximoPasso: 'Aplicar {{150}}/mês' },
     { n: 4, titulo: 'Construir patrimônio', status: 'depois', quando: null, proximoPasso: 'Aplicar 10%' },
   ],
-  reserva: { meta: 1200, aplicado: 300, ritmo: 0 }, patrimonio: { pct: 0, meta: 0.1 }, sobra: { cumpridos: 1, meses: [{ mes: '2026-09', sobra: 5 }] },
+  reserva: { meta: 1200, aplicado: 300, ritmo: 0, meses: 6 }, patrimonio: { pct: 0, meta: 0.1 }, sobra: { cumpridos: 1, meses: [{ mes: '2026-09', sobra: 5 }] },
 };
 const vazio = { dividas: [], atrasos: [], gastoTravado: { fixos: 0, casa: 0, debitoTravado: 0 }, aplicacaoMensal: [] };
 
@@ -41,7 +41,7 @@ describe('cartão de fase', () => {
   it('dívidas: cada dívida com parcela, quantas faltam e até quando; sem fim conhecido; atraso com o mês', () => {
     const h = renderToStaticMarkup(createElement(CartaoFase, {
       ...vazio, fase: trilha.fases[0], trilha,
-      dividas: [{ nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }, { nome: 'empréstimo', banco: 'B2', valorParcela: 5, restantes: null, fim: null }],
+      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }, { chave: 'empréstimo|B2', nome: 'empréstimo', banco: 'B2', valorParcela: 5, restantes: null, fim: null }],
       atrasos: [{ mes: '2026-09', motivo: 'juros' }],
     }));
     expect(h).toContain('faltam 3');

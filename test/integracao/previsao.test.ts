@@ -217,7 +217,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('tr-7', '2038-03-07', 80, 'PIX APLICACAO', 'Transfers', 'Débito', 'B1', 'Ariane', 'aporte', 'Saída', '2038-03-07'),
       ('tr-8', '2038-02-11', 40, 'LOJA X 2/5', 'Shopping', 'Crédito', 'B1', 'Ariane', 'despesa', 'Saída', '2038-02-11')`);
     const d = await queries.getTrilhaDados('2038-04-15');
-    expect(d.dividas).toEqual([{ nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2038-06' }]);
+    expect(d.dividas).toEqual([{ chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2038-06' }]);
     expect(d.atrasos).toContainEqual({ mes: '2038-03', motivo: 'juros' });
     expect(d.aplicacaoMensal).toEqual([{ mes: '2038-01', valor: 0 }, { mes: '2038-02', valor: 200 }, { mes: '2038-03', valor: 30 }]);
     expect(d.passados.map((p) => p.mes)).toEqual(['2038-01', '2038-02', '2038-03']);
@@ -231,7 +231,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('tf-2', '2039-03-09', 12, 'ENC ATRASO PARC FATURA', 'Credit card fees', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-03-09'),
       ('tf-3', '2039-04-05', 900, 'PAGAMENTO FATURA PARC CARTAO', 'Credit card payment', 'Débito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-05')`);
     const d = await queries.getTrilhaDados('2039-04-15');
-    expect(d.dividas).toEqual([{ nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
+    expect(d.dividas).toEqual([{ chave: 'parcelamento de fatura|B3', nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
     expect(d.atrasos).toContainEqual({ mes: '2039-03', motivo: 'juros' });
   });
   it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {

@@ -42,3 +42,13 @@ export function recalcular(l: LancParaRegra, regras: readonly RegraPainel[]): { 
   const e = categoriaEfetiva(l, regras);
   return { ...e, classe: classificar(e.categoria, l.descricao, l.saida, l.forma, l.responsavel) };
 }
+
+// CNPJ (14 dígitos, com ou sem pontuação), CPF (11) e qualquer sequência longa de dígitos
+const DOCUMENTO = /\d\d?\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}|\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{11,}/g;
+
+/** O nome da contraparte para a tela: sem CPF/CNPJ (a razão social de MEI traz o CPF). Vazio → null. */
+export function nomeSemDocumento(nome: string | null | undefined): string | null {
+  const n = (nome ?? '').replace(DOCUMENTO, ' ').replace(/\s+/g, ' ').trim();
+  return n.length ? n : null;
+}
+

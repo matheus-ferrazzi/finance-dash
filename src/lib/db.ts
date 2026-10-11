@@ -19,8 +19,8 @@ export const pool =
 if (process.env.NODE_ENV !== 'production') globalForPg.pgPool = pool;
 
 /**
- * Pool separado com um usuário de escrita (dash_writer) que só tem
- * GRANT em financas_compromissos — nenhuma outra tabela é gravável pelo app.
+ * Pool separado com um usuário de escrita (dash_writer): grava os cadastros do painel (compromissos, contas,
+ * regras de categoria) e, em financas_lancamentos, só as colunas categoria e classe (F4, migração 006).
  */
 export const writerPool =
   globalForPg.pgWriterPool ??

@@ -2,7 +2,7 @@ import { q, qw, writerPool } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparDividas, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, type DadosTrilha } from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
-import { categoriaEfetiva, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
+import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
@@ -1242,8 +1242,6 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
 }
 
 // ==================== CATEGORIAS PELO PAINEL (F4) ====================
-const ACENTOS = ['ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC'];
-const escLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 type Cli = { query: (t: string, p?: any[]) => Promise<{ rows: any[] }> };
 
 async function regrasDoPainel(c: Cli): Promise<RegraPainel[]> {
@@ -1251,17 +1249,19 @@ async function regrasDoPainel(c: Cli): Promise<RegraPainel[]> {
   return rows.map((x) => ({ id: Number(x.id), tipo: x.tipo, chave: x.chave, categoria: x.categoria }));
 }
 
-/** Lançamentos que uma regra alcança: a mesma seleção na prévia, na gravação e ao apagar. */
+/** Lançamentos que uma regra alcança: a mesma seleção na prévia, na gravação e ao apagar.
+ *  Texto: filtrado aqui com normalizarTexto — a mesma normalização da precedência (no SQL, translate/upper
+ *  não cobrem todo acento nem todo espaço, e prévia/apagar divergiriam do que o worker aplica). */
 async function alcance(c: Cli, tipo: TipoRegra, chave: string) {
-  // texto: a descrição sem acento, maiúscula e com espaços normalizados (como normalizarTexto)
-  const onde = tipo === 'lancamento' ? 'id_transacao = $1'
-    : tipo === 'doc' ? 'contraparte_doc = $1'
-    : `regexp_replace(translate(upper(descricao), '${ACENTOS[0]}', '${ACENTOS[1]}'), '\\s+', ' ', 'g') LIKE '%' || $1 || '%' ESCAPE '\\'`;
+  const colunas = `id_transacao, descricao, categoria, classe, COALESCE(categoria_banco, categoria) AS categoria_banco,
+            contraparte_doc, tipo_movimento, forma_pagamento, responsavel`;
+  if (tipo === 'texto') {
+    const { rows } = await c.query(`SELECT ${colunas} FROM financas_lancamentos`);
+    return rows.filter((r) => normalizarTexto(r.descricao ?? '').includes(chave));
+  }
   const { rows } = await c.query(
-    `SELECT id_transacao, descricao, categoria, classe, COALESCE(categoria_banco, categoria) AS categoria_banco,
-            contraparte_doc, tipo_movimento, forma_pagamento, responsavel
-     FROM financas_lancamentos WHERE ${onde}`,
-    [tipo === 'texto' ? escLike(chave) : chave],
+    `SELECT ${colunas} FROM financas_lancamentos WHERE ${tipo === 'lancamento' ? 'id_transacao' : 'contraparte_doc'} = $1`,
+    [chave],
   );
   return rows;
 }
@@ -1277,7 +1277,7 @@ async function resolver(c: Cli, p: PedidoRegra): Promise<{ tipo: TipoRegra; chav
   if (p.tipo === 'lancamento') return { tipo: 'lancamento', chave: p.idTransacao, nome: rows[0].descricao ?? '' };
   if (p.tipo === 'doc') {
     if (!rows[0].contraparte_doc) return { erro: 'Este lançamento não tem CPF/CNPJ da contraparte.' };
-    return { tipo: 'doc', chave: rows[0].contraparte_doc, nome: rows[0].contraparte_nome ?? rows[0].descricao ?? '' };
+    return { tipo: 'doc', chave: rows[0].contraparte_doc, nome: nomeSemDocumento(rows[0].contraparte_nome) ?? nomeSemDocumento(rows[0].descricao) ?? '' };
   }
   // normaliza aqui também: a chave tem que casar com normalizarTexto da descrição, venha o pedido de onde vier
   const chave = normalizarTexto(p.texto ?? '');
@@ -1313,6 +1313,7 @@ export async function salvarRegra(p: PedidoRegra): Promise<{ id: number; afetado
   const cli = await writerPool.connect();
   try {
     await cli.query('BEGIN');
+    await cli.query('SELECT pg_advisory_xact_lock(4207)'); // uma escrita de regra por vez
     const alvo = await resolver(cli, p);
     if ('erro' in alvo) { await cli.query('ROLLBACK'); return alvo; }
     const { rows } = await cli.query(
@@ -1340,6 +1341,7 @@ export async function apagarRegra(id: number): Promise<{ afetados: number } | nu
   const cli = await writerPool.connect();
   try {
     await cli.query('BEGIN');
+    await cli.query('SELECT pg_advisory_xact_lock(4207)'); // uma escrita de regra por vez
     const { rows } = await cli.query(`DELETE FROM financas_categoria_painel WHERE id = $1 RETURNING tipo, chave`, [id]);
     if (!rows[0]) { await cli.query('ROLLBACK'); return null; }
     const muda = await planejar(cli, rows[0].tipo, rows[0].chave, await regrasDoPainel(cli));
@@ -1390,7 +1392,7 @@ export async function getLancamentoParaCorrigir(id: string): Promise<LancCorrigi
   const e = categoriaEfetiva({ id: r.id_transacao, descricao: r.descricao ?? '', contraparteDoc: r.contraparte_doc, categoriaBanco: r.categoria_banco }, regras);
   return {
     id: r.id_transacao, data: r.data, valor: Number(r.valor), descricao: r.descricao ?? '', categoria: r.categoria, origem: e.origem,
-    temDoc: !!r.contraparte_doc, nomeContraparte: r.contraparte_doc ? (r.contraparte_nome ?? null) : null,
+    temDoc: !!r.contraparte_doc, nomeContraparte: r.contraparte_doc ? nomeSemDocumento(r.contraparte_nome) : null,
     sugestaoTexto: sugerirTexto(r.descricao ?? ''), maisUsadas: usadas.map((x) => x.categoria),
   };
 }

@@ -13,3 +13,13 @@ describe('validar regra de categoria', () => {
     expect(validarRegra({ tipo: 'texto', idTransacao: 't', texto: 'pão  doce', categoria: 'Groceries' })).toEqual({ ok: true, data: { tipo: 'texto', idTransacao: 't', texto: 'PAO DOCE', categoria: 'Groceries' } });
   });
 });
+
+describe('categorias que o painel oferece', () => {
+  it('sem as vagas (Outros, transferências): escolher uma delas faria o lançamento sumir ou ser trocado pelas regras antigas', async () => {
+    const { CATEGORIAS_PAINEL } = await import('../../src/lib/format');
+    for (const c of ['Outros', 'Transfers', 'Transfer - PIX', 'Transfer - Bank Slip', 'Same person transfer']) expect(CATEGORIAS_PAINEL).not.toContain(c);
+    expect(CATEGORIAS_PAINEL).toContain('Groceries');
+    expect(validarRegra({ tipo: 'lancamento', idTransacao: 't', categoria: 'Outros' })).toEqual({ ok: false, erro: 'Categoria desconhecida.' });
+  });
+});
+

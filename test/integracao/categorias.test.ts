@@ -88,4 +88,11 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     await ins('c9', 'PAGTO 1000 SAUDE', 'Shopping', null);
     expect(await queries.previaRegra({ tipo: 'texto', idTransacao: 'c8', texto: '100% saude', categoria: 'Healthcare' })).toMatchObject({ afetados: 1 });
   });
+  it('texto: a mesma normalização no alcance e na precedência (ñ, espaço especial); nome sem documento', async () => {
+    await ins('d1', 'PIÑATA  FESTAS', 'Shopping', '55566677788', 'FESTAS MEI 55566677788');
+    expect(await queries.previaRegra({ tipo: 'texto', idTransacao: 'd1', texto: 'pinata festas', categoria: 'Gifts' })).toMatchObject({ afetados: 1 });
+    expect((await queries.getLancamentoParaCorrigir('d1'))!.nomeContraparte).toBe('FESTAS MEI');
+    await queries.salvarRegra({ tipo: 'doc', idTransacao: 'd1', categoria: 'Gifts' });
+    expect(JSON.stringify(await queries.listarRegras())).not.toContain('55566677788');
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agruparDividas, avaliarTrilha, ehAtraso, ehDivida, marcaDinheiro, mesesComContaNegativa, partesDoTexto, type DadosTrilha } from '../../src/lib/trilha';
+import { agruparDividas, avaliarTrilha, chaveDivida, ehAtraso, ehDivida, marcaDinheiro, mesesComContaNegativa, partesDoTexto, validarMeta, type DadosTrilha } from '../../src/lib/trilha';
 
 describe('o que é dívida', () => {
   it('renegociação, parcelamento de fatura, empréstimo e financiamento são dívida', () => {
@@ -35,8 +35,8 @@ describe('dívidas ativas', () => {
       l('LOJA X 3/10', '2026-12-01', 40),
     ], '2026-10-15');
     expect(r).toEqual([
-      { nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2026-12' },
-      { nome: 'prest de emprest financiamento parc', banco: 'B2', valorParcela: 50, restantes: null, fim: null },
+      { chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2026-12' },
+      { chave: 'prest de emprest financiamento parc|B2', nome: 'prest de emprest financiamento parc', banco: 'B2', valorParcela: 50, restantes: null, fim: null },
     ]);
   });
   it('sem lançamento de dívida: lista vazia', () => {
@@ -66,14 +66,14 @@ const dados = (p: Partial<DadosTrilha> = {}): DadosTrilha => ({
 
 describe('avaliar a trilha', () => {
   it('com dívida: fase 1 atual, quando = última parcela, próximo passo cita o mês', () => {
-    const t = avaliarTrilha(dados({ dividas: [{ nome: 'reneg', banco: 'B', valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
+    const t = avaliarTrilha(dados({ dividas: [{ chave: 'reneg|B', nome: 'reneg', banco: 'B', valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases[0]).toMatchObject({ status: 'atual', quando: 'mar/27' });
     expect(t.fases[0].proximoPasso).toContain('mar/27');
     expect(t.fases[1].status).toBe('cumprida'); // sobra já cumprida aparece como cumprida mesmo depois da atual
   });
   it('dívida sem fim conhecido e atraso: quando sem data; atraso conta até 2 meses depois', () => {
-    expect(avaliarTrilha(dados({ dividas: [{ nome: 'emp', banco: 'B', valorParcela: 10, restantes: null, fim: null }] })).fases[0].quando).toBe('sem data de fim conhecida');
+    expect(avaliarTrilha(dados({ dividas: [{ chave: 'emp|B', nome: 'emp', banco: 'B', valorParcela: 10, restantes: null, fim: null }] })).fases[0].quando).toBe('sem data de fim conhecida');
     const t = avaliarTrilha(dados({ atrasos: [{ mes: '2026-09', motivo: 'juros' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases[0].quando).toBe('nov/26');
@@ -95,7 +95,7 @@ describe('avaliar a trilha', () => {
   it('reserva: meta = 6 × gasto travado; ritmo da aplicação dá a data; sem aplicação, sem previsão', () => {
     const t = avaliarTrilha(dados()); // meta 6 × 200 = 1200, aplicado 0, ritmo 100 → 12 meses
     expect(t.atual).toBe(3);
-    expect(t.reserva).toEqual({ meta: 1200, aplicado: 0, ritmo: 100 });
+    expect(t.reserva).toEqual({ meta: 1200, aplicado: 0, ritmo: 100, meses: 6 });
     expect(t.fases[2].quando).toBe('out/27');
     expect(t.fases[2].proximoPasso).toContain('/mês completa a reserva em out/27');
     const resgate = avaliarTrilha(dados({ aplicacaoMensal: [{ mes: '2026-09', valor: -50 }] }));
@@ -111,7 +111,7 @@ describe('avaliar a trilha', () => {
     expect(semRenda.fases[3].proximoPasso).not.toContain('NaN');
   });
   it('fase cumprida que volta a falhar reabre (dívida nova com sobra e reserva em dia)', () => {
-    const t = avaliarTrilha(dados({ aplicado: 5000, dividas: [{ nome: 'nova', banco: 'B', valorParcela: 1, restantes: 1, fim: '2026-11' }] }));
+    const t = avaliarTrilha(dados({ aplicado: 5000, dividas: [{ chave: 'nova|B', nome: 'nova', banco: 'B', valorParcela: 1, restantes: 1, fim: '2026-11' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases.map((f) => f.status)).toEqual(['atual', 'cumprida', 'cumprida', 'depois']);
   });
@@ -124,6 +124,45 @@ describe('valor dentro do texto (para o olho de esconder valores)', () => {
     expect(partesDoTexto(t.fases[2].proximoPasso)).toEqual(['Aplicar ', 100, '/mês completa a reserva em out/27.']);
     expect(partesDoTexto('sem valor')).toEqual(['sem valor']);
     expect(partesDoTexto(`${marcaDinheiro(-12.5)} e ${marcaDinheiro(3)}`)).toEqual([-12.5, ' e ', 3]);
+  });
+});
+
+describe('marcações de dívida', () => {
+  const l = (descricao: string, data: string, valor: number, forma = 'Crédito', banco = 'B1', categoria: string | null = null) => ({ descricao, categoria, banco, forma, data, valor });
+  const lancs = [
+    l('RENEGOCIAÇÃO DE PENDÊNCIAS 6/12', '2026-11-10', 100),
+    l('LOJA X 3/10', '2026-12-01', 40),
+  ];
+  it('chave = descrição sem números + banco; DividaAtiva traz a chave', () => {
+    expect(chaveDivida('LOJA X 3/10', 'B1')).toBe('loja x|B1');
+    expect(agruparDividas(lancs, '2026-10-15')[0].chave).toBe('renegociação de pendências|B1');
+  });
+  it('"não é dívida" tira um grupo detectado; "é dívida" inclui um não detectado', () => {
+    expect(agruparDividas(lancs, '2026-10-15', { nao: new Set(['renegociação de pendências|B1']), sim: new Set() })).toEqual([]);
+    const sim = agruparDividas(lancs, '2026-10-15', { nao: new Set(), sim: new Set(['loja x|B1']) });
+    expect(sim.map((d) => d.nome)).toEqual(['renegociação de pendências', 'loja x']);
+  });
+});
+
+describe('metas da trilha', () => {
+  it('metas gravadas mudam a meta da reserva e o texto do patrimônio; sem metas, o padrão', () => {
+    const t = avaliarTrilha(dados({ metas: { mesesReserva: 3, metaPatrimonio: 0.2 } }));
+    expect(t.reserva).toMatchObject({ meta: 600, meses: 3 });
+    expect(t.patrimonio.meta).toBe(0.2);
+    expect(t.fases[3].proximoPasso).toContain('Aplicar 20% do que entra');
+    expect(avaliarTrilha(dados()).reserva).toMatchObject({ meta: 1200, meses: 6 });
+  });
+  it('"não é dívida" não apaga atraso: a fase 1 continua aberta com juros', () => {
+    expect(avaliarTrilha(dados({ dividas: [], atrasos: [{ mes: '2026-09', motivo: 'juros' }] })).atual).toBe(1);
+  });
+  it('validarMeta: limites, vírgula, vazio, chave desconhecida', () => {
+    expect(validarMeta('meses_reserva', '6')).toEqual({ ok: true, chave: 'meses_reserva', valor: 6 });
+    expect(validarMeta('meses_reserva', 25)).toEqual({ ok: false, erro: 'Meses da reserva: de 1 a 24.' });
+    expect(validarMeta('meses_reserva', 2.5)).toEqual({ ok: false, erro: 'Meses da reserva: de 1 a 24.' });
+    expect(validarMeta('meta_patrimonio', '12,5')).toEqual({ ok: true, chave: 'meta_patrimonio', valor: 0.125 });
+    expect(validarMeta('meta_patrimonio', '')).toEqual({ ok: false, erro: 'Patrimônio: de 1% a 50%.' });
+    expect(validarMeta('meta_patrimonio', 60)).toEqual({ ok: false, erro: 'Patrimônio: de 1% a 50%.' });
+    expect(validarMeta('outra', 1)).toEqual({ ok: false, erro: 'Meta desconhecida.' });
   });
 });
 

@@ -82,10 +82,13 @@ export const METAS_PADRAO: MetasTrilha = { mesesReserva: MESES_RESERVA, metaPatr
 export type ChaveMeta = 'meses_reserva' | 'meta_patrimonio';
 /** Valor da tela (meses ou %, aceita vírgula) → valor gravado (meses inteiros; patrimônio em fração). */
 export function validarMeta(chave: unknown, valor: unknown): { ok: true; chave: ChaveMeta; valor: number } | { ok: false; erro: string } {
-  const vazio = valor === null || valor === undefined || String(valor).trim() === '';
-  const n = typeof valor === 'number' ? valor : Number(String(valor ?? '').trim().replace(',', '.'));
+  // só número simples ("12", "12,5", "12.5"): Number() sozinho aceitaria "0x10" e "1e1"
+  const txt = String(valor ?? '').trim();
+  const valido = typeof valor === 'number' ? Number.isFinite(valor) : /^\d+([.,]\d+)?$/.test(txt);
+  const vazio = !valido;
+  const n = typeof valor === 'number' ? valor : Number(txt.replace(',', '.'));
   if (chave === 'meses_reserva') {
-    if (vazio || !Number.isInteger(n) || n < 1 || n > 24) return { ok: false, erro: 'Meses da reserva: de 1 a 24.' };
+    if (vazio || !Number.isInteger(n) || n < 1 || n > 24) return { ok: false, erro: 'Meses da reserva: número inteiro de 1 a 24.' };
     return { ok: true, chave, valor: n };
   }
   if (chave === 'meta_patrimonio') {

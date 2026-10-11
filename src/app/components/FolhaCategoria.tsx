@@ -68,7 +68,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
   async function marcarDivida() {
     const r = await fetch('/api/trilha/divida', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: 'divida', idTransacao: lanc.id }) }).catch(() => null);
     if (!r) { setDivida('Sem conexão.'); return; }
-    setDivida(r.ok ? 'Marcado como dívida: entra na trilha (desfaz na tela Regras).' : (((await r.json().catch(() => ({}))) as { erro?: string }).erro ?? 'Não deu certo.'));
+    setDivida(r.ok ? 'Marcado como dívida: aparece na trilha enquanto houver parcela a vencer (desfaz na tela Regras).' : (((await r.json().catch(() => ({}))) as { erro?: string }).erro ?? 'Não deu certo.'));
   }
 
   const opcao = (t: Tipo, rotulo: string) => (

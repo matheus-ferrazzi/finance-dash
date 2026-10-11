@@ -157,8 +157,10 @@ describe('metas da trilha', () => {
   });
   it('validarMeta: limites, vírgula, vazio, chave desconhecida', () => {
     expect(validarMeta('meses_reserva', '6')).toEqual({ ok: true, chave: 'meses_reserva', valor: 6 });
-    expect(validarMeta('meses_reserva', 25)).toEqual({ ok: false, erro: 'Meses da reserva: de 1 a 24.' });
-    expect(validarMeta('meses_reserva', 2.5)).toEqual({ ok: false, erro: 'Meses da reserva: de 1 a 24.' });
+    expect(validarMeta('meses_reserva', 25)).toEqual({ ok: false, erro: 'Meses da reserva: número inteiro de 1 a 24.' });
+    expect(validarMeta('meses_reserva', 2.5)).toEqual({ ok: false, erro: 'Meses da reserva: número inteiro de 1 a 24.' });
+    expect(validarMeta('meses_reserva', '0x10')).toEqual({ ok: false, erro: 'Meses da reserva: número inteiro de 1 a 24.' });
+    expect(validarMeta('meta_patrimonio', '1e1')).toEqual({ ok: false, erro: 'Patrimônio: de 1% a 50%.' });
     expect(validarMeta('meta_patrimonio', '12,5')).toEqual({ ok: true, chave: 'meta_patrimonio', valor: 0.125 });
     expect(validarMeta('meta_patrimonio', '')).toEqual({ ok: false, erro: 'Patrimônio: de 1% a 50%.' });
     expect(validarMeta('meta_patrimonio', 60)).toEqual({ ok: false, erro: 'Patrimônio: de 1% a 50%.' });

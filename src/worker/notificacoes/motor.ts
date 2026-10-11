@@ -47,7 +47,15 @@ export async function rodarNotificacao(
     if (modo !== 'dry-run') await d.registro.gravar({ bot, modo, texto: null, enviado: false, erro, estado: null });
     return { bot, modo, texto: null, enviado: false, erro };
   }
-  const m = montar(bot, dados, anterior);
+  let m: { texto: string | null; estado: unknown | null };
+  try {
+    m = montar(bot, dados, anterior);
+  } catch (e) {
+    // dados num formato inesperado (ex.: o painel respondeu 200 com corpo vazio): registra, não derruba
+    const erro = `dados inesperados: ${msg(e)}`;
+    if (modo !== 'dry-run') await d.registro.gravar({ bot, modo, texto: null, enviado: false, erro, estado: null });
+    return { bot, modo, texto: null, enviado: false, erro };
+  }
   if (modo === 'dry-run') return { bot, modo, texto: m.texto, enviado: false, erro: null };
   const estadoMudou = m.estado !== null && JSON.stringify(m.estado) !== JSON.stringify(anterior);
   if (m.texto === null) {
@@ -64,6 +72,8 @@ export async function rodarNotificacao(
       erro = msg(e);
     }
   }
-  await d.registro.gravar({ bot, modo, texto: m.texto, enviado, erro, estado: m.estado });
+  // envio que falhou não avança o estado: a próxima execução tenta o mesmo aviso de novo (um gasto grande
+  // ou uma fatura não pode se perder por uma falha passageira do Telegram)
+  await d.registro.gravar({ bot, modo, texto: m.texto, enviado, erro, estado: erro ? null : m.estado });
   return { bot, modo, texto: m.texto, enviado, erro };
 }

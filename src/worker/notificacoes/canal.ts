@@ -2,7 +2,7 @@
 
 export interface Canal { enviar(texto: string): Promise<void> }
 
-type Fetcher = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{
+type Fetcher = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{
   ok: boolean; status?: number; json: () => Promise<any>;
 }>;
 
@@ -20,6 +20,7 @@ export class CanalTelegram implements Canal {
       r = await this.fetcher(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: this.chatId, text: texto, parse_mode: 'Markdown' }),
+        signal: AbortSignal.timeout(15000), // Telegram que não responde não segura a tarefa por minutos
       });
     } catch (e) {
       throw new Error(this.semToken(`Telegram: ${e instanceof Error ? e.message : String(e)}`));

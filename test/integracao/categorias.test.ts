@@ -107,6 +107,10 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     expect(await queries.apagarMarcacao(999999)).toBe(false);
     expect(await queries.marcarDivida({ tipo: 'divida', idTransacao: 'nao-existe' })).toEqual({ erro: 'Lançamento não encontrado.' });
     expect(await queries.marcarDivida({ tipo: 'nao_divida', chave: 'sem barra', nome: 'x' })).toEqual({ erro: 'Dívida inválida.' });
+    // receita (ou pagamento de fatura pela conta) não entra na trilha: marcar seria enganoso
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, categoria_banco, forma_pagamento, banco, responsavel, classe, tipo_movimento)
+      VALUES ('tj2', '2041-01-06', 500, 'PIX RECEBIDO', 'Transfers', 'Transfers', 'Débito', 'B9', 'Ariane', 'receita', 'Entrada')`);
+    expect(await queries.marcarDivida({ tipo: 'divida', idTransacao: 'tj2' })).toEqual({ erro: 'Só despesa ou parcela no cartão entra na trilha.' });
   });
 
   it('trilha: metas gravadas e apagadas (volta ao padrão)', async () => {

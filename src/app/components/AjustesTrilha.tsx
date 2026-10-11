@@ -47,7 +47,7 @@ export function AjustarMeta({ chave, valorTela, padrao }: { chave: ChaveMeta; va
         className="min-h-[44px] w-20 rounded-lg border border-border bg-surface-2 px-2 text-sm" />
       <span className="text-xs text-muted">{unidade}</span>
       <button type="button" onClick={salvar} className="min-h-[44px] rounded-lg bg-accent px-3 text-xs text-base">Salvar</button>
-      <button type="button" onClick={() => { setAberto(false); setErro(null); }} className="min-h-[44px] px-2 text-xs text-muted">Cancelar</button>
+      <button type="button" onClick={() => { setAberto(false); setErro(null); setV(String(valorTela).replace('.', ',')); }} className="min-h-[44px] px-2 text-xs text-muted">Cancelar</button>
       {erro && <span className="w-full text-xs text-despesa">{erro}</span>}
     </div>
   );

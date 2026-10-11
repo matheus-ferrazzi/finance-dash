@@ -16,11 +16,15 @@ export interface RegistroNotif {
 export type Fontes = { [b in Bot]: () => Promise<unknown> };
 export interface ResultadoNotif { bot: Bot; modo: string; texto: string | null; enviado: boolean; erro: string | null }
 
-/** Para onde vai cada mensagem: o técnico vai para o Matheus; o resto, para o grupo. */
-export function destinoDe(bot: Bot): 'grupo' | 'matheus' {
-  return bot === 'tecnico' ? 'matheus' : 'grupo';
+/**
+ * Para onde vai cada mensagem: o técnico vai para o Matheus; diário, semanal e mensal, para o grupo; os bots
+ * do C2 seguem no Telegram até o desligamento (não podem mudar de canal só porque o WhatsApp foi configurado).
+ */
+export function destinoDe(bot: Bot): 'grupo' | 'matheus' | 'telegram' {
+  if (bot === 'tecnico') return 'matheus';
+  return bot === 'diario' || bot === 'semanal' || bot === 'mensal' ? 'grupo' : 'telegram';
 }
-export interface Canais { grupo: Canal | null; matheus: Canal | null }
+export interface Canais { grupo: Canal | null; matheus: Canal | null; telegram: Canal | null }
 
 /** Real só se o bot está em NOTIF_REAL e o canal está configurado; senão, sombra. */
 export function modoDoBot(bot: Bot, notifReal: string | undefined, temCanal: boolean): 'sombra' | 'real' {
@@ -29,7 +33,8 @@ export function modoDoBot(bot: Bot, notifReal: string | undefined, temCanal: boo
 }
 
 function montar(bot: Bot, dados: any, estado: any, painel: string): { texto: string | null; estado: unknown | null } {
-  const url = (tela: Parameters<typeof linkPara>[0], mes?: string) => painel + linkPara(tela, mes ? { mes } : {}, '');
+  const base = painel.replace(/\/+$/, '');
+  const url = (tela: Parameters<typeof linkPara>[0], mes?: string) => base + linkPara(tela, mes ? { mes } : {}, '');
   switch (bot) {
     case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: null };
     case 'semanal': return { texto: montarSemanal(dados, { gastos: url('gastos'), trilha: url('trilha') }), estado: null };

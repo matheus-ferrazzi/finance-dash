@@ -6,21 +6,30 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 
 export interface ContaDoDia { nome: string; valor: number; quando: 'hoje' | 'amanhã' }
 
-/** Contas do mês que vencem hoje ou amanhã e ainda não foram pagas (no último dia do mês, só as de hoje). */
+/**
+ * Contas do mês que vencem hoje ou amanhã e ainda estão em falta (paga no banco ou marcada ✓ não é lembrada).
+ * O vencimento é o dia típico (`vence`); 31 num mês de 30 dias vence no 30. No último dia do mês, só as de hoje.
+ */
 export function contasDoDia(itens: ItemConta[], hojeDia: number, diasNoMes: number): ContaDoDia[] {
   const out: ContaDoDia[] = [];
   for (const i of itens) {
-    if (i.status === 'pago' || i.dia === null) continue;
-    if (i.dia === hojeDia) out.push({ nome: i.nome, valor: i.previsto, quando: 'hoje' });
-    else if (hojeDia < diasNoMes && i.dia === hojeDia + 1) out.push({ nome: i.nome, valor: i.previsto, quando: 'amanhã' });
+    if (i.status !== 'falta' || i.vence == null) continue;
+    const dia = Math.min(i.vence, diasNoMes);
+    if (dia === hojeDia) out.push({ nome: i.nome, valor: i.previsto, quando: 'hoje' });
+    else if (hojeDia < diasNoMes && dia === hojeDia + 1) out.push({ nome: i.nome, valor: i.previsto, quando: 'amanhã' });
   }
   return out.sort((a, b) => (a.quando === b.quando ? 0 : a.quando === 'hoje' ? -1 : 1));
 }
 
 export interface GrupoSemana { nome: string; emoji: string; semana: number; media: number }
 
-/** media4 = total das 4 semanas anteriores por grupo (a média semanal é /4); devolve os 3 que mais mudaram. */
+/**
+ * media4 = total das 4 semanas anteriores por grupo (a média semanal é /4); devolve os 3 que mais mudaram.
+ * Grupos travados (aluguel, empréstimo) ficam fora: pagos uma vez por mês, dominariam a comparação semanal.
+ */
 export function gruposDaSemana(semana: GrupoGasto[], media4: GrupoGasto[]): GrupoSemana[] {
+  const livres = (gs: GrupoGasto[]) => gs.filter((g) => !g.travado);
+  semana = livres(semana); media4 = livres(media4);
   const nomes = new Set([...semana.map((g) => g.nome), ...media4.map((g) => g.nome)]);
   const emoji = new Map([...media4, ...semana].map((g) => [g.nome, g.emoji]));
   return Array.from(nomes)

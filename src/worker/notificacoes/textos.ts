@@ -1,8 +1,8 @@
 // Mensagens dos bots portados do n8n (C2). Texto idêntico ao dos nós "Monta Mensagem" (exportados em
 // 11/10/2026): a comparação em sombra depende disso; o redesenho fica para o D. Funções puras.
 
-export type Bot = 'ritmo' | 'fatura' | 'gasto' | 'saude' | 'backup';
-export const BOTS: readonly Bot[] = ['ritmo', 'fatura', 'gasto', 'saude', 'backup'];
+export type Bot = 'ritmo' | 'fatura' | 'gasto' | 'saude' | 'backup' | 'diario' | 'semanal' | 'mensal' | 'tecnico';
+export const BOTS: readonly Bot[] = ['ritmo', 'fatura', 'gasto', 'saude', 'backup', 'diario', 'semanal', 'mensal', 'tecnico'];
 export interface Montagem<E> { texto: string | null; estado: E }
 
 const brl = (v: unknown) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

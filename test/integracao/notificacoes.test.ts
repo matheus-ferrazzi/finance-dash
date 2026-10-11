@@ -39,13 +39,13 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
       ('gx2', (now() AT TIME ZONE 'America/Sao_Paulo')::date, 100, 'PEQUENA', 'despesa', 'B', 'X', now())`);
     await pool.query(`INSERT INTO financas_backup (feito_em, ok, n8n_ok, n8n_workflows, puxado_em, tamanho_bytes, tabelas)
       VALUES (now() - interval '2 hours', true, true, 20, now() - interval '5 hours', 1048576, 30)`);
-    const f = criarFontes(pool, 'http://painel/api/previsao', (async (u: string) => ({ ok: u.endsWith('/api/previsao'), status: 200, json: async () => ({ mesLabel: 'm' }) })) as any);
+    const f = criarFontes(pool, 'http://painel', (async (u: string) => ({ ok: u.endsWith('/api/previsao'), status: 200, json: async () => ({ mesLabel: 'm' }) })) as any);
     expect(((await f.fatura()) as any[]).map((x) => [x.banco, x.dias])).toEqual([['B1', 2]]);
     expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx1']);
     expect(await f.ritmo()).toEqual({ mesLabel: 'm' });
     expect(await f.saude()).toHaveProperty('h_lancamentos');
     expect(await f.backup()).toMatchObject({ tamanho: 1048576, tabelas: 30, falhas_24h: 0 });
-    const fora = criarFontes(pool, 'http://painel/api/previsao', (async () => ({ ok: false, status: 502, json: async () => ({}) })) as any);
+    const fora = criarFontes(pool, 'http://painel', (async () => ({ ok: false, status: 502, json: async () => ({}) })) as any);
     await expect(fora.ritmo()).rejects.toThrow('painel HTTP 502');
   });
 });

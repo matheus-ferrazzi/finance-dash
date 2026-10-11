@@ -47,14 +47,30 @@ const SQL_BACKUP = `SELECT json_build_object(
   'ultimo_erro',     (SELECT erro FROM financas_backup WHERE NOT ok AND feito_em > NOW() - interval '36 hours' ORDER BY feito_em DESC LIMIT 1)
 ) AS st`;
 
-export function criarFontes(pool: Pool, urlPrevisao = 'http://finance-dashboard:3000/api/previsao', fetcher: Fetcher = fetch as unknown as Fetcher): Fontes {
+const SQL_CONSENT = `SELECT banco, responsavel,
+         (consent_expires_at::date - (now() AT TIME ZONE 'America/Sao_Paulo')::date)::int AS dias
+  FROM pluggy_itens
+  WHERE consent_expires_at IS NOT NULL AND consent_expires_at < now() + interval '30 days'
+  ORDER BY consent_expires_at`;
+
+/** `urlPainel`: base interna do painel (rede do Docker); os resumos do D e o ritmo vêm de lá. */
+export function criarFontes(pool: Pool, urlPainel = 'http://finance-dashboard:3000', fetcher: Fetcher = fetch as unknown as Fetcher): Fontes {
   const um = async (sql: string, campo: string) => (await pool.query(sql)).rows[0]?.[campo];
+  const painel = async (caminho: string) => {
+    const r = await fetcher(`${urlPainel}${caminho}`, { signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`painel HTTP ${r.status}`);
+    return r.json();
+  };
   return {
-    ritmo: async () => {
-      const r = await fetcher(urlPrevisao, { signal: AbortSignal.timeout(15000) });
-      if (!r.ok) throw new Error(`painel HTTP ${r.status}`);
-      return r.json();
-    },
+    ritmo: () => painel('/api/previsao'),
+    diario: () => painel('/api/resumo/diario'),
+    semanal: () => painel('/api/resumo/semanal'),
+    mensal: () => painel('/api/resumo/mensal'),
+    tecnico: async () => ({
+      saude: await um(SQL_SAUDE, 'saude'),
+      backup: await um(SQL_BACKUP, 'st'),
+      consentimentos: (await pool.query(SQL_CONSENT)).rows.map((x) => ({ banco: x.banco, responsavel: x.responsavel, dias: Number(x.dias) })),
+    }),
     fatura: () => um(SQL_FATURA, 'faturas'),
     gasto: () => um(SQL_GASTO, 'txs'),
     saude: () => um(SQL_SAUDE, 'saude'),

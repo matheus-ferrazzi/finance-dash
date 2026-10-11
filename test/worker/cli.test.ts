@@ -37,7 +37,9 @@ describe('notificações (C2)', () => {
   });
   it('agenda nos horários do n8n', async () => {
     const { AGENDA_NOTIF } = await import('../../src/worker/cli');
-    expect(AGENDA_NOTIF).toEqual([['0 8 * * *', 'ritmo'], ['0 9 * * *', 'fatura'], ['45 16,22 * * *', 'gasto'], ['30 12 * * *', 'saude'], ['0 10 * * *', 'backup']]);
+    expect(AGENDA_NOTIF).toEqual([['0 8 * * *', 'ritmo'], ['0 9 * * *', 'fatura'], ['45 16,22 * * *', 'gasto'], ['30 12 * * *', 'saude'], ['0 10 * * *', 'backup'],
+      ['0 8 * * *', 'diario'], ['0 9 * * 1', 'semanal'], ['0 9 1 * *', 'mensal'], ['30 12 * * *', 'tecnico']]);
+    expect(lerArgs(['notif-diario', '--dry-run'])).toEqual({ tarefa: 'notif-diario', dryRun: true });
   });
 });
 

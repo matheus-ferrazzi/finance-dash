@@ -9,10 +9,28 @@
 set -euo pipefail
 ARQ=/root/n8n-docker/.env.worker-telegram
 
+# colagem costuma trazer espaço, \r (terminal do Windows) ou aspas: tira tudo isso
+limpar() { printf '%s' "$1" | tr -d '\r\n\t "'"'"; }
+
 read -r -s -p "Token do bot do Telegram (não aparece): " TOKEN; echo
 read -r -s -p "Chat id do grupo (não aparece): " CHAT; echo
-[[ "$TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]] || { echo "Token com formato inesperado; nada gravado."; exit 1; }
-[[ "$CHAT" =~ ^-?[0-9]+$ ]] || { echo "Chat id com formato inesperado; nada gravado."; exit 1; }
+TOKEN=$(limpar "$TOKEN"); CHAT=$(limpar "$CHAT")
+TOKEN=${TOKEN#bot}   # se colou "bot123:ABC..." (como aparece na URL da API)
+
+# diagnóstico sem mostrar o valor
+if ! [[ "$TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]{20,}$ ]]; then
+  echo "Token com formato inesperado; nada gravado."
+  [[ -z "$TOKEN" ]] && echo "  - veio vazio (a colagem não pegou)"
+  [[ "$TOKEN" != *:* ]] && echo "  - não tem ':' (o token é número:letras, ex.: 123456789:AAH...)"
+  [[ "$TOKEN" =~ ^[0-9]+: ]] || echo "  - não começa com números seguidos de ':'"
+  [[ "$TOKEN" =~ [^0-9A-Za-z:_-] ]] && echo "  - tem caractere que não é letra, número, ':', '_' ou '-'"
+  echo "  (tamanho lido: ${#TOKEN} caracteres; um token costuma ter 45 a 50)"
+  exit 1
+fi
+if ! [[ "$CHAT" =~ ^-?[0-9]+$ ]]; then
+  echo "Chat id com formato inesperado; nada gravado. Deve ser só número, normalmente negativo (ex.: -100...)."
+  exit 1
+fi
 
 umask 077
 {

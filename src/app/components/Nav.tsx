@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { qsNavegacao } from '@/lib/links';
 import {
   LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
-  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck, Calculator, Flag,
+  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck, Calculator, Flag, Tags,
 } from 'lucide-react';
 
 /**
@@ -30,6 +30,7 @@ const EXTRA = [
   { href: '/orcamento', label: 'Orçamento', short: 'Orçam.', icon: Target },
   { href: '/casa', label: 'Casa', short: 'Casa', icon: Home },
   { href: '/buscar', label: 'Buscar', short: 'Buscar', icon: Search },
+  { href: '/regras', label: 'Regras de categoria', short: 'Regras', icon: Tags },
 ];
 
 const RESPS = [

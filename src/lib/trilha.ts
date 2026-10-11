@@ -1,6 +1,8 @@
 // Trilha do casal (F3): sair das dívidas → fazer sobrar → reserva → patrimônio. Regras e textos puros.
+import { addMonths } from './previsao';
+import { brl, mesLabel } from './format';
 
-const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 
 const CATS_DIVIDA = ['Loans and financing', 'Loans'];
 const PALAVRAS_DIVIDA = ['RENEGOCIA', 'PARCELAMENTO DE FATURA', 'PARC.FATURA', 'EMPREST', 'FINANCIAMENTO'];
@@ -60,4 +62,94 @@ export function mesesComContaNegativa(saldoHoje: number, movs: Record<string, nu
     if (saldo < -0.005) meses.add(d.slice(0, 7));
   }
   return Array.from(meses).sort();
+}
+
+export const MESES_RESERVA = 6;
+export const META_PATRIMONIO = 0.1;
+export const MESES_ATRASO = 2;
+export const MESES_SOBRA = 3;
+
+export interface DadosTrilha {
+  hoje: string;
+  dividas: DividaAtiva[];
+  atrasos: { mes: string; motivo: 'juros' | 'conta_negativa' }[];
+  /** meses fechados (do mais antigo), sobra e receita reais */
+  passados: { mes: string; sobra: number; receita: number }[];
+  /** sobra prevista dos meses futuros (projeção do casal) */
+  sobraPrevista: { mes: string; sobra: number }[];
+  /** a frase da meta de gasto no débito (F2a) */
+  textoMeta: string;
+  gastoTravado: { fixos: number; casa: number; debitoTravado: number };
+  aplicado: number;
+  /** aplicação líquida (aplicou − resgatou) dos meses fechados */
+  aplicacaoMensal: { mes: string; valor: number }[];
+}
+export type StatusFase = 'cumprida' | 'atual' | 'depois';
+export interface Fase { n: 1 | 2 | 3 | 4; titulo: string; status: StatusFase; quando: string | null; proximoPasso: string }
+export interface Trilha {
+  atual: 1 | 2 | 3 | 4; fases: Fase[];
+  reserva: { meta: number; aplicado: number; ritmo: number };
+  patrimonio: { pct: number; meta: number };
+  sobra: { cumpridos: number; meses: { mes: string; sobra: number }[] };
+}
+
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+/** As quatro fases: cumprida pelo que já aconteceu, "quando" pela previsão; a atual é a primeira não cumprida. */
+export function avaliarTrilha(d: DadosTrilha): Trilha {
+  const mesAtual = d.hoje.slice(0, 7);
+
+  // 1. dívidas: atraso só some da janela MESES_ATRASO meses depois
+  const semFim = d.dividas.some((x) => x.fim === null);
+  const ultAtraso = d.atrasos.map((a) => a.mes).sort().pop() ?? null;
+  const ultParcela = d.dividas.map((x) => x.fim).filter((f): f is string => !!f).sort().pop() ?? null;
+  const limpaEm = [ultParcela, ultAtraso ? addMonths(ultAtraso, MESES_ATRASO) : null].filter((x): x is string => !!x).sort().pop() ?? null;
+  const f1ok = d.dividas.length === 0 && d.atrasos.length === 0;
+  const q1 = f1ok ? null : semFim ? 'sem data de fim conhecida' : limpaEm ? mesLabel(limpaEm) : null;
+  const p1 = ultAtraso
+    ? `Houve juros ou conta negativa em ${mesLabel(ultAtraso)}: pagar a fatura inteira e não deixar a conta negativa.`
+    : semFim ? 'Manter a fatura paga inteira; há dívida sem data de fim conhecida.'
+    : ultParcela ? `Manter a fatura paga inteira; a última parcela de dívida é em ${mesLabel(ultParcela)}.`
+    : 'Sem dívidas: manter assim.';
+
+  // 2. fazer sobrar
+  const meses = d.passados.slice(-MESES_SOBRA);
+  const cumpridos = meses.filter((m) => m.sobra >= 0).length;
+  const f2ok = meses.length >= MESES_SOBRA && cumpridos === MESES_SOBRA;
+  let q2 = 'pela previsão, não acontece em 24 meses';
+  for (let i = 0; i + MESES_SOBRA <= d.sobraPrevista.length; i++) {
+    if (d.sobraPrevista.slice(i, i + MESES_SOBRA).every((m) => m.sobra >= 0)) { q2 = mesLabel(d.sobraPrevista[i + MESES_SOBRA - 1].mes); break; }
+  }
+
+  // 3. reserva
+  const g = d.gastoTravado;
+  const meta = r2(MESES_RESERVA * (g.fixos + g.casa + g.debitoTravado));
+  const f3ok = d.aplicado >= meta;
+  const ritmo = d.aplicacaoMensal.length ? r2(d.aplicacaoMensal.reduce((s, m) => s + m.valor, 0) / d.aplicacaoMensal.length) : 0;
+  const falta = Math.max(0, meta - d.aplicado);
+  const q3 = f3ok ? null : ritmo > 0 ? mesLabel(addMonths(mesAtual, Math.ceil(falta / ritmo))) : 'sem previsão';
+  const p3 = f3ok ? 'Reserva completa: manter.'
+    : `Aplicar ${brl(Math.ceil(falta / 12))}/mês completa a reserva em ${mesLabel(addMonths(mesAtual, 12))}.`;
+
+  // 4. patrimônio
+  const receita = d.passados.reduce((s, m) => s + m.receita, 0);
+  const aplicacao = d.aplicacaoMensal.reduce((s, m) => s + m.valor, 0);
+  const pct = receita > 0 ? r2(aplicacao / receita) : 0;
+  const receitaMedia = d.passados.length ? receita / d.passados.length : 0;
+
+  const ok = [f1ok, f2ok, f3ok];
+  const atual = ((ok.findIndex((x) => !x) + 1) || 4) as 1 | 2 | 3 | 4;
+  const st = (n: number, cumprida: boolean): StatusFase => (n === atual ? 'atual' : cumprida ? 'cumprida' : 'depois');
+  return {
+    atual,
+    fases: [
+      { n: 1, titulo: 'Sair das dívidas', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
+      { n: 2, titulo: 'Fazer sobrar', status: st(2, f2ok), quando: f2ok ? null : q2, proximoPasso: d.textoMeta },
+      { n: 3, titulo: 'Reserva de emergência', status: st(3, f3ok), quando: q3, proximoPasso: p3 },
+      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar 10% do que entra (${brl(r2(receitaMedia * META_PATRIMONIO))}/mês).` },
+    ],
+    reserva: { meta, aplicado: d.aplicado, ritmo },
+    patrimonio: { pct, meta: META_PATRIMONIO },
+    sobra: { cumpridos, meses: meses.map((m) => ({ mes: m.mes, sobra: m.sobra })) },
+  };
 }

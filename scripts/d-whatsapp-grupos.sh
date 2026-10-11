@@ -15,8 +15,15 @@ for i, g in enumerate(gs, 1):
 ' || { echo "Não deu para listar os grupos."; exit 1; }
 
 read -r -p "Número do grupo na lista acima: " N
-GRUPO=$(printf '%s' "$LISTA" | python3 -c "import sys,json; gs=json.load(sys.stdin); print(gs[int(sys.argv[1])-1]['id'])" "$N")
-unset LISTA
+[[ "$N" =~ ^[0-9]+$ ]] || { echo "Não é um número da lista; nada gravado."; exit 1; }
+SEL=$(printf '%s' "$LISTA" | python3 -c '
+import sys, json
+gs, n = json.load(sys.stdin), int(sys.argv[1])
+if not 1 <= n <= len(gs): sys.exit(1)
+print(gs[n-1]["id"]); print(gs[n-1].get("subject") or "(sem nome)")' "$N") || { echo "Fora da lista; nada gravado."; exit 1; }
+GRUPO=$(printf '%s\n' "$SEL" | sed -n 1p)
+echo "Grupo escolhido: $(printf '%s\n' "$SEL" | sed -n 2p)"
+unset LISTA SEL
 read -r -p "Seu número para o aviso técnico (com DDI e DDD, só dígitos): " ME
 ME=$(printf '%s' "$ME" | tr -cd '0-9')
 [[ ${#ME} -ge 12 ]] || { echo "Número curto demais; nada gravado."; exit 1; }

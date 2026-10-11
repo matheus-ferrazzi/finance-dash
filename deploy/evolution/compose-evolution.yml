@@ -21,6 +21,8 @@ services:
       - DATABASE_SAVE_DATA_CHATS=false
       - DATABASE_SAVE_DATA_LABELS=false
       - DATABASE_SAVE_DATA_HISTORIC=false
+      - DATABASE_SAVE_IS_ON_WHATSAPP=false
+      - TELEMETRY_ENABLED=false
       - CACHE_REDIS_ENABLED=false
       - CACHE_LOCAL_ENABLED=true
       - WEBHOOK_GLOBAL_ENABLED=false

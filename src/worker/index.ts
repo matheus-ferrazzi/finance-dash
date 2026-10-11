@@ -40,12 +40,13 @@ async function main() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chat = process.env.TELEGRAM_CHAT_ID;
   const telegram = token && chat ? new CanalTelegram(token, chat) : null;
-  // D: WhatsApp (Evolution API na rede interna); o grupo do casal substitui o Telegram quando configurado
+  // D: WhatsApp (Evolution API na rede interna); diário/semanal/mensal vão para o grupo do WhatsApp quando
+  // configurado (senão, Telegram); os bots do C2 ficam no Telegram até o desligamento
   const waUrl = process.env.WA_URL ?? 'http://evolution:8080';
   const waKey = process.env.WA_API_KEY;
   const waInst = process.env.WA_INSTANCIA ?? 'financas';
   const wa = (destino: string | undefined) => (waKey && destino ? new CanalWhatsApp(waUrl, waKey, waInst, destino) : null);
-  const canais = { grupo: wa(process.env.WA_GRUPO) ?? telegram, matheus: wa(process.env.WA_MATHEUS) };
+  const canais = { grupo: wa(process.env.WA_GRUPO) ?? telegram, matheus: wa(process.env.WA_MATHEUS), telegram };
   const notif = {
     fontes: criarFontes(pool, process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000'),
     registro: new PgRegistroNotif(pool), canais, painelUrl: process.env.PAINEL_URL ?? '',
@@ -75,6 +76,8 @@ async function main() {
     }
     if (!canais.grupo) log('notificações do grupo em sombra: sem WhatsApp (WA_API_KEY/WA_GRUPO) nem Telegram');
     if (!canais.matheus) log('aviso técnico em sombra: sem WA_MATHEUS');
+    if (!canais.telegram) log('bots do C2 em sombra: sem Telegram');
+    if (!notif.painelUrl) log('PAINEL_URL vazio: as mensagens saem sem link do painel');
     log(`worker no ar, modo=${modo}, ${AGENDA.length} tarefas + ${AGENDA_NOTIF.length} notificações agendadas (${TZ})`);
     return;
   }

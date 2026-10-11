@@ -81,6 +81,9 @@ const CAT_PT: Record<string, string> = {
   Water: 'Água', Wellness: 'Bem-estar', 'Wellness and fitness': 'Bem-estar e fitness',
 };
 
+/** As categorias que o painel conhece (as de CAT_PT): a lista da folha "Mudar categoria". */
+export const CATEGORIAS_CONHECIDAS = Object.keys(CAT_PT);
+
 export function traduzCategoria(cat: string): string {
   return CAT_PT[cat] ?? cat;
 }

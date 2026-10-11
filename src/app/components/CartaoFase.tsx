@@ -2,13 +2,15 @@ import Link from 'next/link';
 import { brl, mesLabel } from '@/lib/format';
 import { linkPara } from '@/lib/links';
 import type { DadosTrilha, Fase, Trilha } from '@/lib/trilha';
+import { AjustarMeta, BotaoNaoDivida } from './AjustesTrilha';
 import { TextoComValores } from './TextoComValores';
 
-type Props = { fase: Fase; trilha: Trilha } & Pick<DadosTrilha, 'dividas' | 'atrasos' | 'gastoTravado' | 'aplicacaoMensal'>;
+type Props = { fase: Fase; trilha: Trilha; metasPadrao: { meses: boolean; patrimonio: boolean } }
+  & Pick<DadosTrilha, 'dividas' | 'atrasos' | 'gastoTravado' | 'aplicacaoMensal'>;
 const ROTULO = { cumprida: '✓ cumprida', atual: 'agora', depois: 'depois' } as const;
 
 /** Uma fase da trilha (F3) com o detalhe que a sustenta. */
-export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplicacaoMensal }: Props) {
+export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplicacaoMensal, metasPadrao }: Props) {
   const r = trilha.reserva;
   const fracao = r.meta > 0 ? Math.min(1, r.aplicado / r.meta) : 1;
   return (
@@ -28,6 +30,7 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
               <span className="shrink-0 text-muted">
                 <span className="tnum money">{brl(d.valorParcela)}</span>
                 {d.restantes === null ? ' · sem data de fim' : ` · faltam ${d.restantes} · até ${mesLabel(d.fim!)}`}
+                <BotaoNaoDivida chave={d.chave} nome={d.nome} />
               </span>
             </div>
           ))}
@@ -58,19 +61,21 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
             <i className="block h-full bg-accent" style={{ width: `${fracao * 100}%` }} />
           </div>
           <div className="mt-1 text-faint">
-            6 × gasto travado: fixos <span className="tnum money">{brl(gastoTravado.fixos)}</span> + casa <span className="tnum money">{brl(gastoTravado.casa)}</span> + contas travadas <span className="tnum money">{brl(gastoTravado.debitoTravado)}</span>
+            {`${trilha.reserva.meses} × gasto travado: fixos `}<span className="tnum money">{brl(gastoTravado.fixos)}</span> + casa <span className="tnum money">{brl(gastoTravado.casa)}</span> + contas travadas <span className="tnum money">{brl(gastoTravado.debitoTravado)}</span>
           </div>
           {aplicacaoMensal.length > 0 && (
             <div className="mt-1 text-faint">
               aplicado por mês: {aplicacaoMensal.map((m, i) => <span key={m.mes}>{`${i ? ' · ' : ''}${mesLabel(m.mes)} `}<span className="tnum money">{brl(m.valor)}</span></span>)}
             </div>
           )}
+          <AjustarMeta chave="meses_reserva" valorTela={trilha.reserva.meses} padrao={metasPadrao.meses} />
         </div>
       )}
 
       {fase.n === 4 && (
         <div className="mt-2 text-xs text-muted">
-          {`${Math.round(trilha.patrimonio.pct * 100)}% da renda aplicada (meta ${Math.round(trilha.patrimonio.meta * 100)}%) · total aplicado `}<span className="tnum money">{brl(r.aplicado)}</span>
+          {`${Math.round(trilha.patrimonio.pct * 100)}% da renda aplicada (meta ${Math.round(trilha.patrimonio.meta * 1000) / 10}%) · total aplicado `}<span className="tnum money">{brl(r.aplicado)}</span>
+          <div><AjustarMeta chave="meta_patrimonio" valorTela={Math.round(trilha.patrimonio.meta * 1000) / 10} padrao={metasPadrao.patrimonio} /></div>
         </div>
       )}
 

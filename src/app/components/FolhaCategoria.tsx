@@ -20,6 +20,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
   const [previa, setPrevia] = useState<{ afetados: number; porCategoria: Record<string, number> } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [divida, setDivida] = useState<string | null>(null);
 
   const grupos = useMemo(() => {
     const b = busca.trim().toLowerCase();
@@ -61,6 +62,13 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
     } finally {
       setSalvando(false);
     }
+  }
+
+  // F4b: um parcelamento que a regra não reconhece como dívida entra na trilha
+  async function marcarDivida() {
+    const r = await fetch('/api/trilha/divida', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: 'divida', idTransacao: lanc.id }) }).catch(() => null);
+    if (!r) { setDivida('Sem conexão.'); return; }
+    setDivida(r.ok ? 'Marcado como dívida: entra na trilha (desfaz na tela Regras).' : (((await r.json().catch(() => ({}))) as { erro?: string }).erro ?? 'Não deu certo.'));
   }
 
   const opcao = (t: Tipo, rotulo: string) => (
@@ -119,6 +127,8 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
         className="min-h-[44px] w-full rounded-lg bg-accent text-sm font-medium text-base disabled:opacity-50">
         {salvando ? 'Salvando…' : 'Salvar'}
       </button>
+      <button type="button" onClick={marcarDivida} className="min-h-[44px] w-full text-xs text-muted underline">Isto é dívida (entra na trilha)</button>
+      {divida && <p className="text-xs text-muted">{divida}</p>}
     </div>
   );
 }

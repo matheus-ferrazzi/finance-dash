@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
-import { brl, dataBR, traduzCategoria, CATEGORIAS_CONHECIDAS } from '@/lib/format';
+import { brl, dataBR, traduzCategoria, CATEGORIAS_PAINEL } from '@/lib/format';
 import { GRUPOS_GASTO } from '@/lib/grupos';
 import type { LancCorrigir } from '@/lib/queries';
 
@@ -23,12 +23,13 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
 
   const grupos = useMemo(() => {
     const b = busca.trim().toLowerCase();
-    const nos = (c: string) => !b || traduzCategoria(c).toLowerCase().includes(b);
+    const pode = new Set(CATEGORIAS_PAINEL); // sem as vagas, que não ficariam
+    const nos = (c: string) => pode.has(c) && (!b || traduzCategoria(c).toLowerCase().includes(b));
     const agrupadas = new Set(GRUPOS_GASTO.flatMap((g) => g.cats));
     return [
       { nome: 'Mais usadas', cats: lanc.maisUsadas.filter(nos) },
       ...GRUPOS_GASTO.map((g) => ({ nome: `${g.emoji} ${g.nome}`, cats: g.cats.filter(nos) })),
-      { nome: 'Outras', cats: CATEGORIAS_CONHECIDAS.filter((c) => !agrupadas.has(c)).filter(nos) },
+      { nome: 'Outras', cats: CATEGORIAS_PAINEL.filter((c) => !agrupadas.has(c)).filter(nos) },
     ].filter((g) => g.cats.length > 0);
   }, [busca, lanc.maisUsadas]);
 
@@ -52,9 +53,11 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
     setSalvando(true);
     try {
       const r = await fetch('/api/categorias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pedido) });
-      const j = await r.json();
+      const j = await r.json().catch(() => ({}));
       if (!r.ok) { setErro(j.erro ?? 'Erro ao salvar.'); return; }
       onSalvo({ id: j.id, afetados: j.afetados, categoria });
+    } catch {
+      setErro('Sem conexão: não salvou.');
     } finally {
       setSalvando(false);
     }
@@ -121,7 +124,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
 }
 
 /** Folha que sobe do rodapé no celular (janela no computador): busca o lançamento e mostra o formulário. */
-export function FolhaCategoria({ id, onFechar }: { id: string; onFechar: () => void }) {
+export function FolhaCategoria({ id, onFechar: fechar }: { id: string; onFechar: () => void }) {
   const router = useRouter();
   const [lanc, setLanc] = useState<LancCorrigir | null>(null);
   const [falhou, setFalhou] = useState(false);
@@ -134,12 +137,18 @@ export function FolhaCategoria({ id, onFechar }: { id: string; onFechar: () => v
       .catch(() => setFalhou(true));
   }, [id]);
 
+  // a lista só é atualizada ao fechar: atualizar ao salvar tira o item do grupo aberto e desmonta a folha
+  // (com ela, o "Feito · Desfazer")
+  const [mudou, setMudou] = useState(false);
+  const onFechar = () => { if (mudou) router.refresh(); fechar(); };
+
   // desfazer apaga a regra recém-criada (se ela substituiu outra da mesma chave, não restaura a antiga)
   async function desfazer() {
     if (!feito) return;
-    await fetch(`/api/categorias/${feito.id}`, { method: 'DELETE' });
+    const r = await fetch(`/api/categorias/${feito.id}`, { method: 'DELETE' }).catch(() => null);
+    if (!r?.ok) { alert('Não deu para desfazer. Apague a regra na tela Regras.'); return; }
     router.refresh();
-    onFechar();
+    fechar();
   }
 
   return (
@@ -158,7 +167,7 @@ export function FolhaCategoria({ id, onFechar }: { id: string; onFechar: () => v
             </div>
           </div>
         ) : lanc ? (
-          <FormCategoria lanc={lanc} onSalvo={(r) => { setFeito(r); router.refresh(); }} />
+          <FormCategoria lanc={lanc} onSalvo={(r) => { setFeito(r); setMudou(true); }} />
         ) : (
           <p className="text-sm text-muted">{falhou ? 'Não deu para abrir este lançamento.' : 'Carregando…'}</p>
         )}

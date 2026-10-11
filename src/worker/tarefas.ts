@@ -91,11 +91,12 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
     contagens.desde = desde;
     const contas = await contasComItem(ctx, (c) => c.coleta_transacoes);
     const docs = await documentosDoCasal(ctx, contas);
-    const regras = await ctx.repo.regrasPainel();
     const porConta: Record<string, unknown> = {};
     for (const c of contas) {
       try {
         const txs = await ctx.pluggy.transacoes(c.account_id, desde);
+        // relidas a cada conta: uma regra salva no painel durante a execução vale já, e não é desfeita
+        const regras = await ctx.repo.regrasPainel();
         const linhas = txs.map((t) => montarLinha(t, c, docs, regras));
         const banco = await ctx.repo.lancamentosDaConta(c, desde);
         const dif = contarDiferencas(banco, linhas);

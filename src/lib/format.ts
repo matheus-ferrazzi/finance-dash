@@ -84,6 +84,11 @@ const CAT_PT: Record<string, string> = {
 /** As categorias que o painel conhece (as de CAT_PT): a lista da folha "Mudar categoria". */
 export const CATEGORIAS_CONHECIDAS = Object.keys(CAT_PT);
 
+/** As que o painel deixa escolher: sem as vagas. "Outros" vira estorno no classificar (o lançamento some dos
+ *  gastos) e as de transferência são reclassificadas pelas regras antigas na leitura (a escolha não ficaria). */
+const VAGAS = ['Outros', 'Transfers', 'Transfer - PIX', 'Transfer - Bank Slip', 'Same person transfer'];
+export const CATEGORIAS_PAINEL = CATEGORIAS_CONHECIDAS.filter((c) => !VAGAS.includes(c));
+
 export function traduzCategoria(cat: string): string {
   return CAT_PT[cat] ?? cat;
 }

@@ -1,4 +1,4 @@
-import { CATEGORIAS_CONHECIDAS } from './format';
+import { CATEGORIAS_PAINEL } from './format';
 import { normalizarTexto, type TipoRegra } from './categoriaPainel';
 import type { CompromissoInput } from './queries';
 import { parseValorBR } from './format';
@@ -86,7 +86,7 @@ export interface PedidoRegra { tipo: TipoRegra; idTransacao: string; texto?: str
 export function validarRegra(b: any): { ok: true; data: PedidoRegra } | { ok: false; erro: string } {
   if (!b || !['lancamento', 'doc', 'texto'].includes(b.tipo)) return { ok: false, erro: 'Tipo de regra inválido.' };
   if (typeof b.idTransacao !== 'string' || !b.idTransacao) return { ok: false, erro: 'Lançamento não informado.' };
-  if (!CATEGORIAS_CONHECIDAS.includes(b.categoria)) return { ok: false, erro: 'Categoria desconhecida.' };
+  if (!CATEGORIAS_PAINEL.includes(b.categoria)) return { ok: false, erro: 'Categoria desconhecida.' };
   if (b.tipo === 'texto') {
     const t = normalizarTexto(String(b.texto ?? ''));
     if (t.replace(/\s/g, '').length < 3) return { ok: false, erro: 'O texto precisa de pelo menos 3 letras.' };

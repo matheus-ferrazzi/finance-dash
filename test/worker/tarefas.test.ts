@@ -58,6 +58,23 @@ describe('transacoes', () => {
     expect(ex.contagens.desde).toBe('2026-08-10');
   });
 
+  it('regras do painel relidas a cada conta: uma regra salva no meio da execução já vale para a conta seguinte', async () => {
+    const c = ctx('real');
+    c.repo.contas = [contaFake(), contaFake({ account_id: 'acc-2', forma: 'Débito' })];
+    c.pluggy.txs.set('acc-1', [txFake('a', '2026-09-20')]);
+    c.pluggy.txs.set('acc-2', [txFake('b', '2026-09-20', { accountId: 'acc-2' })]);
+    const aplicar = c.repo.aplicarConta.bind(c.repo);
+    const vistas: string[] = [];
+    c.repo.aplicarConta = async (l: any, r: any) => {
+      vistas.push(...l.map((x: any) => x.categoria));
+      c.repo.regras = [{ id: 1, tipo: 'lancamento', chave: 'b', categoria: 'Gifts' }]; // salva no painel durante a execução
+      return aplicar(l, r);
+    };
+    await TAREFAS.transacoes(c, {});
+    expect(c.repo.regrasLidas).toBe(2);
+    expect(vistas[1]).toBe('Gifts');
+  });
+
   it('falha numa conta não derruba a outra', async () => {
     const c = ctx('real');
     c.repo.contas = [contaFake(), contaFake({ account_id: 'acc-2', forma: 'Débito' })];

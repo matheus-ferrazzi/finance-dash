@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { categoriaEfetiva, normalizarTexto, recalcular, sugerirTexto, type RegraPainel } from '../../src/lib/categoriaPainel';
+import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type RegraPainel } from '../../src/lib/categoriaPainel';
 
 const l = { id: 't1', descricao: 'PIX Padaria Pão Doce 12/03', contraparteDoc: '11122233344', categoriaBanco: 'Shopping', saida: true, forma: 'Débito', responsavel: 'Ariane' };
 const R = (id: number, tipo: RegraPainel['tipo'], chave: string, categoria: string): RegraPainel => ({ id, tipo, chave, categoria });
@@ -35,3 +35,15 @@ describe('classe recalculada', () => {
     expect(recalcular(l, []).classe).toBe('despesa');
   });
 });
+
+describe('nome da contraparte sem documento', () => {
+  it('tira CPF/CNPJ (com ou sem pontuação) do nome — razão social de MEI traz o CPF', () => {
+    expect(nomeSemDocumento('FULANO DE TAL 12345678901')).toBe('FULANO DE TAL');
+    expect(nomeSemDocumento('LOJA X LTDA 12.345.678/0001-90')).toBe('LOJA X LTDA');
+    expect(nomeSemDocumento('123.456.789-01 FULANO')).toBe('FULANO');
+    expect(nomeSemDocumento('PADARIA 24H')).toBe('PADARIA 24H');
+    expect(nomeSemDocumento(null)).toBeNull();
+    expect(nomeSemDocumento('12345678901')).toBeNull();
+  });
+});
+

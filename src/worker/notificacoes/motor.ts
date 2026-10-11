@@ -4,6 +4,8 @@
 import type { Canal } from './canal';
 import { montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude, type Bot } from './textos';
 import { montarDiario, montarMensal, montarSemanal, montarTecnico } from './textosD';
+import { graficoDiario, graficoMensal, graficoSemanal } from './graficos';
+import { paraPng } from './png';
 import { linkPara } from '../../lib/links';
 
 export interface LinhaNotif {
@@ -14,7 +16,11 @@ export interface RegistroNotif {
   gravar(l: LinhaNotif): Promise<void>;
 }
 export type Fontes = { [b in Bot]: () => Promise<unknown> };
-export interface ResultadoNotif { bot: Bot; modo: string; texto: string | null; enviado: boolean; erro: string | null }
+export interface ResultadoNotif {
+  bot: Bot; modo: string; texto: string | null; enviado: boolean; erro: string | null;
+  /** D2: o gráfico (só no dry-run, para conferência com --png) */
+  svg?: string | null;
+}
 
 /**
  * Para onde vai cada mensagem: o técnico vai para o Matheus; diário, semanal e mensal, para o grupo; os bots
@@ -32,13 +38,17 @@ export function modoDoBot(bot: Bot, notifReal: string | undefined, temCanal: boo
   return temCanal && lista.includes(bot) ? 'real' : 'sombra';
 }
 
-function montar(bot: Bot, dados: any, estado: any, painel: string): { texto: string | null; estado: unknown | null } {
+type Montada = { texto: string | null; estado: unknown | null; svg?: string | null };
+// o gráfico nunca derruba a mensagem: deu erro, vai sem
+const seguro = (g: () => string | null) => { try { return g(); } catch { return null; } };
+
+function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
   const base = painel.replace(/\/+$/, '');
   const url = (tela: Parameters<typeof linkPara>[0], mes?: string) => base + linkPara(tela, mes ? { mes } : {}, '');
   switch (bot) {
-    case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: null };
-    case 'semanal': return { texto: montarSemanal(dados, { gastos: url('gastos'), trilha: url('trilha') }), estado: null };
-    case 'mensal': return { texto: montarMensal(dados, url('previsao', dados?.mes)), estado: null };
+    case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: null, svg: seguro(() => graficoDiario(dados)) };
+    case 'semanal': return { texto: montarSemanal(dados, { gastos: url('gastos'), trilha: url('trilha') }), estado: null, svg: seguro(() => graficoSemanal(dados)) };
+    case 'mensal': return { texto: montarMensal(dados, url('previsao', dados?.mes)), estado: null, svg: seguro(() => graficoMensal(dados)) };
     case 'tecnico': return { texto: montarTecnico(dados), estado: null };
     case 'ritmo': return { texto: montarRitmo(dados), estado: null };
     case 'fatura': return montarFatura(dados ?? [], estado);
@@ -50,9 +60,30 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): { texto: str
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+const LIMITE_LEGENDA = 1000;
+
+/** Imagem + legenda quando dá; qualquer falha da imagem cai para o texto (a mensagem não se perde pelo gráfico). */
+async function entregar(canal: Canal, texto: string, svg: string | null | undefined, renderizar: (s: string) => Buffer): Promise<string | null> {
+  if (svg && canal.enviarImagem) {
+    try {
+      const png = renderizar(svg);
+      if (texto.length <= LIMITE_LEGENDA) { await canal.enviarImagem(png, texto); return null; }
+      await canal.enviarImagem(png, '');
+    } catch (e) {
+      await canal.enviar(texto);
+      return `imagem: ${msg(e)}`;
+    }
+  }
+  await canal.enviar(texto);
+  return null;
+}
+
 export async function rodarNotificacao(
   bot: Bot,
-  d: { fontes: Fontes; registro: RegistroNotif; canais: Canais; modo: 'sombra' | 'real' | 'dry-run'; painelUrl?: string },
+  d: {
+    fontes: Fontes; registro: RegistroNotif; canais: Canais; modo: 'sombra' | 'real' | 'dry-run'; painelUrl?: string;
+    renderizar?: (svg: string) => Buffer;
+  },
 ): Promise<ResultadoNotif> {
   // sem canal para o destino não há como enviar: o que seria real vira sombra (registra, não envia)
   const canal = d.canais[destinoDe(bot)];
@@ -66,7 +97,7 @@ export async function rodarNotificacao(
     if (modo !== 'dry-run') await d.registro.gravar({ bot, modo, texto: null, enviado: false, erro, estado: null });
     return { bot, modo, texto: null, enviado: false, erro };
   }
-  let m: { texto: string | null; estado: unknown | null };
+  let m: Montada;
   try {
     m = montar(bot, dados, anterior, d.painelUrl ?? '');
   } catch (e) {
@@ -75,7 +106,7 @@ export async function rodarNotificacao(
     if (modo !== 'dry-run') await d.registro.gravar({ bot, modo, texto: null, enviado: false, erro, estado: null });
     return { bot, modo, texto: null, enviado: false, erro };
   }
-  if (modo === 'dry-run') return { bot, modo, texto: m.texto, enviado: false, erro: null };
+  if (modo === 'dry-run') return { bot, modo, texto: m.texto, enviado: false, erro: null, svg: m.svg ?? null };
   const estadoMudou = m.estado !== null && JSON.stringify(m.estado) !== JSON.stringify(anterior);
   if (m.texto === null) {
     if (estadoMudou) await d.registro.gravar({ bot, modo, texto: null, enviado: false, erro: null, estado: m.estado });
@@ -85,14 +116,15 @@ export async function rodarNotificacao(
   let erro: string | null = null;
   if (modo === 'real') {
     try {
-      await canal!.enviar(m.texto);
+      erro = await entregar(canal!, m.texto, m.svg, d.renderizar ?? ((s) => paraPng(s)));
       enviado = true;
     } catch (e) {
       erro = msg(e);
     }
   }
   // envio que falhou não avança o estado: a próxima execução tenta o mesmo aviso de novo (um gasto grande
-  // ou uma fatura não pode se perder por uma falha passageira do Telegram)
-  await d.registro.gravar({ bot, modo, texto: m.texto, enviado, erro, estado: erro ? null : m.estado });
+  // ou uma fatura não pode se perder por uma falha passageira do Telegram). Aviso só da imagem ("imagem: …")
+  // com o texto entregue avança.
+  await d.registro.gravar({ bot, modo, texto: m.texto, enviado, erro, estado: modo === 'real' && !enviado ? null : m.estado });
   return { bot, modo, texto: m.texto, enviado, erro };
 }

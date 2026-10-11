@@ -177,4 +177,27 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(depois[1].saldoFim - antes[1].saldoFim).toBe(40); // desfaz a saída de março no saldo do fim de fevereiro
     expect(depois[2].previsto).toBe(antes[2].previsto);
   });
+  it('visão individual: compromisso do casal entra com a parte que a pessoa paga (6 meses); as duas somam o casal', async () => {
+    await pool.query(`INSERT INTO financas_compromissos (nome, categoria, valor, responsavel, data_inicio) VALUES
+      ('aluguel teste', 'Housing', 1000, 'casal', '2037-01-01'), ('agua teste', 'Water', 100, 'casal', '2037-01-01'),
+      ('gas teste', 'Gas', 60, 'casal', '2037-01-01')`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('pc-1', '2037-04-05', 1000, 'aluguel', 'Housing', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-04-05'),
+      ('pc-2', '2037-05-05', 1000, 'aluguel', 'Housing', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-05-05'),
+      ('pc-3', '2037-05-08', 90, 'agua', 'Water', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2037-05-08'),
+      ('pc-4', '2037-05-09', 30, 'agua', 'Water', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-05-09'),
+      ('pc-5', '2036-01-05', 999, 'aluguel antigo', 'Housing', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2036-01-05')`);
+    try {
+      const hoje = '2037-07-10';
+      const [a, m, c] = await Promise.all(['Ariane', 'Matheus', 'casal'].map((r) => queries.getProjecaoBase(r as any, hoje)));
+      const v = (b: any, cat: string) => b.compromissosManuais.find((x: any) => x.categoria === cat)?.valor;
+      expect([v(a, 'Housing'), v(a, 'Water'), v(a, 'Gas')]).toEqual([0, 75, 30]); // fora da janela de 6 meses não conta; Gas sem histórico: meio a meio
+      expect([v(m, 'Housing'), v(m, 'Water'), v(m, 'Gas')]).toEqual([1000, 25, 30]);
+      for (const cat of ['Housing', 'Water', 'Gas']) expect(v(a, cat) + v(m, cat)).toBe(v(c, cat));
+      // o cadastro continua com o valor cheio
+      expect(a.compromissosCadastrados!.find((x) => x.categoria === 'Housing')!.valor).toBe(1000);
+    } finally {
+      await pool.query(`UPDATE financas_compromissos SET ativo = false WHERE nome LIKE '% teste'`);
+    }
+  });
 });

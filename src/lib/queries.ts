@@ -9,7 +9,7 @@ import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from 
 import { saiDoVermelho } from './decisoes';
 import type { MarcaInput } from './validation';
 import {
-  addMonths, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -946,7 +946,10 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   const faturaReal: Record<string, number> = {};
   faturaRows.forEach((x) => { faturaReal[x.venc] = Number(x.total); });
 
-  const compromissosManuais = await getCompromissosManuais(resp);
+  const compromissosCadastrados = await getCompromissosManuais(resp);
+  const compromissosManuais = resp === 'casal'
+    ? compromissosCadastrados
+    : aplicarParteDoCasal(compromissosCadastrados, resp, await getPartesDoCasal(resp, compromissosCadastrados, hoje));
   const receitasAReceber = receitaAindaAEntrar(fontesReceita, recebidoPorFonte);
 
   // --- mês em andamento: o que já entrou/saiu e o que ainda falta ---
@@ -1024,7 +1027,31 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     creditoPorVencimento,
     faturaReal,
     compromissosManuais,
+    compromissosCadastrados,
   };
+}
+
+/**
+ * Que fração de cada categoria dos compromissos do casal a pessoa pagou nos 6 meses fechados antes de
+ * `hoje` (qualquer forma de pagamento). Categoria que ninguém pagou fica de fora (vira meio a meio).
+ */
+async function getPartesDoCasal(resp: Resp, compromissos: CompromissoManual[], hoje: string): Promise<Record<string, number>> {
+  const cats = Array.from(new Set(compromissos.filter((c) => c.responsavel === 'casal').map((c) => c.categoria)));
+  if (cats.length === 0) return {};
+  const rows = await q<any>(
+    `SELECT cat, SUM(valor) FILTER (WHERE responsavel = $3)::float8 AS pessoa, SUM(valor)::float8 AS total
+     FROM (SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS cat, valor, responsavel
+           FROM financas_lancamentos
+           WHERE classe = 'despesa'
+             AND data_lancamento >= date_trunc('month', $2::date) - interval '6 months'
+             AND data_lancamento <  date_trunc('month', $2::date)) x
+     WHERE cat = ANY($1::text[])
+     GROUP BY cat`,
+    [cats, hoje, resp],
+  );
+  const partes: Record<string, number> = {};
+  for (const x of rows) if (Number(x.total) > 0) partes[x.cat] = Number(x.pessoa ?? 0) / Number(x.total);
+  return partes;
 }
 
 // ==================== DIAGNÓSTICO ====================

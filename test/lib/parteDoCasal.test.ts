@@ -25,3 +25,27 @@ describe('parte do casal na visão individual', () => {
     expect(lista[0].valor).toBe(2000);
   });
 });
+
+describe('mês em andamento na visão individual', () => {
+  it('quem paga a conta inteira não deixa a outra pessoa "devendo" a parte dela: as duas somam o casal', async () => {
+    const { computeProjecao } = await import('../../src/lib/previsao');
+    const { baseFake } = await import('./previsao.test');
+    const aluguel = c(1, 'Housing', 1000);
+    const hoje = '2026-08-15';
+    const mc = (casa: Record<string, number>, casal?: Record<string, number>) =>
+      ({ recebidoPorFonte: {}, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto: 0, agendadoRestante: 0, faturaJaPaga: 0, casaNoMesPorCategoria: casa, casaNoMesCasalPorCategoria: casal });
+    const falta = (b: any) => computeProjecao(baseFake(b), 0, hoje)[0].despesaManual;
+    const casal = falta({ compromissosManuais: [aluguel], mesCorrente: mc({ Housing: 1000 }) });
+    const m = falta({ compromissosManuais: aplicarParteDoCasal([aluguel], 'Matheus', { Housing: 0.5 }), mesCorrente: mc({ Housing: 1000 }, { Housing: 1000 }) });
+    const a = falta({ compromissosManuais: aplicarParteDoCasal([aluguel], 'Ariane', { Housing: 0.5 }), mesCorrente: mc({}, { Housing: 1000 }) });
+    expect(casal).toBe(0);
+    expect(m + a).toBe(casal);
+  });
+  it('conta ainda não paga: cada um espera a sua parte', async () => {
+    const { computeProjecao } = await import('../../src/lib/previsao');
+    const { baseFake } = await import('./previsao.test');
+    const mc = { recebidoPorFonte: {}, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto: 0, agendadoRestante: 0, faturaJaPaga: 0, casaNoMesPorCategoria: {}, casaNoMesCasalPorCategoria: {} };
+    const b = baseFake({ compromissosManuais: aplicarParteDoCasal([c(1, 'Housing', 1000)], 'Ariane', { Housing: 0.3 }), mesCorrente: mc as any });
+    expect(computeProjecao(b, 0, '2026-08-15')[0].despesaManual).toBe(300);
+  });
+});

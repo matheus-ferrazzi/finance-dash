@@ -94,14 +94,14 @@ export function DetalheMes(p: Props) {
               {([
                 ['Saldo no início', p.passado.conciliacao.saldoInicio, 'text-muted'],
                 ['Sobra do mês', p.passado.conciliacao.sobra, ''],
-                ['Transferências e aplicações', p.passado.conciliacao.transferencias, ''],
+                ['Transferências, aplicações e ajustes', p.passado.conciliacao.transferencias, ''],
               ] as const).map(([t, v, c]) => (
                 <div key={t} className={`flex justify-between ${c}`}><span>{t}</span><span className="tnum money">{brl(v)}</span></div>
               ))}
               <div className="flex justify-between font-medium">
                 <span>Saldo no fim</span><span className={`tnum money ${cor(p.passado.saldoFim)}`}>{brl(p.passado.saldoFim)}</span>
               </div>
-              <p className="pt-1 text-[11px] text-faint">Transferências entre contas que não se anulam, aplicações e resgates mexem no saldo sem entrar na sobra.</p>
+              <p className="pt-1 text-[11px] text-faint">Transferências entre contas que não se anulam, aplicações, resgates e o que não passa pela conta (como conta da casa paga no cartão) mexem no saldo sem entrar na sobra.</p>
             </div>
           ) : (
             <div className="mt-3 flex justify-between border-t border-border pt-2 text-sm">

@@ -752,7 +752,7 @@ export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<C
   return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
 }
 
-export interface MesPassado { mes: string; previsto: Componentes; real: Componentes; saldoFim: number }
+export interface MesPassado { mes: string; previsto: Componentes; real: Componentes; saldoInicio: number; saldoFim: number }
 
 // só o PREVISTO fica em cache (feito na véspera, não muda e é a parte cara); o real e o saldo são
 // consultas leves, refeitas a cada acesso para acompanhar lançamento que a sincronização trouxer depois.
@@ -781,9 +781,11 @@ export async function getMesesPassados(resp: Resp, hoje: string = currentDateSP(
   const [saldo, movs] = await Promise.all([getSaldoContas(resp), getMovimentosDiarios(resp, `${meses[0]}-01`, hoje)]);
   return Promise.all(meses.map(async (mes) => {
     const [previsto, real] = await Promise.all([previstoNaVespera(resp, mes, atual), getRealizado(mes, resp)]);
+    // saldo em conta numa data = saldo de hoje desfazendo os movimentos depois dela
     const fimDoMes = `${mes}-${String(diasNoMes(mes)).padStart(2, '0')}`;
-    const depois = Object.entries(movs).filter(([d]) => d > fimDoMes).reduce((s, [, v]) => s + v, 0);
-    return { mes, previsto, real, saldoFim: Math.round((saldo.total - depois) * 100) / 100 };
+    const desfaz = (desde: (d: string) => boolean) =>
+      Math.round((saldo.total - Object.entries(movs).filter(([d]) => desde(d)).reduce((s, [, v]) => s + v, 0)) * 100) / 100;
+    return { mes, previsto, real, saldoInicio: desfaz((d) => d >= `${mes}-01`), saldoFim: desfaz((d) => d > fimDoMes) };
   }));
 }
 

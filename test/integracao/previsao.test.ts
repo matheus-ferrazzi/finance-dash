@@ -149,6 +149,21 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect((await queries.getMesesPassados('Ariane', '2034-04-20'))[1].previsto).toBe(r[1].previsto);
   });
 
+  it('meses passados: saldo no início + sobra + transferências e aplicações = saldo no fim', async () => {
+    await pool.query(`INSERT INTO financas_saldos (id_conta, banco, responsavel, tipo, saldo) VALUES ('ct-c', 'X', 'Matheus', 'checking', 0)
+      ON CONFLICT (id_conta) DO NOTHING`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('ct-1', '2036-02-05', 1000, 'salario', 'Salary', 'Débito', 'X', 'Matheus', 'receita', 'Entrada', '2036-02-05'),
+      ('ct-2', '2036-02-06', 300, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2036-02-06'),
+      ('ct-3', '2036-02-07', 250, 'pix da outra conta', 'Transfers', 'Débito', 'X', 'Matheus', 'transferencia_interna', 'Entrada', '2036-02-07')`);
+    const r = await queries.getMesesPassados('Matheus', '2036-04-10');
+    const fev = r[1];
+    expect(fev.mes).toBe('2036-02');
+    expect(fev.real.saldo).toBe(700);
+    expect(fev.saldoInicio).toBe(r[0].saldoFim);
+    expect(fev.saldoFim - fev.saldoInicio).toBe(950);
+  });
+
   it('meses passados: o real e o saldo no fim acompanham lançamento que chega depois (só o previsto fica em cache)', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
       ('mc-1', '2035-02-10', 100, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2035-02-10')`);

@@ -8,6 +8,24 @@ import { currentDateSP, mesLabel } from './format';
 export interface CompromissoManual {
   id: number; nome: string; categoria: string; valor: number; responsavel: string;
   dataInicio: string; mesesTotais: number | null; observacao: string | null; dataFim: string | null;
+  /** na visão individual, a fração de um compromisso do casal que cabe à pessoa (valor já multiplicado) */
+  parte?: number;
+  /** o valor cadastrado, quando `valor` já foi reduzido à parte da pessoa */
+  valorCheio?: number;
+}
+
+/**
+ * Visão individual: compromisso do CASAL entra com a parte que a pessoa de fato paga daquela categoria
+ * (`partes`, medido no histórico); sem histórico de ninguém, meio a meio. O da própria pessoa entra
+ * inteiro; a visão do casal não muda. Assim as duas visões individuais somam o casal.
+ */
+export function aplicarParteDoCasal(lista: CompromissoManual[], resp: string, partes: Record<string, number>): CompromissoManual[] {
+  if (resp === 'casal') return lista;
+  return lista.map((c) => {
+    if (c.responsavel !== 'casal') return c;
+    const parte = partes[c.categoria] ?? 0.5;
+    return { ...c, valor: Math.round(c.valor * parte * 100) / 100, parte, valorCheio: c.valor };
+  });
 }
 
 export interface SaldoConta {
@@ -50,6 +68,8 @@ export interface ProjecaoBase {
   /** 'AAAA-MM' do vencimento -> total real da fatura (histórico da Pluggy), só as que vencem até o mês de hoje */
   faturaReal: Record<string, number>;
   compromissosManuais: CompromissoManual[];
+  /** o cadastro como está (valor cheio), para a tela de cadastro; compromissosManuais já vem com a parte da pessoa */
+  compromissosCadastrados: CompromissoManual[];
   /** o que já aconteceu no mês em andamento — usado pra fechar o mês corrente */
   mesCorrente: {
     /** o que cada fonte já pagou no mês */
@@ -62,6 +82,8 @@ export interface ProjecaoBase {
     agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
     faturaJaPaga: number;                  // fatura de cartão já paga neste mês
     casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
+    /** visão individual: o mesmo, somando as duas pessoas (abate os compromissos do casal) */
+    casaNoMesCasalPorCategoria?: Record<string, number>;
   };
 }
 
@@ -275,7 +297,17 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
     // é POR CATEGORIA, não por item: com dois compromissos "Housing" de R$1000 e
     // R$1000 já pago, descontar em cada um zerava os dois (some R$1000 da conta).
     const pagoPorCategoria: Record<string, number> = {};
+    const pagoCasalConsumido: Record<string, number> = {};
     const despesaManual = ativos.reduce((s, c) => {
+      // visão individual, compromisso do casal: o que falta é a parte da pessoa no que falta AO CASAL
+      // (se o outro pagou a conta inteira, não falta nada para ninguém)
+      if (c.parte !== undefined && c.valorCheio !== undefined && mc.casaNoMesCasalPorCategoria) {
+        const jaPago = mc.casaNoMesCasalPorCategoria[c.categoria] ?? 0;
+        const consumido = pagoCasalConsumido[c.categoria] ?? 0;
+        const abate = Math.min(c.valorCheio, Math.max(0, jaPago - consumido));
+        pagoCasalConsumido[c.categoria] = consumido + abate;
+        return s + c.parte * (c.valorCheio - abate);
+      }
       const jaPago = mc.casaNoMesPorCategoria[c.categoria] ?? 0;
       const consumido = pagoPorCategoria[c.categoria] ?? 0;
       const abate = Math.min(c.valor, Math.max(0, jaPago - consumido));

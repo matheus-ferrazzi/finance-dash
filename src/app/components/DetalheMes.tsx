@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { brl, mesLabel } from '@/lib/format';
 import { linkPara } from '@/lib/links';
-import type { LinhaAtual, LinhaDetalhe, LinhaPassado } from '@/lib/mesAMes';
+import type { Conciliacao, LinhaAtual, LinhaDetalhe, LinhaPassado } from '@/lib/mesAMes';
 
 type Props = {
   tipo: 'passado' | 'atual' | 'futuro'; mes: string; resp: 'casal' | 'Matheus' | 'Ariane';
@@ -11,7 +11,7 @@ type Props = {
   anterior: string | null; seguinte: string | null;
   futuro?: { linhas: LinhaDetalhe[]; sobra: number; saldoFim: number };
   atual?: { linhas: LinhaAtual[]; fechaCom: number };
-  passado?: { linhas: LinhaPassado[]; saldoFim: number };
+  passado?: { linhas: LinhaPassado[]; saldoFim: number; conciliacao?: Conciliacao };
 };
 
 const cor = (v: number) => (v >= 0 ? 'text-accent' : 'text-despesa');
@@ -88,9 +88,26 @@ export function DetalheMes(p: Props) {
               </Fragment>
             ))}
           </div>
-          <div className="mt-3 flex justify-between border-t border-border pt-2 text-sm">
-            <span>Saldo no fim</span><span className={`tnum money font-medium ${cor(p.passado.saldoFim)}`}>{brl(p.passado.saldoFim)}</span>
-          </div>
+          {p.passado.conciliacao ? (
+            // a conta que fecha o saldo: a sobra não inclui transferências entre contas e aplicações
+            <div className="mt-3 space-y-1 border-t border-border pt-2 text-sm">
+              {([
+                ['Saldo no início', p.passado.conciliacao.saldoInicio, 'text-muted'],
+                ['Sobra do mês', p.passado.conciliacao.sobra, ''],
+                ['Transferências, aplicações e ajustes', p.passado.conciliacao.transferencias, ''],
+              ] as const).map(([t, v, c]) => (
+                <div key={t} className={`flex justify-between ${c}`}><span>{t}</span><span className="tnum money">{brl(v)}</span></div>
+              ))}
+              <div className="flex justify-between font-medium">
+                <span>Saldo no fim</span><span className={`tnum money ${cor(p.passado.saldoFim)}`}>{brl(p.passado.saldoFim)}</span>
+              </div>
+              <p className="pt-1 text-[11px] text-faint">Transferências entre contas que não se anulam, aplicações, resgates e o que não passa pela conta (como conta da casa paga no cartão) mexem no saldo sem entrar na sobra.</p>
+            </div>
+          ) : (
+            <div className="mt-3 flex justify-between border-t border-border pt-2 text-sm">
+              <span>Saldo no fim</span><span className={`tnum money font-medium ${cor(p.passado.saldoFim)}`}>{brl(p.passado.saldoFim)}</span>
+            </div>
+          )}
           <div className="mt-2 flex gap-4 text-xs">
             <Link className="text-accent" href={linkPara('gastos', { resp: p.resp, mes: p.mes }, '')}>ver gastos do mês</Link>
             <Link className="text-accent" href={linkPara('faturas', { resp: p.resp })}>ver faturas</Link>

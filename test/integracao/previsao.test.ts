@@ -149,6 +149,21 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect((await queries.getMesesPassados('Ariane', '2034-04-20'))[1].previsto).toBe(r[1].previsto);
   });
 
+  it('meses passados: saldo no início + sobra + transferências e aplicações = saldo no fim', async () => {
+    await pool.query(`INSERT INTO financas_saldos (id_conta, banco, responsavel, tipo, saldo) VALUES ('ct-c', 'X', 'Matheus', 'checking', 0)
+      ON CONFLICT (id_conta) DO NOTHING`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('ct-1', '2036-02-05', 1000, 'salario', 'Salary', 'Débito', 'X', 'Matheus', 'receita', 'Entrada', '2036-02-05'),
+      ('ct-2', '2036-02-06', 300, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2036-02-06'),
+      ('ct-3', '2036-02-07', 250, 'pix da outra conta', 'Transfers', 'Débito', 'X', 'Matheus', 'transferencia_interna', 'Entrada', '2036-02-07')`);
+    const r = await queries.getMesesPassados('Matheus', '2036-04-10');
+    const fev = r[1];
+    expect(fev.mes).toBe('2036-02');
+    expect(fev.real.saldo).toBe(700);
+    expect(fev.saldoInicio).toBe(r[0].saldoFim);
+    expect(fev.saldoFim - fev.saldoInicio).toBe(950);
+  });
+
   it('meses passados: o real e o saldo no fim acompanham lançamento que chega depois (só o previsto fica em cache)', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
       ('mc-1', '2035-02-10', 100, 'mercado', 'Groceries', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2035-02-10')`);
@@ -161,5 +176,34 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(depois[2].real.debito).toBe(40);
     expect(depois[1].saldoFim - antes[1].saldoFim).toBe(40); // desfaz a saída de março no saldo do fim de fevereiro
     expect(depois[2].previsto).toBe(antes[2].previsto);
+  });
+  it('visão individual: compromisso do casal entra com a parte que a pessoa paga (6 meses); as duas somam o casal', async () => {
+    await pool.query(`INSERT INTO financas_compromissos (nome, categoria, valor, responsavel, data_inicio) VALUES
+      ('aluguel teste', 'Housing', 1000, 'casal', '2037-01-01'), ('agua teste', 'Water', 100, 'casal', '2037-01-01'),
+      ('gas teste', 'Gas', 60, 'casal', '2037-01-01'), ('emprestimo teste', 'Loans and financing', 400, 'casal', '2037-01-01')`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('pc-1', '2037-04-05', 1000, 'aluguel', 'Housing', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-04-05'),
+      ('pc-2', '2037-05-05', 1000, 'aluguel', 'Housing', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-05-05'),
+      ('pc-3', '2037-05-08', 90, 'agua', 'Water', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2037-05-08'),
+      ('pc-4', '2037-05-09', 30, 'agua', 'Water', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-05-09'),
+      ('pc-5', '2036-01-05', 999, 'aluguel antigo', 'Housing', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2036-01-05'),
+      ('pc-6', '2037-05-12', 700, 'emprestimo pessoal', 'Loans and financing', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-05-12'),
+      ('pc-7', '2037-07-05', 1000, 'aluguel do mes', 'Housing', 'Débito', 'X', 'Matheus', 'despesa', 'Saída', '2037-07-05')`);
+    try {
+      const hoje = '2037-07-10';
+      const [a, m, c] = await Promise.all(['Ariane', 'Matheus', 'casal'].map((r) => queries.getProjecaoBase(r as any, hoje)));
+      const v = (b: any, cat: string) => b.compromissosManuais.find((x: any) => x.categoria === cat)?.valor;
+      expect([v(a, 'Housing'), v(a, 'Water'), v(a, 'Gas')]).toEqual([0, 75, 30]); // fora da janela de 6 meses não conta; Gas sem histórico: meio a meio
+      expect([v(m, 'Housing'), v(m, 'Water'), v(m, 'Gas')]).toEqual([1000, 25, 30]);
+      for (const cat of ['Housing', 'Water', 'Gas', 'Loans and financing']) expect(v(a, cat) + v(m, cat)).toBe(v(c, cat));
+      // fora das contas da casa, gasto pessoal da categoria não decide a parte: meio a meio
+      expect(v(a, 'Loans and financing')).toBe(200);
+      // o aluguel do mês que o Matheus pagou aparece no "pago pelo casal" da visão da Ariane
+      expect(a.mesCorrente.casaNoMesCasalPorCategoria).toMatchObject({ Housing: 1000 });
+      // o cadastro continua com o valor cheio
+      expect(a.compromissosCadastrados.find((x) => x.categoria === 'Housing')!.valor).toBe(1000);
+    } finally {
+      await pool.query(`UPDATE financas_compromissos SET ativo = false WHERE nome LIKE '% teste'`);
+    }
   });
 });

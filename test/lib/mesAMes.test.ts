@@ -39,6 +39,10 @@ describe('detalhe do mês futuro', () => {
     expect(itens.map((i) => [i.nome, i.valor])).toEqual([['loja x', 300], ['Outras compras já lançadas', 200], ['Compras novas (média)', 700]]);
     expect(itens.reduce((s, i) => s + i.valor, 0)).toBe(1200);
   });
+  it('na visão individual, compromisso do casal mostra a parte da pessoa', () => {
+    const b = { ...base, compromissosManuais: [{ ...base.compromissosManuais[0], valor: 500, parte: 0.5 }] } as ProjecaoBase;
+    expect(detalheMesFuturo(b, mes({}), []).linhas[1].itens[0]).toEqual({ nome: 'Aluguel', valor: 500, nota: 'parte 50%' });
+  });
   it('fonte de receita de centavos (rendimento) não vira item', () => {
     const b = { ...base, fontesReceita: [...base.fontesReceita, { fonte: 'r', nome: 'rendimentos', valor: 0.01, diaTipico: 11, responsavel: 'X' }] } as ProjecaoBase;
     expect(detalheMesFuturo(b, mes({}), []).linhas[0].itens.map((i) => i.nome)).toEqual(['Salário A', 'Salário B']);
@@ -78,15 +82,21 @@ describe('detalhe do mês atual e passado', () => {
   });
   it('passado: previsto × real × diferença (real − previsto); mês vazio dá diferença = −previsto', () => {
     const z = { receita: 0, debito: 0, casa: 0, fatura: 0, saldo: 0 };
-    const d = detalheMesPassado({ mes: '2026-09', previsto: { receita: 100, debito: 50, casa: 20, fatura: 10, saldo: 20 }, real: z, saldoFim: 5 });
+    const d = detalheMesPassado({ mes: '2026-09', previsto: { receita: 100, debito: 50, casa: 20, fatura: 10, saldo: 20 }, real: z, saldoInicio: 5, saldoFim: 5 });
     expect(d.linhas.map((l) => l.chave)).toEqual(['receita', 'casa', 'debito', 'fatura', 'saldo']);
     expect(d.linhas.find((l) => l.chave === 'saldo')).toMatchObject({ previsto: 20, real: 0, diferenca: -20 });
     expect(d.saldoFim).toBe(5);
   });
+  it('passado: saldo no início + sobra + transferências e aplicações fecha com o saldo no fim', () => {
+    const c = { receita: 1000, debito: 300, casa: 0, fatura: 0, saldo: 700 };
+    const d = detalheMesPassado({ mes: '2026-08', previsto: c, real: c, saldoInicio: 100, saldoFim: 1050 });
+    expect(d.conciliacao).toEqual({ saldoInicio: 100, sobra: 700, transferencias: 250, saldoFim: 1050 });
+    expect(d.conciliacao.saldoInicio + d.conciliacao.sobra + d.conciliacao.transferencias).toBe(d.conciliacao.saldoFim);
+  });
 });
 
 describe('lista de meses', () => {
-  const passados = [{ mes: '2026-09', previsto: { receita: 0, debito: 0, casa: 0, fatura: 0, saldo: -100 }, real: { receita: 0, debito: 0, casa: 0, fatura: 0, saldo: 50 }, saldoFim: 900 }];
+  const passados = [{ mes: '2026-09', previsto: { receita: 0, debito: 0, casa: 0, fatura: 0, saldo: -100 }, real: { receita: 0, debito: 0, casa: 0, fatura: 0, saldo: 50 }, saldoInicio: 850, saldoFim: 900 }];
   const proj = [mes({ mes: '2026-10', saldo: -20, saldoProjetado: 880 }), mes({ mes: '2026-11', saldo: -30, saldoProjetado: 850 })];
   it('passados com real e previsto, atual, futuros; sem calibração o pior caso é null', () => {
     expect(linhasDaLista(proj, passados, null, 20, 31)).toEqual([

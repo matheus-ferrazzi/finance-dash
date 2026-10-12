@@ -9,7 +9,7 @@ import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from 
 import { saiDoVermelho } from './decisoes';
 import type { MarcaInput } from './validation';
 import {
-  addMonths, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -752,7 +752,7 @@ export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<C
   return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
 }
 
-export interface MesPassado { mes: string; previsto: Componentes; real: Componentes; saldoFim: number }
+export interface MesPassado { mes: string; previsto: Componentes; real: Componentes; saldoInicio: number; saldoFim: number }
 
 // só o PREVISTO fica em cache (feito na véspera, não muda e é a parte cara); o real e o saldo são
 // consultas leves, refeitas a cada acesso para acompanhar lançamento que a sincronização trouxer depois.
@@ -781,9 +781,11 @@ export async function getMesesPassados(resp: Resp, hoje: string = currentDateSP(
   const [saldo, movs] = await Promise.all([getSaldoContas(resp), getMovimentosDiarios(resp, `${meses[0]}-01`, hoje)]);
   return Promise.all(meses.map(async (mes) => {
     const [previsto, real] = await Promise.all([previstoNaVespera(resp, mes, atual), getRealizado(mes, resp)]);
+    // saldo em conta numa data = saldo de hoje desfazendo os movimentos depois dela
     const fimDoMes = `${mes}-${String(diasNoMes(mes)).padStart(2, '0')}`;
-    const depois = Object.entries(movs).filter(([d]) => d > fimDoMes).reduce((s, [, v]) => s + v, 0);
-    return { mes, previsto, real, saldoFim: Math.round((saldo.total - depois) * 100) / 100 };
+    const desfaz = (desde: (d: string) => boolean) =>
+      Math.round((saldo.total - Object.entries(movs).filter(([d]) => desde(d)).reduce((s, [, v]) => s + v, 0)) * 100) / 100;
+    return { mes, previsto, real, saldoInicio: desfaz((d) => d >= `${mes}-01`), saldoFim: desfaz((d) => d > fimDoMes) };
   }));
 }
 
@@ -944,7 +946,10 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   const faturaReal: Record<string, number> = {};
   faturaRows.forEach((x) => { faturaReal[x.venc] = Number(x.total); });
 
-  const compromissosManuais = await getCompromissosManuais(resp);
+  const compromissosCadastrados = await getCompromissosManuais(resp);
+  const compromissosManuais = resp === 'casal'
+    ? compromissosCadastrados
+    : aplicarParteDoCasal(compromissosCadastrados, resp, await getPartesDoCasal(resp, compromissosCadastrados, hoje));
   const receitasAReceber = receitaAindaAEntrar(fontesReceita, recebidoPorFonte);
 
   // --- mês em andamento: o que já entrou/saiu e o que ainda falta ---
@@ -984,20 +989,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     [...rmc.p, CASA_CATS, hoje, FIXO_DEBITO_CATS],
   );
 
-  const rcm = rf(resp, 2);
-  const hcm = `$${rcm.p.length + 2}::date`;
-  const casaMesRows = await q<any>(
-    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
-     FROM financas_lancamentos
-     WHERE classe='despesa' AND categoria = ANY($1::text[])
-       AND data_lancamento >= date_trunc('month',${hcm})
-       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
-       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
-     GROUP BY 1`,
-    [CASA_CATS, ...rcm.p, hoje],
-  );
-  const casaNoMesPorCategoria: Record<string, number> = {};
-  casaMesRows.forEach((x) => { casaNoMesPorCategoria[x.categoria] = Number(x.total); });
+  const casaNoMesPorCategoria = await getCasaNoMes(resp, hoje);
+  // visão individual: o que o casal já pagou da casa, para abater os compromissos do casal
+  const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : await getCasaNoMes('casal', hoje);
 
   return {
     patrimonioAtual,
@@ -1012,6 +1006,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
       casaNoMesPorCategoria,
+      ...(casaNoMesCasalPorCategoria ? { casaNoMesCasalPorCategoria } : {}),
     },
     fontesReceita,
     despesaVariavelMediaMensal: debito.livre,
@@ -1022,7 +1017,54 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     creditoPorVencimento,
     faturaReal,
     compromissosManuais,
+    compromissosCadastrados,
   };
+}
+
+/** Casa do mês de `hoje` por categoria: o que já saiu e o que já está agendado (conhecido em hoje). */
+async function getCasaNoMes(resp: Resp, hoje: string): Promise<Record<string, number>> {
+  const rcm = rf(resp, 2);
+  const hcm = `$${rcm.p.length + 2}::date`;
+  const rows = await q<any>(
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
+     FROM financas_lancamentos
+     WHERE classe='despesa' AND categoria = ANY($1::text[])
+       AND data_lancamento >= date_trunc('month',${hcm})
+       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
+       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
+     GROUP BY 1`,
+    [CASA_CATS, ...rcm.p, hoje],
+  );
+  const porCategoria: Record<string, number> = {};
+  rows.forEach((x) => { porCategoria[x.categoria] = Number(x.total); });
+  return porCategoria;
+}
+
+/**
+ * Que fração de cada conta da casa (CASA_CATS) dos compromissos do casal a pessoa pagou nos 6 meses
+ * fechados antes de `hoje` (qualquer forma de pagamento), com o mesmo filtro da média da casa.
+ * Fora da casa (empréstimo, seguro…) o gasto pessoal da categoria não diz nada sobre o compromisso:
+ * fica de fora, e categoria fora do resultado vira meio a meio.
+ */
+async function getPartesDoCasal(resp: Resp, compromissos: CompromissoManual[], hoje: string): Promise<Record<string, number>> {
+  const cats = Array.from(new Set(compromissos.filter((c) => c.responsavel === 'casal').map((c) => c.categoria)))
+    .filter((c) => CASA_CATS.includes(c));
+  if (cats.length === 0) return {};
+  const rows = await q<any>(
+    `SELECT cat, SUM(valor) FILTER (WHERE responsavel = $3)::float8 AS pessoa,
+            SUM(valor) FILTER (WHERE responsavel IN ('Matheus','Ariane'))::float8 AS total
+     FROM (SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS cat, valor, responsavel
+           FROM financas_lancamentos
+           WHERE classe = 'despesa' AND categoria = ANY($1::text[])
+             AND data_lancamento >= date_trunc('month', $2::date) - interval '6 months'
+             AND data_lancamento <  date_trunc('month', $2::date)) x
+     WHERE cat = ANY($1::text[])
+     GROUP BY cat`,
+    [cats, hoje, resp],
+  );
+  const partes: Record<string, number> = {};
+  for (const x of rows) if (Number(x.total) > 0) partes[x.cat] = Number(x.pessoa ?? 0) / Number(x.total);
+  return partes;
 }
 
 // ==================== DIAGNÓSTICO ====================

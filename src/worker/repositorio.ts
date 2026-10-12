@@ -1,3 +1,4 @@
+import type { RegraPainel } from '../lib/categoriaPainel';
 import type { Pool } from 'pg';
 import type { LinhaBanco } from './reconciliar';
 import type {
@@ -20,17 +21,24 @@ export interface Repo {
   upsertItem(itemId: string, banco: string, responsavel: string, item: PluggyItem): Promise<void>;
   registrarSync(banco: string, responsavel: string, lastSync: string): Promise<void>;
   registrarExecucao(e: Execucao): Promise<void>;
+  /** regras de categoria criadas pelo painel (F4): aplicadas antes de gravar */
+  regrasPainel(): Promise<RegraPainel[]>;
 }
 
 const COLUNAS_LINHA = `id_transacao text, data_lancamento date, valor numeric, tipo_movimento text, classe text,
   descricao text, categoria text, forma_pagamento text, banco text, responsavel text, status_pluggy text,
   account_id text, parcela_numero int, parcela_total int, data_compra date, fatura_id text, fatura_prevista text,
   contraparte_nome text, contraparte_doc text, loja_cnpj text, loja_cnae text, categoria_id text,
-  tipo_operacao text, transferencia_casal boolean`;
+  tipo_operacao text, transferencia_casal boolean, categoria_banco text`;
 const NOMES_LINHA = COLUNAS_LINHA.split(',').map((c) => c.trim().split(/\s+/)[0]);
 
 export class PgRepo implements Repo {
   constructor(private readonly pool: Pool) {}
+
+  async regrasPainel(): Promise<RegraPainel[]> {
+    const r = await this.pool.query(`SELECT id, tipo, chave, categoria FROM financas_categoria_painel`);
+    return r.rows.map((x) => ({ id: Number(x.id), tipo: x.tipo, chave: x.chave, categoria: x.categoria }));
+  }
 
   async contasAtivas(): Promise<Conta[]> {
     const r = await this.pool.query(

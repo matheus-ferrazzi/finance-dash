@@ -19,13 +19,14 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     categoria: 'Shopping', forma_pagamento: 'Crédito', banco: 'Nubank', responsavel: 'Matheus', status_pluggy: 'POSTED',
     account_id: 'acc', parcela_numero: 1, parcela_total: 3, data_compra: data, fatura_id: null, fatura_prevista: null,
     contraparte_nome: null, contraparte_doc: null, loja_cnpj: null, loja_cnae: null, categoria_id: '05000000',
-    tipo_operacao: 'CARTAO', transferencia_casal: false,
+    tipo_operacao: 'CARTAO', transferencia_casal: false, categoria_banco: 'Outros',
   });
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: url });
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     repo = new PgRepo(pool);
   });
   afterAll(async () => pool?.end());

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { brl, dataBR, traduzCategoria } from '@/lib/format';
 import { catIcon, respBadge } from './ui';
+import { BotaoCorrigir } from './BotaoCorrigir';
 
 export interface CatGroup {
   categoria: string;
@@ -50,16 +51,19 @@ export function CategoryAccordion({ grupos }: { grupos: CatGroup[] }) {
             {open && (
               <div className="fadein border-t border-border divide-y divide-border/60">
                 {g.items.map((it) => (
-                  <div key={it.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm">{it.descricao || '—'}</div>
-                      <div className="text-xs text-faint">{dataBR(it.data)} · {it.banco}</div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {respBadge(it.responsavel)}
-                      <span className="tnum text-sm">{brl(it.valor)}</span>
-                    </div>
-                  </div>
+                  // tocar no lançamento abre "Mudar categoria" (F4)
+                  <BotaoCorrigir key={it.id} id={it.id} className="px-3.5 py-2.5">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm">{it.descricao || '—'}</span>
+                        <span className="block text-xs text-faint">{dataBR(it.data)} · {it.banco}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        {respBadge(it.responsavel)}
+                        <span className="tnum money text-sm">{brl(it.valor)}</span>
+                      </span>
+                    </span>
+                  </BotaoCorrigir>
                 ))}
               </div>
             )}

@@ -2,6 +2,7 @@ import { q, qw, writerPool } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparDividas, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, type DadosTrilha } from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
+import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
@@ -9,7 +10,7 @@ import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from '.
 import { componentesPrevistos, type Componentes } from './backtest';
 import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
-import type { MarcaInput } from './validation';
+import type { MarcaInput, PedidoRegra } from './validation';
 import {
   addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
@@ -1239,3 +1240,160 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     aplicacaoMensal: Array.from({ length: MESES_SOBRA }, (_, i) => addMonths(mesAtual, -(MESES_SOBRA - i))).map((mes) => ({ mes, valor: porMes.get(mes) ?? 0 })),
   };
 }
+
+// ==================== CATEGORIAS PELO PAINEL (F4) ====================
+type Cli = { query: (t: string, p?: any[]) => Promise<{ rows: any[] }> };
+
+async function regrasDoPainel(c: Cli): Promise<RegraPainel[]> {
+  const { rows } = await c.query(`SELECT id, tipo, chave, categoria FROM financas_categoria_painel`);
+  return rows.map((x) => ({ id: Number(x.id), tipo: x.tipo, chave: x.chave, categoria: x.categoria }));
+}
+
+/** Lançamentos que uma regra alcança: a mesma seleção na prévia, na gravação e ao apagar.
+ *  Texto: filtrado aqui com normalizarTexto — a mesma normalização da precedência (no SQL, translate/upper
+ *  não cobrem todo acento nem todo espaço, e prévia/apagar divergiriam do que o worker aplica). */
+async function alcance(c: Cli, tipo: TipoRegra, chave: string) {
+  const colunas = `id_transacao, descricao, categoria, classe, COALESCE(categoria_banco, categoria) AS categoria_banco,
+            contraparte_doc, tipo_movimento, forma_pagamento, responsavel`;
+  if (tipo === 'texto') {
+    const { rows } = await c.query(`SELECT ${colunas} FROM financas_lancamentos`);
+    return rows.filter((r) => normalizarTexto(r.descricao ?? '').includes(chave));
+  }
+  const { rows } = await c.query(
+    `SELECT ${colunas} FROM financas_lancamentos WHERE ${tipo === 'lancamento' ? 'id_transacao' : 'contraparte_doc'} = $1`,
+    [chave],
+  );
+  return rows;
+}
+const paraRegra = (r: any) => ({
+  id: r.id_transacao, descricao: r.descricao ?? '', contraparteDoc: r.contraparte_doc, categoriaBanco: r.categoria_banco,
+  saida: r.tipo_movimento === 'Saída', forma: r.forma_pagamento, responsavel: r.responsavel,
+});
+
+/** Do pedido da tela à regra: a chave da regra por pessoa vem do lançamento, nunca do cliente. */
+async function resolver(c: Cli, p: PedidoRegra): Promise<{ tipo: TipoRegra; chave: string; nome: string } | { erro: string }> {
+  const { rows } = await c.query(`SELECT descricao, contraparte_doc, contraparte_nome FROM financas_lancamentos WHERE id_transacao = $1`, [p.idTransacao]);
+  if (!rows[0]) return { erro: 'Lançamento não encontrado.' };
+  if (p.tipo === 'lancamento') return { tipo: 'lancamento', chave: p.idTransacao, nome: rows[0].descricao ?? '' };
+  if (p.tipo === 'doc') {
+    if (!rows[0].contraparte_doc) return { erro: 'Este lançamento não tem CPF/CNPJ da contraparte.' };
+    return { tipo: 'doc', chave: rows[0].contraparte_doc, nome: nomeSemDocumento(rows[0].contraparte_nome) ?? nomeSemDocumento(rows[0].descricao) ?? '' };
+  }
+  // normaliza aqui também: a chave tem que casar com normalizarTexto da descrição, venha o pedido de onde vier
+  const chave = normalizarTexto(p.texto ?? '');
+  if (chave.replace(/\s/g, '').length < 3) return { erro: 'O texto precisa de pelo menos 3 letras.' };
+  return { tipo: 'texto', chave, nome: chave };
+}
+
+/** O que muda se `regras` passarem a valer, nos lançamentos que (tipo, chave) alcança. */
+async function planejar(c: Cli, tipo: TipoRegra, chave: string, regras: RegraPainel[]) {
+  const linhas = await alcance(c, tipo, chave);
+  return linhas
+    .map((r) => ({ r, novo: recalcular(paraRegra(r), regras) }))
+    .filter(({ r, novo }) => novo.categoria !== r.categoria || novo.classe !== r.classe);
+}
+
+async function gravarMudancas(c: Cli, muda: { r: any; novo: { categoria: string; classe: string } }[]) {
+  for (const { r, novo } of muda) {
+    await c.query(`UPDATE financas_lancamentos SET categoria = $2, classe = $3 WHERE id_transacao = $1`, [r.id_transacao, novo.categoria, novo.classe]);
+  }
+}
+
+export async function previaRegra(p: PedidoRegra): Promise<{ afetados: number; porCategoria: Record<string, number> } | { erro: string }> {
+  const alvo = await resolver(writerPool, p);
+  if ('erro' in alvo) return alvo;
+  const outras = (await regrasDoPainel(writerPool)).filter((r) => !(r.tipo === alvo.tipo && r.chave === alvo.chave));
+  const muda = await planejar(writerPool, alvo.tipo, alvo.chave, [...outras, { id: Number.MAX_SAFE_INTEGER, tipo: alvo.tipo, chave: alvo.chave, categoria: p.categoria }]);
+  const porCategoria: Record<string, number> = {};
+  for (const { r } of muda) porCategoria[r.categoria] = (porCategoria[r.categoria] ?? 0) + 1;
+  return { afetados: muda.length, porCategoria };
+}
+
+export async function salvarRegra(p: PedidoRegra): Promise<{ id: number; afetados: number } | { erro: string }> {
+  const cli = await writerPool.connect();
+  try {
+    await cli.query('BEGIN');
+    await cli.query('SELECT pg_advisory_xact_lock(4207)'); // uma escrita de regra por vez
+    const alvo = await resolver(cli, p);
+    if ('erro' in alvo) { await cli.query('ROLLBACK'); return alvo; }
+    const { rows } = await cli.query(
+      `INSERT INTO financas_categoria_painel (tipo, chave, categoria, nome) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tipo, chave) DO UPDATE SET categoria = EXCLUDED.categoria, nome = EXCLUDED.nome, criado_em = now()
+       RETURNING id`,
+      [alvo.tipo, alvo.chave, p.categoria, alvo.nome],
+    );
+    const id = Number(rows[0].id);
+    const muda = await planejar(cli, alvo.tipo, alvo.chave, await regrasDoPainel(cli));
+    await gravarMudancas(cli, muda);
+    await cli.query(`UPDATE financas_categoria_painel SET afetados = $2 WHERE id = $1`, [id, muda.length]);
+    await cli.query('COMMIT');
+    return { id, afetados: muda.length };
+  } catch (e) {
+    await cli.query('ROLLBACK');
+    throw e;
+  } finally {
+    cli.release();
+  }
+}
+
+/** Apaga a regra e recalcula o que ela alcançava: volta ao banco ou a outra regra que ainda valha. */
+export async function apagarRegra(id: number): Promise<{ afetados: number } | null> {
+  const cli = await writerPool.connect();
+  try {
+    await cli.query('BEGIN');
+    await cli.query('SELECT pg_advisory_xact_lock(4207)'); // uma escrita de regra por vez
+    const { rows } = await cli.query(`DELETE FROM financas_categoria_painel WHERE id = $1 RETURNING tipo, chave`, [id]);
+    if (!rows[0]) { await cli.query('ROLLBACK'); return null; }
+    const muda = await planejar(cli, rows[0].tipo, rows[0].chave, await regrasDoPainel(cli));
+    await gravarMudancas(cli, muda);
+    await cli.query('COMMIT');
+    return { afetados: muda.length };
+  } catch (e) {
+    await cli.query('ROLLBACK');
+    throw e;
+  } finally {
+    cli.release();
+  }
+}
+
+/** Para a tela Regras: sem a chave (na regra por pessoa ela é o documento). */
+export interface RegraListada { id: number; tipo: TipoRegra; nome: string; categoria: string; afetados: number; criadoEm: string }
+export async function listarRegras(): Promise<RegraListada[]> {
+  const rows = await q<any>(
+    `SELECT id, tipo, nome, categoria, afetados, to_char(criado_em, 'YYYY-MM-DD') AS criado
+     FROM financas_categoria_painel ORDER BY criado_em DESC, id DESC`,
+  );
+  return rows.map((x) => ({ id: Number(x.id), tipo: x.tipo, nome: x.nome ?? '', categoria: x.categoria, afetados: Number(x.afetados), criadoEm: x.criado }));
+}
+
+/** O que a folha "Mudar categoria" precisa de um lançamento — nunca o documento da contraparte. */
+export interface LancCorrigir {
+  id: string; data: string; valor: number; descricao: string; categoria: string; origem: Origem;
+  temDoc: boolean; nomeContraparte: string | null; sugestaoTexto: string; maisUsadas: string[];
+}
+export async function getLancamentoParaCorrigir(id: string): Promise<LancCorrigir | null> {
+  const leitor: Cli = { query: (t, p) => q<any>(t, p).then((rows) => ({ rows })) };
+  const [rows, regras, usadas] = await Promise.all([
+    q<any>(
+      `SELECT id_transacao, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao, categoria,
+              COALESCE(categoria_banco, categoria) AS categoria_banco, contraparte_doc, contraparte_nome
+       FROM financas_lancamentos WHERE id_transacao = $1`,
+      [id],
+    ),
+    regrasDoPainel(leitor),
+    q<any>(
+      `SELECT categoria FROM financas_lancamentos
+       WHERE classe = 'despesa' AND data_lancamento >= now() - interval '3 months'
+       GROUP BY 1 ORDER BY count(*) DESC LIMIT 6`,
+    ),
+  ]);
+  const r = rows[0];
+  if (!r) return null;
+  const e = categoriaEfetiva({ id: r.id_transacao, descricao: r.descricao ?? '', contraparteDoc: r.contraparte_doc, categoriaBanco: r.categoria_banco }, regras);
+  return {
+    id: r.id_transacao, data: r.data, valor: Number(r.valor), descricao: r.descricao ?? '', categoria: r.categoria, origem: e.origem,
+    temDoc: !!r.contraparte_doc, nomeContraparte: r.contraparte_doc ? nomeSemDocumento(r.contraparte_nome) : null,
+    sugestaoTexto: sugerirTexto(r.descricao ?? ''), maisUsadas: usadas.map((x) => x.categoria),
+  };
+}
+

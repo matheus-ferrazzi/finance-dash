@@ -1,5 +1,6 @@
-import { classificar, corrigirCategoria } from './classificar';
+import { corrigirCategoria } from './classificar';
 import type { Conta, Lancamento, PluggyTransacao } from './tipos';
+import { recalcular, type RegraPainel } from '../lib/categoriaPainel';
 
 export function soDigitos(v: string | null | undefined): string | null {
   const d = (v ?? '').replace(/\D/g, '');
@@ -11,7 +12,7 @@ export function soDigitos(v: string | null | undefined): string | null {
  * Os 11 primeiros campos seguem exatamente o Finance 2.0 (paridade);
  * o resto são os campos que o n8n descartava.
  */
-export function montarLinha(t: PluggyTransacao, conta: Conta, docsCasal: ReadonlySet<string>): Lancamento {
+export function montarLinha(t: PluggyTransacao, conta: Conta, docsCasal: ReadonlySet<string>, regras: readonly RegraPainel[] = []): Lancamento {
   const saida = t.type === 'DEBIT';
   const catCorr = corrigirCategoria(t.category, t.description);
   const cc = t.creditCardMetadata ?? null;
@@ -19,15 +20,22 @@ export function montarLinha(t: PluggyTransacao, conta: Conta, docsCasal: Readonl
   const contra = (saida ? pd?.receiver : pd?.payer) ?? null;
   const docPagador = soDigitos(pd?.payer?.documentNumber?.value);
   const docRecebedor = soDigitos(pd?.receiver?.documentNumber?.value);
+  // F4: regras do painel mandam sobre a categoria do banco; a classe sai da categoria efetiva
+  // (sem regra, igual a antes: classificar já trata categoria vazia como 'Outros')
+  const categoriaBanco = catCorr || 'Outros';
+  const efetiva = recalcular({
+    id: t.id, descricao: t.description ?? '', contraparteDoc: soDigitos(contra?.documentNumber?.value),
+    categoriaBanco, saida, forma: conta.forma, responsavel: conta.responsavel,
+  }, regras);
 
   return {
     id_transacao: t.id,
     data_lancamento: t.date.split('T')[0],
     valor: Math.abs(t.amount),
     tipo_movimento: saida ? 'Saída' : 'Entrada',
-    classe: classificar(catCorr, t.description, saida, conta.forma, conta.responsavel),
+    classe: efetiva.classe,
     descricao: t.description ?? '',
-    categoria: catCorr || 'Outros',
+    categoria: efetiva.categoria,
     forma_pagamento: conta.forma,
     banco: conta.banco,
     responsavel: conta.responsavel,
@@ -47,5 +55,6 @@ export function montarLinha(t: PluggyTransacao, conta: Conta, docsCasal: Readonl
     // dinheiro que só trocou de conta dentro do casal (inclui entre contas da mesma pessoa)
     transferencia_casal:
       docPagador !== null && docRecebedor !== null && docsCasal.has(docPagador) && docsCasal.has(docRecebedor),
+    categoria_banco: categoriaBanco,
   };
 }

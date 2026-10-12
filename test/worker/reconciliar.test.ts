@@ -7,7 +7,7 @@ const base: Lancamento = {
   descricao: 'x', categoria: 'Shopping', forma_pagamento: 'Crédito', banco: 'Nubank', responsavel: 'Matheus',
   status_pluggy: 'POSTED', account_id: 'acc', parcela_numero: null, parcela_total: null, data_compra: null,
   fatura_id: null, fatura_prevista: null, contraparte_nome: null, contraparte_doc: null, loja_cnpj: null,
-  loja_cnae: null, categoria_id: null, tipo_operacao: null, transferencia_casal: false,
+  loja_cnae: null, categoria_id: null, tipo_operacao: null, transferencia_casal: false, categoria_banco: 'Outros',
 };
 const noBanco = (l: Lancamento): LinhaBanco => ({
   id_transacao: l.id_transacao, data_lancamento: l.data_lancamento, valor: l.valor, tipo_movimento: l.tipo_movimento,

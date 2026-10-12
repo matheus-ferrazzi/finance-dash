@@ -95,7 +95,9 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
     for (const c of contas) {
       try {
         const txs = await ctx.pluggy.transacoes(c.account_id, desde);
-        const linhas = txs.map((t) => montarLinha(t, c, docs));
+        // relidas a cada conta: uma regra salva no painel durante a execução vale já, e não é desfeita
+        const regras = await ctx.repo.regrasPainel();
+        const linhas = txs.map((t) => montarLinha(t, c, docs, regras));
         const banco = await ctx.repo.lancamentosDaConta(c, desde);
         const dif = contarDiferencas(banco, linhas);
         // Só é candidata a remoção a linha dentro do que a Pluggy de fato cobriu:

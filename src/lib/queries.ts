@@ -1550,3 +1550,30 @@ export async function getMaioresGastos(resp: Resp, inicio: string, fimExcl: stri
     // sem CPF/CNPJ: a descrição vai para a Groq e para o grupo
     .map((x) => ({ data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: nomeSemDocumento(x.descricao) ?? '(sem descrição)', pessoa: x.pessoa, categoria: x.categoria }));
 }
+
+/** E2: o alvo (tipo, chave, nome) que uma regra do painel teria — o mesmo que salvarRegra usa. */
+export async function alvoDaRegra(p: PedidoRegra) {
+  return resolver(writerPool, p);
+}
+
+/** E2: categoria da regra do painel que já existe para (tipo, chave), ou null. */
+export async function categoriaDaRegra(tipo: string, chave: string): Promise<{ id: number; categoria: string } | null> {
+  const r = await writerPool.query(`SELECT id, categoria FROM financas_categoria_painel WHERE tipo = $1 AND chave = $2`, [tipo, chave]);
+  return r.rows[0] ? { id: Number(r.rows[0].id), categoria: r.rows[0].categoria } : null;
+}
+
+/** E2: despesas para o bot escolher qual corrigir (texto e/ou valor), as mais recentes primeiro, até 5. */
+export async function getBuscaBot(resp: Resp, inicio: string, fimExcl: string, texto: string | null, valor: number | null) {
+  const r = rf(resp, 5);
+  const rows = await q<any>(
+    `SELECT id_transacao AS id, to_char(data_lancamento,'DD/MM') AS data, valor::float8 AS valor, COALESCE(descricao,'') AS descricao,
+            COALESCE(responsavel,'—') AS pessoa, categoria
+     FROM financas_lancamentos
+     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date
+       AND ($3::text IS NULL OR descricao ILIKE '%' || $3 || '%')
+       AND ($4::float8 IS NULL OR abs(valor - $4) < 0.005)${r.sql}
+     ORDER BY data_lancamento DESC, id_transacao LIMIT 5`,
+    [inicio, fimExcl, texto, valor, ...r.p],
+  );
+  return rows.map((x) => ({ id: x.id, data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: nomeSemDocumento(x.descricao) ?? '(sem descrição)', pessoa: x.pessoa, categoria: x.categoria }));
+}

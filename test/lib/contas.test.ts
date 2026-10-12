@@ -27,6 +27,14 @@ describe('montarMes — contas fixas', () => {
     expect(r.itens[0]).toMatchObject({ previsto: 137.80, status: 'falta' });
   });
 
+  it('vence = dia do último pagamento nos 3 meses anteriores (mesmo com o valor definido na tela); null sem histórico', () => {
+    const c = conta({ id: 1, nome: 'Vivo', padrao: 'TELEFONICA', valorPrevisto: 148 });
+    const movs = [mov('2026-08-03', 133.20, 'PIX ENVIADO TELEFONICA BRASIL S A'), mov('2026-09-12', 137.80, 'PIX ENVIADO TELEFONICA BRASIL S A')];
+    expect(montarMes('2026-10', [c], [], movs).itens[0]).toMatchObject({ status: 'falta', dia: null, vence: 12 });
+    expect(montarMes('2026-10', [{ ...c, valorDefinidoEm: '2026-10', valorPrevisto: 160 }], [], movs).itens[0]).toMatchObject({ vence: 12 });
+    expect(montarMes('2026-10', [c], [], []).itens[0]).toMatchObject({ vence: null });
+  });
+
   it('padrão genérico com tolerância: PIX de 50 para a mesma pessoa não é o aluguel', () => {
     const aluguel = conta({ id: 1, nome: 'Aluguel', padrao: 'PIX ENVIADO +Fulano', valorPrevisto: 1050, tolerancia: 0.1 });
     const so50 = montarMes('2026-08', [aluguel], [], [mov('2026-08-28', 50, 'PIX ENVIADO   Fulano de Tal')]);

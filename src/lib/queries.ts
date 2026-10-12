@@ -1497,3 +1497,17 @@ export async function listarAjustesTrilha(): Promise<AjustesTrilha> {
   };
 }
 
+
+// ==================== RESUMOS DO D ====================
+
+/** Gasto do casal por categoria (efetiva) num intervalo [inicio, fimExcl). */
+export async function getGastoPorCategoriaEntre(inicio: string, fimExcl: string): Promise<Map<string, number>> {
+  const rows = await q<any>(
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS cat, SUM(valor)::float8 AS v
+     FROM financas_lancamentos
+     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date
+     GROUP BY 1`,
+    [inicio, fimExcl],
+  );
+  return new Map(rows.map((r) => [r.cat as string, Math.round(Number(r.v) * 100) / 100]));
+}

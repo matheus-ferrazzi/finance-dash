@@ -32,6 +32,8 @@ export type Status = 'pago' | 'a_confirmar' | 'falta';
 export interface ItemConta {
   contaId: number | null; marcaId: number | null; nome: string; responsavel: string;
   previsto: number; pago: number | null; status: Status; dia: number | null;
+  /** dia em que costuma vencer: o do último pagamento nos 3 meses anteriores; null sem histórico ou avulsa */
+  vence?: number | null;
   parcela: string | null; avulsa: boolean;
   /** pagamento do banco que confirmou (base do "repetir todo mês"); null se não pago */
   origem: { descricao: string; banco: string } | null;
@@ -89,11 +91,15 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
     if (k < 0 || (c.parcelas !== null && k >= c.parcelas) || (c.ate !== null && mes > c.ate)) continue;
 
     let previsto = c.valorPrevisto;
+    let vence: number | null = null;
     const definido = c.valorDefinidoEm !== null && mes >= c.valorDefinidoEm; // valor alterado na tela vence o histórico
-    for (let i = 1; !definido && i <= MESES_PARA_PREVISTO; i++) {
+    for (let i = 1; i <= MESES_PARA_PREVISTO; i++) {
       const ant = movs.filter((m) => m.data.slice(0, 7) === addMes(mes, -i));
       const pg = pagamentosDaConta(c, c.valorPrevisto, ant, new Set());
-      if (pg.length) { previsto = r2(pg.reduce((s, m) => s + m.valor, 0)); break; }
+      if (!pg.length) continue;
+      if (!definido) previsto = r2(pg.reduce((s, m) => s + m.valor, 0));
+      vence = Number(pg.map((m) => m.data).sort().at(-1)!.slice(8, 10));
+      break;
     }
 
     const pg = pagamentosDaConta(c, previsto, doMes, usados);
@@ -108,7 +114,7 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
       contaId: c.id, marcaId: marca?.id ?? null, nome: c.nome, responsavel: c.responsavel, previsto,
       pago: pg.length ? r2(pg.reduce((s, m) => s + m.valor, 0)) : null,
       status: pg.length ? 'pago' : marca ? 'a_confirmar' : 'falta',
-      dia: pg.length ? Number(pg.map((m) => m.data).sort().at(-1)!.slice(8, 10)) : null,
+      dia: pg.length ? Number(pg.map((m) => m.data).sort().at(-1)!.slice(8, 10)) : null, vence,
       parcela: c.parcelas !== null ? `${k + 1}/${c.parcelas}` : null, avulsa: false,
       origem: pg.length ? { descricao: pg[0].descricao, banco: pg[0].banco } : null,
     });

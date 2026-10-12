@@ -21,7 +21,7 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
 
   const [doBanco, bancos, din] = await Promise.all([getDespesas(resp, per), getPorBanco(resp, per), getGastosDinheiro(resp, per.start, per.endExcl)]);
   // E3: gasto em dinheiro vivo entra na lista e nos totais (com 💵), nunca nas contas do banco
-  const todas: (typeof doBanco[number] & { dinheiroId?: number })[] = [...doBanco, ...(paraLancamentos(din) as any[])];
+  const todas: (typeof doBanco[number] & { dinheiroId?: number })[] = [...doBanco, ...paraLancamentos(din)];
   // filtros da URL (links da home e do bot): ?grupo=Mercado, ?tipo=livre; valor desconhecido não filtra
   const despesas = todas.filter((d) => categoriaNoFiltro(d.categoria, { grupo: searchParams.grupo, tipo: searchParams.tipo }));
   const filtroAtivo = searchParams.grupo && GRUPOS_VALIDOS.includes(searchParams.grupo) ? searchParams.grupo

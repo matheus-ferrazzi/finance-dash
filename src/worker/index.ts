@@ -109,7 +109,10 @@ async function main() {
         },
       });
       const porta = Number(process.env.BOT_PORTA ?? 8090);
-      criarServidor(process.env.BOT_TOKEN!, (c) => bot.receber(c)).listen(porta, '0.0.0.0', () => log(`bot no ar na porta interna ${porta}`));
+      const servidor = criarServidor(process.env.BOT_TOKEN!, (c) => bot.receber(c));
+      // falha do servidor do bot (porta ocupada etc.) não derruba a ingestão
+      servidor.on('error', (e: NodeJS.ErrnoException) => log(`bot: servidor fora (${e.code ?? e.message})`));
+      servidor.listen(porta, '0.0.0.0', () => log(`bot no ar na porta interna ${porta}`));
     }
     log(`worker no ar, modo=${modo}, ${AGENDA.length} tarefas + ${AGENDA_NOTIF.length} notificações agendadas (${TZ})`);
     return;

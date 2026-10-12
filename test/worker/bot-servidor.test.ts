@@ -28,3 +28,17 @@ describe('servidor do webhook', () => {
     expect(recebidos).toEqual([]);
   });
 });
+
+describe('servidor: requisição mal formada (revisão E1)', () => {
+  it('alvo de URL inválido não derruba o processo: 400 e o servidor segue de pé', async () => {
+    const u = await subir(() => {});
+    const porta = Number(new URL(u).port);
+    const net = await import('node:net');
+    const resposta = await new Promise<string>((ok) => {
+      const c = net.connect(porta, '127.0.0.1', () => c.write('POST //x:99999 HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\n\r\n'));
+      let b = ''; c.on('data', (d) => { b += d; c.end(); }); c.on('close', () => ok(b)); c.on('error', () => ok(b));
+    });
+    expect(resposta).toMatch(/^HTTP\/1\.1 400/);
+    expect((await fetch(`${u}/saude`)).status).toBe(200);
+  });
+});

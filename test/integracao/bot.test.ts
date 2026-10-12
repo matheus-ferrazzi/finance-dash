@@ -40,4 +40,10 @@ describe.skipIf(!url)('consultas do bot (integração)', () => {
     expect(top.map((t) => [t.data, t.valor, t.descricao, t.pessoa])).toEqual([['03/02', 300, 'MERCADO A', 'Matheus'], ['04/02', 120, 'MERCADO B', 'Ariane'], ['05/02', 80, 'IFOOD', 'Matheus']]);
     expect((await queries.getMaioresGastos('casal', '2044-02-01', '2044-03-01', 'Mercado')).length).toBe(2);
   });
+  it('maiores gastos sem CPF/CNPJ na descrição (vai para a Groq e para o grupo)', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, classe, forma_pagamento, banco, responsavel) VALUES
+      ('bt9', '2045-01-03', 77, 'PIX ENVIADO FULANO DE TAL 123.456.789-00', 'Transfers', 'despesa', 'Débito', 'B', 'Matheus')`);
+    const [g] = await queries.getMaioresGastos('casal', '2045-01-01', '2045-02-01', null);
+    expect(g.descricao).toBe('PIX ENVIADO FULANO DE TAL');
+  });
 });

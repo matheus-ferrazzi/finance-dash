@@ -1547,5 +1547,6 @@ export async function getMaioresGastos(resp: Resp, inicio: string, fimExcl: stri
   return rows
     .filter((x) => grupo === null || (grupoDaCategoria(x.categoria)?.nome ?? 'Resto') === grupo)
     .slice(0, limite)
-    .map((x) => ({ data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: x.descricao, pessoa: x.pessoa, categoria: x.categoria }));
+    // sem CPF/CNPJ: a descrição vai para a Groq e para o grupo
+    .map((x) => ({ data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: nomeSemDocumento(x.descricao) ?? '(sem descrição)', pessoa: x.pessoa, categoria: x.categoria }));
 }

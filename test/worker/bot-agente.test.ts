@@ -107,3 +107,25 @@ describe('formato do WhatsApp (E1)', () => {
     expect((await responder(p, { ...base, groq: g })).texto).toBe('🛒 Gasto com *Mercado*: *R$ 400,00*\n\n👉 https://p/gastos');
   });
 });
+
+describe('ferramentas locais (E2)', () => {
+  it('proposta vira a resposta (texto do sistema), sem passar pelo painel', async () => {
+    const vistos: string[] = [];
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'propor_conta_avulsa', args: '{"nome":"Dentista","valor":150}' }], modelo: 'm' },
+      { content: 'Pronto, criei.', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g, painel: async (c: string) => { vistos.push(c); return { ok: true, dados: {} }; },
+      locais: { propor_conta_avulsa: async () => ({ ok: true, dados: { proposta: '🟡 Pôr a conta avulsa X?' } }) } });
+    expect(r.texto).toBe('🟡 Pôr a conta avulsa X?');
+    expect(vistos).toEqual([]);
+  });
+  it('lista de candidatos vira a resposta', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'buscar_lancamentos', args: '{"texto":"fulano"}' }], modelo: 'm' },
+      { content: 'Qual deles?', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g, locais: { buscar_lancamentos: async () => ({ ok: true, dados: { itens: [{ ref: 'L1' }, { ref: 'L2' }], lista: '🔎 Achei estes.' } }) } });
+    expect(r.texto).toBe('🔎 Achei estes.');
+  });
+});

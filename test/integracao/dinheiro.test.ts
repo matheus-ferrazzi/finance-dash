@@ -58,4 +58,10 @@ describe.skipIf(!url)('gasto em dinheiro vivo (integração)', () => {
   it('somarMapas', () => {
     expect(Object.fromEntries(dinheiro.somarMapas(new Map([['A', 1], ['B', 2]]), new Map([['B', 3], ['C', 4]])))).toEqual({ A: 1, B: 5, C: 4 });
   });
+  it('busca: casa a descrição (sem diferenciar maiúscula), filtra pessoa, mais recentes primeiro', async () => {
+    await dinheiro.inserirDinheiro({ data: '2047-05-02', valor: 3, descricao: 'Chiclete na banca', categoria: 'Groceries', responsavel: 'Ariane' });
+    await dinheiro.inserirDinheiro({ data: '2047-05-03', valor: 4, descricao: 'chiclete de novo', categoria: 'Groceries', responsavel: 'Matheus' });
+    expect((await dinheiro.buscarDinheiro('casal', 'CHICLETE')).map((g: any) => g.descricao)).toEqual(['chiclete de novo', 'Chiclete na banca']);
+    expect((await dinheiro.buscarDinheiro('Ariane', 'chiclete')).map((g: any) => g.descricao)).toEqual(['Chiclete na banca']);
+  });
 });

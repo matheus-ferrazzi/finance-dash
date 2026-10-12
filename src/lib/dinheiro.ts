@@ -22,6 +22,15 @@ export async function getGastosDinheiro(resp: Resp, inicio: string, fimExcl: str
   return rows.map((x) => ({ id: Number(x.id), data: x.data, valor: r2(Number(x.valor)), descricao: x.descricao, categoria: x.categoria, pessoa: x.pessoa }));
 }
 
+/** Busca na descrição dos gastos em dinheiro (tela Buscar), mais recentes primeiro, até 80. */
+export async function buscarDinheiro(resp: Resp, termo: string) {
+  const f = filtroPessoa(resp, 2);
+  const rows = await q<any>(
+    `SELECT id, to_char(data,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao, categoria, responsavel AS pessoa
+     FROM financas_gastos_dinheiro WHERE descricao ILIKE '%' || $1 || '%'${f.sql} ORDER BY data DESC, id DESC LIMIT 80`, [termo, ...f.p]);
+  return rows.map((x) => ({ id: Number(x.id), data: x.data, valor: r2(Number(x.valor)), descricao: x.descricao, categoria: x.categoria, pessoa: x.pessoa }));
+}
+
 export async function inserirDinheiro(g: { data: string; valor: number; descricao: string; categoria: string; responsavel: 'Matheus' | 'Ariane' }): Promise<number> {
   const rows = await qw<any>(
     `INSERT INTO financas_gastos_dinheiro (data, valor, descricao, categoria, responsavel) VALUES ($1,$2,$3,$4,$5) RETURNING id`,

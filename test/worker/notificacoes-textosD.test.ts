@@ -127,3 +127,11 @@ describe('barra da trilha', () => {
     expect([1, 2, 3, 4].map(barraTrilha)).toEqual(['▰▱▱▱', '▰▰▱▱', '▰▰▰▱', '▰▰▰▰']);
   });
 });
+
+describe('semanal com dinheiro (E3)', () => {
+  it('dinheiro na semana: linha 💵 logo depois do total', () => {
+    const t = montarSemanal({ ...sem, totalDinheiro: 70 }, { gastos: 'G', trilha: 'T' });
+    expect(t.split('\n')[2]).toBe(`💵 ${brl(70)} em dinheiro vivo`);
+    expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('dinheiro vivo');
+  });
+});

@@ -13,6 +13,8 @@ export interface ResumoSemanal {
   semana: { inicio: string; fim: string }; total: number; mediaTotal: number;
   grupos: { nome: string; emoji: string; semana: number; media: number }[];
   trilha: { fase: number; titulo: string; proximoPasso: string };
+  /** E3: quanto do total da semana foi em dinheiro vivo */
+  totalDinheiro?: number;
   todosGrupos?: { nome: string; emoji: string; semana: number; media: number }[];
 }
 export interface ResumoMensal {
@@ -71,6 +73,7 @@ export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha:
     const pct = Math.round((Math.abs(r.total - r.mediaTotal) / r.mediaTotal) * 100);
     l.push(`💰 Gastaram ${brl(r.total)}, ${r.total > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
   } else l.push(`💰 Gastaram ${brl(r.total)}.`);
+  if ((r.totalDinheiro ?? 0) > 0) l.push(`💵 ${brl(r.totalDinheiro)} em dinheiro vivo`);
   if (r.grupos.length) l.push('', ...r.grupos.map((g) => `${g.emoji} ${g.nome}: ${brl(g.semana)} ${seta(g.semana, g.media)} (média ${brl(g.media)})`));
   l.push('', `🧭 *Trilha* ${barraTrilha(r.trilha.fase)} fase ${r.trilha.fase}: ${r.trilha.titulo}`, `➡️ ${r.trilha.proximoPasso}`,
     '', `👉 ${links.gastos}`, `👉 ${links.trilha}`);

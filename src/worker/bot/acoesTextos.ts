@@ -40,3 +40,7 @@ export function textoFeito(resumo: string, link: string, painelUrl: string): str
 export function textoDesfeito(resumo: string): string {
   return `↩️ Desfeito: ${resumo}.`;
 }
+
+export function textoPropostaDinheiro(d: { valor: number; descricao: string; categoria: string; data: string; pessoa: string }): string {
+  return `🟡 Lançar 💵 *${brl(d.valor)}* em *${d.categoria}* (${d.descricao}, ${d.data.slice(8, 10)}/${d.data.slice(5, 7)}, ${d.pessoa})?\n👉 Responde *sim* ou *não*.`;
+}

@@ -27,9 +27,12 @@ export const TOOLS = [
       texto: { type: 'string', description: 'só com escopo texto (opcional)' } }, ['ref', 'categoria', 'escopo']),
   fn('propor_conta_avulsa', 'Propõe pôr uma conta avulsa nas contas do mês (NÃO grava: o casal confirma).',
     { nome: { type: 'string' }, valor: { type: 'number' }, mes: { type: 'string', description: 'AAAA-MM; padrão este mês' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['nome', 'valor']),
+  fn('propor_gasto_dinheiro', 'Propõe lançar um gasto pago em dinheiro vivo (NÃO grava: o casal confirma). Não entra no saldo do banco.',
+    { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: { type: 'string', enum: CATEGORIAS_PAINEL },
+      data: { type: 'string', description: 'AAAA-MM-DD; padrão hoje' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['valor', 'descricao', 'categoria']),
 ];
-// E2: rodam no worker (busca guarda refs; propostas não gravam)
-export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa'];
+// E2/E3: rodam no worker (busca guarda refs; propostas não gravam)
+export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro'];
 export const NOMES_FERRAMENTAS = TOOLS.map((t) => t.function.name);
 
 const ROTA: Record<string, string> = {
@@ -69,8 +72,8 @@ export function formatar(nome: string, d: any, painel: string): string {
       if (d.fechaCom < 0) l.push(d.saiDoVermelho ? `🗓️ Sai do vermelho em ${d.saiDoVermelho}` : '🗓️ Não sai do vermelho nos próximos 24 meses');
       break;
     case 'gasto_periodo':
-      l.push(`💰 Gasto em ${d.periodo} (${quem(d.pessoa)}${d.grupo ? `, ${d.grupo}` : ''}): *${brl(d.total)}*`);
-      for (const i of d.itens.slice(0, 6)) l.push(`• ${i.nome}: ${brl(i.valor)}`);
+      l.push(`💰 Gasto em ${d.periodo} (${quem(d.pessoa)}${d.grupo ? `, ${d.grupo}` : ''}): *${brl(d.total)}*${d.totalDinheiro > 0 ? ` (💵 ${brl(d.totalDinheiro)})` : ''}`);
+      for (const i of d.itens.slice(0, 6)) l.push(`• ${i.nome}: ${brl(i.valor)}${i.dinheiro > 0 ? ` (💵 ${brl(i.dinheiro)})` : ''}`);
       if (!d.itens.length) l.push('💤 Nenhum gasto no período.');
       break;
     case 'maiores_gastos':
@@ -81,6 +84,7 @@ export function formatar(nome: string, d: any, painel: string): string {
     case 'comparar':
       l.push(`📊 ${d.a} × ${d.b} (${quem(d.pessoa)})`);
       l.push(`💰 ${brl(d.totalA)} × ${brl(d.totalB)}${d.pct === null ? '' : `, ${d.diferenca > 0 ? '🔺' : '🔻'} ${Math.abs(d.pct).toLocaleString('pt-BR')}%`}`);
+      if (d.totalDinheiroA > 0 || d.totalDinheiroB > 0) l.push(`💵 em dinheiro: ${brl(d.totalDinheiroA ?? 0)} × ${brl(d.totalDinheiroB ?? 0)}`);
       for (const g of d.grupos.slice(0, 5)) l.push(`${g.diferenca > 0 ? '⬆️' : g.diferenca < 0 ? '⬇️' : '➖'} ${g.nome}: ${brl(g.a)} × ${brl(g.b)}`);
       break;
     case 'faturas':

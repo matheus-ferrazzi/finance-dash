@@ -46,3 +46,10 @@ describe('trava: revisão E1', () => {
     expect(respostaConfere('🔻 caiu 14%', [{ pct: -14.3 }])).toBe(true);
   });
 });
+
+describe('trava (E3)', () => {
+  it('campos de dinheiro do E3 valem como R$', () => {
+    expect(respostaConfere('💵 R$ 70,00 em dinheiro', [{ totalDinheiro: 70 }])).toBe(true);
+    expect(respostaConfere('💵 R$ 50,00', [{ itens: [{ dinheiro: 50 }] }])).toBe(true);
+  });
+});

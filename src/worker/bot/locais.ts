@@ -1,7 +1,7 @@
 // E2: ferramentas que rodam no worker — busca (guarda as refs L1..L5) e propostas (não gravam: só criam a proposta).
-import { traduzCategoria } from '../../lib/format';
+import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
 import type { PgAcoes } from './acoes';
-import { textoLista, textoPropostaAvulsa, textoPropostaCategoria } from './acoesTextos';
+import { textoLista, textoPropostaAvulsa, textoPropostaCategoria, textoPropostaDinheiro } from './acoesTextos';
 
 type Res = { ok: boolean; dados: any };
 type Item = { id: string; data: string; valor: number; descricao: string; pessoa: string; categoria: string };
@@ -9,6 +9,7 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 const proxMes = (m: string) => { const [a, b] = m.split('-').map(Number); return b === 12 ? `${a + 1}-01` : `${a}-${String(b + 1).padStart(2, '0')}`; };
 const TIPO = { este: 'lancamento', pessoa: 'doc', texto: 'texto' } as const;
 const REFS_VALEM = 5 * 60_000;
+const somaDias = (dt: string, n: number) => new Date(Date.parse(`${dt}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
 export function criarLocais(d: {
   pessoa: string; hoje: string; refs: Map<string, { quando: number; itens: Map<string, Item> }>;
@@ -42,6 +43,23 @@ export function criarLocais(d: {
       const params = { tipo: TIPO[escopo], idTransacao: it.id, categoria: a.categoria, ...(pr.dados.texto ? { texto: pr.dados.texto } : {}) };
       await d.acoes.criar(d.pessoa, 'categoria', params, `${pr.dados.afetados} lançamento(s) → ${categoria}`);
       return { ok: true, dados: { proposta: textoPropostaCategoria({ afetados: pr.dados.afetados, categoria, escopo, nome: pr.dados.nome, item: it }) } };
+    },
+    // E3: gasto em dinheiro vivo — d.hoje já é a data de SP (23h50 de SP continua "hoje", não o dia seguinte de UTC)
+    async propor_gasto_dinheiro(a) {
+      const valor = Math.round(Number(a.valor) * 100) / 100;
+      const descricao = String(a.descricao ?? '').trim();
+      const data = String(a.data ?? d.hoje);
+      const pessoa = !a.pessoa || a.pessoa === 'eu' ? d.pessoa : String(a.pessoa);
+      if (!(valor >= 0.01 && valor <= 10000)) return { ok: false, dados: { erro: 'valor entre 0,01 e 10.000' } };
+      if (!descricao || descricao.length > 80) return { ok: false, dados: { erro: 'descrição de 1 a 80 letras' } };
+      if (!CATEGORIAS_PAINEL.includes(a.categoria)) return { ok: false, dados: { erro: 'categoria da lista' } };
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || data > d.hoje || data < somaDias(d.hoje, -30)) {
+        return { ok: false, dados: { erro: 'data de hoje até 30 dias atrás (AAAA-MM-DD)' } };
+      }
+      if (pessoa !== 'Matheus' && pessoa !== 'Ariane') return { ok: false, dados: { erro: 'pessoa: Matheus ou Ariane' } };
+      const categoria = traduzCategoria(a.categoria);
+      await d.acoes.criar(d.pessoa, 'dinheiro', { data, valor, descricao, categoria: a.categoria, responsavel: pessoa }, `💵 ${descricao} ${brl(valor)}`);
+      return { ok: true, dados: { proposta: textoPropostaDinheiro({ valor, descricao, categoria, data, pessoa }) } };
     },
     async propor_conta_avulsa(a) {
       const valor = Math.round(Number(a.valor) * 100) / 100;

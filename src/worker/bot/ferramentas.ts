@@ -1,4 +1,5 @@
 // E1: as 8 ferramentas do bot — schema para o Groq, rota do painel, texto montado (trava) e gráfico.
+import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
 import { GRUPOS_VALIDOS } from '../../lib/grupos';
 import { barraTrilha } from '../notificacoes/textosD';
 import { graficoBarras } from '../notificacoes/graficos';
@@ -18,7 +19,17 @@ export const TOOLS = [
   fn('contas_do_mes', 'Contas fixas do mês: pagas, em falta (com vencimento) e a confirmar.'),
   fn('trilha', 'Fase atual da trilha (dívidas → sobrar → reserva → patrimônio), próximo passo e reserva.'),
   fn('simular_compra', 'Se uma compra cabe na previsão: valor total e número de parcelas.', { valor_total: { type: 'number' }, parcelas: { type: 'integer', minimum: 1, maximum: 48 } }, ['valor_total']),
+  fn('buscar_lancamentos', 'Acha até 5 gastos para corrigir (por texto, como o nome de quem recebeu, e/ou valor). Devolve refs L1..L5.',
+    { texto: { type: 'string' }, valor: { type: 'number' }, periodo: PERIODO, pessoa: PESSOA }),
+  fn('propor_categoria', `Propõe mudar a categoria de um gasto achado por buscar_lancamentos (NÃO grava: o casal confirma). Categorias: ${CATEGORIAS_PAINEL.map((c) => `${c} = ${traduzCategoria(c)}`).join('; ')}.`,
+    { ref: { type: 'string', description: 'L1..L5 da busca' }, categoria: { type: 'string', enum: CATEGORIAS_PAINEL },
+      escopo: { type: 'string', enum: ['este', 'pessoa', 'texto'], description: 'este = só este gasto; pessoa = todos da mesma pessoa/empresa; texto = todos com o mesmo texto' },
+      texto: { type: 'string', description: 'só com escopo texto (opcional)' } }, ['ref', 'categoria', 'escopo']),
+  fn('propor_conta_avulsa', 'Propõe pôr uma conta avulsa nas contas do mês (NÃO grava: o casal confirma).',
+    { nome: { type: 'string' }, valor: { type: 'number' }, mes: { type: 'string', description: 'AAAA-MM; padrão este mês' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['nome', 'valor']),
 ];
+// E2: rodam no worker (busca guarda refs; propostas não gravam)
+export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa'];
 export const NOMES_FERRAMENTAS = TOOLS.map((t) => t.function.name);
 
 const ROTA: Record<string, string> = {

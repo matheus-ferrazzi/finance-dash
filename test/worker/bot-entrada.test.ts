@@ -53,3 +53,13 @@ describe('prefixo com acento (revisão E1)', () => {
     expect(lerWebhook(msg({ participant: '222@lid', texto: 'bot! trilha' }), cfg, new Set())).toMatchObject({ tipo: 'pergunta', p: { texto: 'trilha' } });
   });
 });
+
+describe('respostas curtas (E2)', () => {
+  it('"sim" e "2" de membro, sem bot: tipo resposta; frase comum sem bot: ignorar; "desfaz" sem bot: ignorar', () => {
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'sim' }), cfg, new Set())).toEqual({ tipo: 'resposta', p: { id: 'X1', pessoa: 'Ariane', texto: 'sim' } });
+    expect(lerWebhook(msg({ participant: '222@lid', texto: '2' }), cfg, new Set())).toMatchObject({ tipo: 'resposta' });
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'sim, vamos jantar' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'desfaz' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+    expect(lerWebhook(msg({ participant: '999@lid', texto: 'sim' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+  });
+});

@@ -5,7 +5,8 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 
 describe('ferramentas', () => {
   it('8 ferramentas, schema com nome e parâmetros', () => {
-    expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra']);
+    expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra',
+      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa']);
     expect(TOOLS.every((t: any) => t.type === 'function' && t.function.parameters)).toBe(true);
   });
   it('caminho: query com período, pessoa ("eu" vira quem perguntou) e grupo; nome desconhecido → null', () => {
@@ -73,5 +74,17 @@ describe('percentual em pt-BR (E1)', () => {
   it('comparar mostra 35,2% e não 35.2%', () => {
     const t = formatar('comparar', { a: 'out/26', b: 'set/26', pessoa: 'casal', totalA: 135.2, totalB: 100, diferenca: 35.2, pct: 35.2, grupos: [], link: '/gastos' }, 'https://p');
     expect(t).toContain('🔺 35,2%');
+  });
+});
+
+describe('ferramentas de ação (E2)', () => {
+  it('schema tem as 3 novas; nenhuma ferramenta grava (nomes)', () => {
+    expect(NOMES_FERRAMENTAS).toEqual(expect.arrayContaining(['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa']));
+    expect(NOMES_FERRAMENTAS.some((n) => /executar|gravar|salvar|desfaz/i.test(n))).toBe(false);
+  });
+  it('propor_categoria só aceita categoria da lista (enum) e escopo este|pessoa|texto', () => {
+    const t: any = TOOLS.find((x: any) => x.function.name === 'propor_categoria');
+    expect(t.function.parameters.properties.escopo.enum).toEqual(['este', 'pessoa', 'texto']);
+    expect(t.function.parameters.properties.categoria.enum).toContain('Groceries');
   });
 });

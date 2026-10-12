@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getDinheiroPorCategoriaEntre, somarMapas } from '@/lib/dinheiro';
 import { getGastoPorCategoriaEntre, getTrilhaDados } from '@/lib/queries';
 import { brl, currentDateSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
@@ -13,11 +14,16 @@ const soma = (m: Map<string, number>) => Math.round(Array.from(m.values()).reduc
 export async function GET() {
   const hoje = currentDateSP();
   const s = semanaAnterior(hoje);
-  const [semana, antes, dados] = await Promise.all([
+  const [semanaBanco, antesBanco, dinSemana, dinAntes, dados] = await Promise.all([
     getGastoPorCategoriaEntre(s.inicio, somaDias(s.fim, 1)),
     getGastoPorCategoriaEntre(somaDias(s.inicio, -28), s.inicio),
+    getDinheiroPorCategoriaEntre(s.inicio, somaDias(s.fim, 1)),
+    getDinheiroPorCategoriaEntre(somaDias(s.inicio, -28), s.inicio),
     getTrilhaDados(hoje),
   ]);
+  // E3: gasto em dinheiro vivo entra na semana e na média (separado em totalDinheiro)
+  const semana = somarMapas(semanaBanco, dinSemana);
+  const antes = somarMapas(antesBanco, dinAntes);
   const t = avaliarTrilha(dados);
   const f = t.fases[t.atual - 1];
   // gráfico: todos os grupos livres (os travados, pagos uma vez por mês, ficam fora como no texto)
@@ -32,6 +38,7 @@ export async function GET() {
   return NextResponse.json({
     semana: s,
     total: soma(semana),
+    totalDinheiro: soma(dinSemana),
     mediaTotal: Math.round((soma(antes) / 4) * 100) / 100,
     grupos: gruposDaSemana(agruparGastos(semana, 0), agruparGastos(antes, 0)),
     todosGrupos,

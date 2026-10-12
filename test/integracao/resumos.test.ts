@@ -37,4 +37,17 @@ describe.skipIf(!url)('resumos do D (integração)', () => {
     const m = await queries.getGastoPorCategoriaEntre('2042-03-02', '2042-03-09');
     expect(Object.fromEntries(m)).toEqual({ Groceries: 150, 'Food delivery': 30 });
   });
+
+  it('gasto livre por dia: só despesa no débito, fora casa, até hoje', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, classe, forma_pagamento, banco, responsavel) VALUES
+      ('gl1', '2043-05-02', 40, 'PADARIA', 'Groceries', 'despesa', 'Débito', 'B', 'X'),
+      ('gl2', '2043-05-02', 10, 'FARMACIA', 'Pharmacy', 'despesa', 'Débito', 'B', 'Y'),
+      ('gl3', '2043-05-03', 900, 'ALUGUEL', 'Housing', 'despesa', 'Débito', 'B', 'X'),
+      ('gl4', '2043-05-03', 70, 'LOJA', 'Shopping', 'despesa', 'Crédito', 'B', 'X'),
+      ('gl5', '2043-05-04', 25, 'IFOOD', 'Food delivery', 'despesa', 'Débito', 'B', 'X'),
+      ('gl6', '2043-05-06', 99, 'FUTURO', 'Groceries', 'despesa', 'Débito', 'B', 'X'),
+      ('gl7', '2043-04-30', 33, 'MES ANTERIOR', 'Groceries', 'despesa', 'Débito', 'B', 'X')`);
+    expect(await queries.getGastoLivrePorDia('casal', '2043-05-05')).toEqual([{ dia: 2, valor: 50 }, { dia: 4, valor: 25 }]);
+    expect(await queries.getGastoLivrePorDia('Matheus' as any, '2043-05-05')).toEqual([]);
+  });
 });

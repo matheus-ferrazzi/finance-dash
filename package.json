@@ -7,17 +7,19 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "build:worker": "esbuild src/worker/index.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/worker.js && esbuild scripts/equivalencia.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/equivalencia.js && esbuild scripts/backtest.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/backtest.js"
+    "build:worker": "esbuild src/worker/index.ts --bundle --platform=node --target=node20 --external:pg-native --external:@resvg/resvg-js --outfile=dist/worker.js && esbuild scripts/equivalencia.ts --bundle --platform=node --target=node20 --external:pg-native --external:@resvg/resvg-js --outfile=dist/equivalencia.js && esbuild scripts/backtest.ts --bundle --platform=node --target=node20 --external:pg-native --external:@resvg/resvg-js --outfile=dist/backtest.js"
   },
   "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "croner": "^10.0.1",
+    "date-fns": "^3.6.0",
+    "dejavu-fonts-ttf": "2.37.3",
+    "lucide-react": "^0.417.0",
     "next": "14.2.5",
+    "pg": "^8.12.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "pg": "^8.12.0",
-    "recharts": "^2.12.7",
-    "lucide-react": "^0.417.0",
-    "date-fns": "^3.6.0",
-    "croner": "^10.0.1"
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -25,10 +27,10 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
+    "esbuild": "^0.28.2",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
     "typescript": "^5.5.3",
-    "vitest": "^3.2.7",
-    "esbuild": "^0.28.2"
+    "vitest": "^3.2.7"
   }
 }

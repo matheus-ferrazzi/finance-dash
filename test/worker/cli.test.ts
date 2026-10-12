@@ -43,3 +43,11 @@ describe('notificações (C2)', () => {
   });
 });
 
+
+describe('--png (D2)', () => {
+  it('notificação aceita --png <arquivo> só com --dry-run', () => {
+    expect(lerArgs(['notif-diario', '--dry-run', '--png', '/tmp/d.png'])).toEqual({ tarefa: 'notif-diario', dryRun: true, png: '/tmp/d.png' });
+    expect(() => lerArgs(['notif-diario', '--png', '/tmp/d.png'])).toThrow(/--png só com --dry-run/);
+    expect(() => lerArgs(['notif-diario', '--dry-run', '--png'])).toThrow(/--png precisa de um arquivo/);
+  });
+});

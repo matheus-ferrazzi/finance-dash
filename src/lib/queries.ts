@@ -664,6 +664,8 @@ export interface PrevisaoResumo {
   ritmoSeguroDia: number;
   /** quanto você está gastando por dia neste mês */
   ritmoAtualDia: number;
+  /** o que sobra para o dia a dia até o fim do mês (pode ser negativo) */
+  sobraParaODiaADia: number;
   receitasAReceber: ReceitaPrevista[];
   proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number; piorCaso: number }[];
   /** faixa "8 em 10" do fechamento do mês; null sem calibração (histórico curto) ou fora da visão do casal */
@@ -700,6 +702,7 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
     diasRestantes: ritmo.diasRestantes,
     ritmoSeguroDia: ritmo.ritmoSeguroDia,
     ritmoAtualDia: ritmo.ritmoAtualDia,
+    sobraParaODiaADia: ritmo.sobraParaODiaADia,
     receitasAReceber: base.mesCorrente.receitasAReceber,
     proximosMeses: proj.slice(1, 7).map((m, i) => ({
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
@@ -1510,4 +1513,21 @@ export async function getGastoPorCategoriaEntre(inicio: string, fimExcl: string)
     [inicio, fimExcl],
   );
   return new Map(rows.map((r) => [r.cat as string, Math.round(Number(r.v) * 100) / 100]));
+}
+
+/** Gasto livre por dia do mês de `hoje`, até `hoje` (o mesmo filtro do variavelJaGasto: débito, fora casa e fixos). */
+export async function getGastoLivrePorDia(resp: Resp, hoje: string): Promise<{ dia: number; valor: number }[]> {
+  const r = rf(resp, 1);
+  const n = r.p.length;
+  const rows = await q<any>(
+    `SELECT extract(day from l.data_lancamento)::int AS dia, SUM(l.valor)::float8 AS valor
+     FROM financas_lancamentos l
+     WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
+       AND l.data_lancamento >= date_trunc('month', $${n + 1}::date) AND l.data_lancamento <= $${n + 1}::date
+       AND NOT (l.categoria = ANY($${n + 2}::text[])) AND NOT (l.categoria = ANY($${n + 3}::text[]))
+       AND ${SEM_ESPELHO}${r.sql}
+     GROUP BY 1 ORDER BY 1`,
+    [...r.p, hoje, CASA_CATS, FIXO_DEBITO_CATS],
+  );
+  return rows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.valor) * 100) / 100 }));
 }

@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { Cron } from 'croner';
 import { Pool } from 'pg';
 import { AGENDA, AGENDA_NOTIF, lerArgs, lerModo } from './cli';
@@ -5,6 +6,7 @@ import { CanalTelegram } from './notificacoes/canal';
 import { CanalWhatsApp } from './notificacoes/whatsapp';
 import { criarFontes } from './notificacoes/fontes';
 import { destinoDe, modoDoBot, rodarNotificacao } from './notificacoes/motor';
+import { paraPng } from './notificacoes/png';
 import { PgRegistroNotif } from './notificacoes/registro';
 import type { Bot } from './notificacoes/textos';
 import { PluggyClient } from './pluggy';
@@ -84,9 +86,15 @@ async function main() {
 
   if (args.tarefa.startsWith('notif-')) {
     const r = await notificar(args.tarefa.slice('notif-'.length) as Bot, args.dryRun);
-    console.log(JSON.stringify(r, null, 2));
+    if (args.png) {
+      if (r.svg) { writeFileSync(args.png, await paraPng(r.svg)); console.log(`gráfico gravado em ${args.png}`); }
+      else console.log('sem gráfico para esta mensagem');
+    }
+    const { svg: _svg, ...semSvg } = r;
+    console.log(JSON.stringify(semSvg, null, 2));
     await pool.end();
-    process.exitCode = r.erro ? 1 : 0;
+    // só o aviso da imagem (texto entregue) não é falha
+    process.exitCode = r.erro && !r.erro.startsWith('imagem:') ? 1 : 0;
     return;
   }
 

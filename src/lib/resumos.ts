@@ -1,6 +1,8 @@
 // Dados das mensagens do D (diário, semanal, mensal): só remonta o que o painel já calcula.
 import type { ItemConta } from './contas';
 import type { GrupoGasto } from './grupos';
+import { mesLabel } from './format';
+import type { MesPassado } from './queries';
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
@@ -56,4 +58,22 @@ export function semanaAnterior(hoje: string): { inicio: string; fim: string } {
 /** Soma de dias a uma data AAAA-MM-DD. */
 export function somaDias(data: string, n: number): string {
   return new Date(new Date(`${data}T12:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
+}
+
+/** Gasto acumulado por dia do mês, de 1 até `ateDia` (dias sem gasto repetem o acumulado). */
+export function acumular(porDia: { dia: number; valor: number }[], ateDia: number): { dia: number; acumulado: number }[] {
+  const out: { dia: number; acumulado: number }[] = [];
+  let s = 0;
+  for (let d = 1; d <= ateDia; d++) {
+    s += porDia.filter((p) => p.dia === d).reduce((a, p) => a + p.valor, 0);
+    out.push({ dia: d, acumulado: r2(s) });
+  }
+  return out;
+}
+
+/** Sobra real dos meses fechados para o gráfico do mensal; mês sem receita nem débito (antes do histórico) fica fora. */
+export function historicoDe(passados: MesPassado[]): { mes: string; mesLabel: string; sobra: number }[] {
+  return passados
+    .filter((m) => m.real.receita !== 0 || m.real.debito !== 0)
+    .map((m) => ({ mes: m.mes, mesLabel: mesLabel(m.mes), sobra: m.real.saldo }));
 }

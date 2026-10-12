@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
-  Telescope, Stethoscope, MoreHorizontal,
+  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck,
 } from 'lucide-react';
 
 /**
@@ -23,6 +23,7 @@ const LINKS = [
 
 // secundárias — sidebar no desktop, ícones no header no mobile
 const EXTRA = [
+  { href: '/contas', label: 'Contas do mês', short: 'Contas', icon: ClipboardCheck },
   { href: '/orcamento', label: 'Orçamento', short: 'Orçam.', icon: Target },
   { href: '/casa', label: 'Casa', short: 'Casa', icon: Home },
   { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },

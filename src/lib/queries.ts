@@ -1,7 +1,9 @@
-import { q, qw } from './db';
+import { q, qw, writerPool } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, type GrupoGasto } from './grupos';
+import { montarMes, padraoDe, type ResumoMes } from './contas';
+import type { MarcaInput } from './validation';
 import {
   addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
@@ -366,6 +368,105 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
     chave: x.chave, valor: Number(x.valor), categoria: x.categoria, banco: x.banco, data: x.data, parcelado: Boolean(x.parcelado),
     responsavel: x.responsavel,
   })), currentDateSP());
+}
+
+/** Contas do mês (G): contas fixas + marcações da tela, conferidas com as saídas do banco. */
+export async function getContasDoMes(resp: Resp, mes: string): Promise<ResumoMes> {
+  const r = rf(resp, 2);
+  const inicioMes = `${mes}-01`;
+  const [contas, marcas, movs, entrou] = await Promise.all([
+    q<any>(`SELECT id, nome, responsavel, valor_previsto::float8 AS valor, padrao, banco, tolerancia::float8 AS tolerancia, somar,
+                   to_char(inicio,'YYYY-MM') AS inicio, parcelas, ordem, to_char(ate,'YYYY-MM') AS ate,
+                   to_char(valor_definido_em,'YYYY-MM') AS valor_definido_em
+            FROM financas_contas_fixas WHERE ativo${rf(resp, 1).sql}`, rf(resp, 1).p),
+    q<any>(`SELECT id, mes, conta_id, responsavel, nome, valor::float8 AS valor, pago
+            FROM financas_contas_marcas WHERE mes = $1${r.sql} ORDER BY id`, [mes, ...r.p]),
+    // 3 meses antes: o previsto da conta variável é o último valor pago
+    q<any>(`SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor,
+                   coalesce(descricao,'') AS descricao, coalesce(banco,'') AS banco, responsavel
+            FROM financas_lancamentos
+            WHERE tipo_movimento = 'Saída'
+              AND data_lancamento >= $1::date - interval '3 months' AND data_lancamento < $1::date + interval '1 month'
+              AND data_lancamento <= ${HOJE}${r.sql}`, [inicioMes, ...r.p]),
+    q<any>(`SELECT coalesce(sum(valor),0)::float8 AS v FROM financas_lancamentos
+            WHERE classe = 'receita' AND data_lancamento >= $1::date AND data_lancamento < $1::date + interval '1 month'
+              AND data_lancamento <= ${HOJE}${r.sql}`, [inicioMes, ...r.p]),
+  ]);
+  return montarMes(
+    mes,
+    contas.map((c) => ({ id: c.id, nome: c.nome, responsavel: c.responsavel, valorPrevisto: c.valor, padrao: c.padrao, banco: c.banco,
+      tolerancia: c.tolerancia, somar: c.somar, inicio: c.inicio, parcelas: c.parcelas, ordem: c.ordem, ate: c.ate, valorDefinidoEm: c.valor_definido_em })),
+    marcas.map((m) => ({ id: m.id, mes: m.mes, contaId: m.conta_id, responsavel: m.responsavel, nome: m.nome, valor: m.valor, pago: m.pago })),
+    movs,
+    entrou[0].v,
+  );
+}
+
+/** Grava um ✓, um "tirar do mês" ou uma avulsa. Na conta fixa há uma marcação por mês: a nova troca a anterior. */
+export async function criarMarca(m: MarcaInput): Promise<number> {
+  if (m.contaId !== null) {
+    const ja = await qw<any>(`UPDATE financas_contas_marcas SET pago = $3 WHERE mes = $1 AND conta_id = $2 RETURNING id`, [m.mes, m.contaId, m.pago]);
+    if (ja.length) return Number(ja[0].id);
+  }
+  const rows = await qw<any>(
+    `INSERT INTO financas_contas_marcas (mes, conta_id, responsavel, nome, valor, pago) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    [m.mes, m.contaId, m.responsavel, m.nome, m.valor, m.pago],
+  );
+  return Number(rows[0].id);
+}
+
+export async function apagarMarca(id: number): Promise<void> {
+  await qw(`DELETE FROM financas_contas_marcas WHERE id = $1`, [id]);
+}
+
+/**
+ * "Repetir todo mês": a avulsa já confirmada pelo banco vira conta fixa a partir do mês dela, com o
+ * padrão tirado da descrição real do pagamento — conta nova já nasce validada pelo extrato.
+ */
+export async function repetirTodoMes(marcaId: number): Promise<number> {
+  const [a] = await q<any>(`SELECT mes, responsavel FROM financas_contas_marcas WHERE id = $1 AND conta_id IS NULL`, [marcaId]);
+  if (!a) throw new Error('avulsa não encontrada');
+  const item = (await getContasDoMes(a.responsavel, a.mes)).itens.find((i) => i.marcaId === marcaId);
+  if (!item?.origem || item.pago === null) throw new Error('só dá para repetir depois que o banco confirmar o pagamento');
+
+  const cli = await writerPool.connect();
+  try {
+    await cli.query('BEGIN');
+    const { rows } = await cli.query(
+      `INSERT INTO financas_contas_fixas (nome, responsavel, valor_previsto, padrao, banco, tolerancia, inicio, ordem)
+       SELECT $1, $2, $3, $4, $5, $6, ($7 || '-01')::date, coalesce(max(ordem), 0) + 1 FROM financas_contas_fixas
+       RETURNING id`,
+      [item.nome, a.responsavel, item.pago, padraoDe(item.origem.descricao), item.origem.banco, TOLERANCIA_REPETIR, a.mes],
+    );
+    await cli.query(`DELETE FROM financas_contas_marcas WHERE id = $1`, [marcaId]);
+    await cli.query('COMMIT');
+    return Number(rows[0].id);
+  } catch (e) {
+    await cli.query('ROLLBACK');
+    throw e;
+  } finally {
+    cli.release();
+  }
+}
+const TOLERANCIA_REPETIR = 0.2; // padrão vindo de PIX pode casar outro pagamento à mesma pessoa
+
+/** Alterar valor previsto da conta fixa a partir de `mes` ('YYYY-MM'); os meses anteriores ficam como estavam. */
+export async function alterarValorConta(id: number, valor: number, mes: string): Promise<void> {
+  await qw(`UPDATE financas_contas_fixas SET valor_previsto = $2, valor_definido_em = ($3 || '-01')::date WHERE id = $1`, [id, valor, mes]);
+}
+
+/** Alterar o valor de uma avulsa — só enquanto o banco não confirmou (depois, vale o valor do extrato). */
+export async function alterarValorAvulsa(marcaId: number, valor: number): Promise<void> {
+  const [a] = await q<any>(`SELECT mes, responsavel FROM financas_contas_marcas WHERE id = $1 AND conta_id IS NULL`, [marcaId]);
+  if (!a) throw new Error('avulsa não encontrada');
+  const item = (await getContasDoMes(a.responsavel, a.mes)).itens.find((i) => i.marcaId === marcaId);
+  if (item?.status === 'pago') throw new Error('já confirmada pelo banco: vale o valor do extrato');
+  await qw(`UPDATE financas_contas_marcas SET valor = $2 WHERE id = $1 AND conta_id IS NULL`, [marcaId, valor]);
+}
+
+/** "Remover de vez": `ultimoMes` ('YYYY-MM') é o último mês em que a conta aparece. */
+export async function encerrarConta(id: number, ultimoMes: string): Promise<void> {
+  await qw(`UPDATE financas_contas_fixas SET ate = ($2 || '-01')::date WHERE id = $1`, [id, ultimoMes]);
 }
 
 export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {

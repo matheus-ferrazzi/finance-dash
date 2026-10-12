@@ -43,7 +43,8 @@ export function PeriodPicker() {
   }
   const selectKind = (k: string) => (k === 'mes' ? setParams({ p: null }) : setParams({ p: k, mes: null }));
   const goMonth = (novo: string) => setParams({ p: null, mes: novo === atual ? null : novo });
-  const podeAvancar = shift(mes, 1) <= atual;
+  // Contas do mês deixa olhar o mês que vem (planejar, lançar avulsa antes); o resto para no mês atual
+  const podeAvancar = shift(mes, 1) <= (path === '/contas' ? shift(atual, 1) : atual);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">

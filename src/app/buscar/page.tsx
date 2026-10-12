@@ -4,6 +4,9 @@ import { brl, dataBR, traduzCategoria } from '@/lib/format';
 import { PageTitle, respBadge, catIcon } from '../components/ui';
 import { SearchBox } from '../components/SearchBox';
 import { BotaoCorrigir } from '../components/BotaoCorrigir';
+import { LinhaDinheiro } from '../components/LinhaDinheiro';
+import { buscarDinheiro } from '@/lib/dinheiro';
+import { juntarBusca } from '@/lib/dinheiroTela';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +17,9 @@ function resolveResp(v?: string): Resp {
 export default async function Buscar({ searchParams }: { searchParams: { resp?: string; q?: string } }) {
   const resp = resolveResp(searchParams.resp);
   const q = (searchParams.q ?? '').trim();
-  const res = q.length >= 2 ? await getBusca(resp, q) : [];
+  // E3: gastos em dinheiro vivo também aparecem (linha 💵, sem "Mudar categoria")
+  const [banco, din] = q.length >= 2 ? await Promise.all([getBusca(resp, q), buscarDinheiro(resp, q)]) : [[], []];
+  const res = juntarBusca(banco, din);
 
   const totDesp = res.filter((l) => l.classe === 'despesa').reduce((s, l) => s + l.valor, 0);
   const totRec = res.filter((l) => l.classe === 'receita').reduce((s, l) => s + l.valor, 0);
@@ -44,6 +49,7 @@ export default async function Buscar({ searchParams }: { searchParams: { resp?: 
           <div className="card divide-y divide-border/60">
             {res.map((l) => {
               const { Icon, color } = catIcon(l.categoria);
+              if (l.dinheiroId) return <LinhaDinheiro key={l.id} it={{ ...l, banco: `${traduzCategoria(l.categoria)} · 💵 Dinheiro`, dinheiroId: l.dinheiroId }} />;
               return (
                 <BotaoCorrigir key={l.id} id={l.id} className="py-2.5 first:pt-0 last:pb-0">
                   <span className="flex items-center gap-3">

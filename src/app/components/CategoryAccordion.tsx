@@ -5,16 +5,18 @@ import { ChevronDown } from 'lucide-react';
 import { brl, dataBR, traduzCategoria } from '@/lib/format';
 import { catIcon, respBadge } from './ui';
 import { BotaoCorrigir } from './BotaoCorrigir';
+import { LinhaDinheiro } from './LinhaDinheiro';
 
 export interface CatGroup {
   categoria: string;
   total: number;
   n: number;
-  items: { id: string; data: string; valor: number; descricao: string; banco: string; responsavel: string }[];
+  /** dinheiroId: gasto em dinheiro vivo (E3) — linha própria, sem "Mudar categoria" */
+  items: { id: string; data: string; valor: number; descricao: string; banco: string; responsavel: string; dinheiroId?: number }[];
 }
 
-export function CategoryAccordion({ grupos }: { grupos: CatGroup[] }) {
-  const [aberto, setAberto] = useState<string | null>(null);
+export function CategoryAccordion({ grupos, abertoInicial = null }: { grupos: CatGroup[]; abertoInicial?: string | null }) {
+  const [aberto, setAberto] = useState<string | null>(abertoInicial);
   const maxTotal = Math.max(...grupos.map((g) => g.total), 1);
 
   if (grupos.length === 0) return <p className="text-sm text-muted">Sem despesas neste mês.</p>;
@@ -50,7 +52,7 @@ export function CategoryAccordion({ grupos }: { grupos: CatGroup[] }) {
 
             {open && (
               <div className="fadein border-t border-border divide-y divide-border/60">
-                {g.items.map((it) => (
+                {g.items.map((it) => it.dinheiroId ? <LinhaDinheiro key={it.id} it={{ ...it, dinheiroId: it.dinheiroId }} /> : (
                   // tocar no lançamento abre "Mudar categoria" (F4)
                   <BotaoCorrigir key={it.id} id={it.id} className="px-3.5 py-2.5">
                     <span className="flex items-center justify-between gap-3">

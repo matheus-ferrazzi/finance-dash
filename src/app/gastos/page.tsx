@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { getGastosDinheiro } from '@/lib/dinheiro';
+import { paraLancamentos } from '@/lib/dinheiroTela';
 import { getDespesas, getPorBanco, resolvePeriodo, Resp } from '@/lib/queries';
 import { categoriaNoFiltro, GRUPOS_VALIDOS } from '@/lib/grupos';
 import { linkPara } from '@/lib/links';
@@ -17,7 +19,9 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
   const resp = resolveResp(searchParams.resp);
   const per = resolvePeriodo(searchParams.p, searchParams.mes);
 
-  const [todas, bancos] = await Promise.all([getDespesas(resp, per), getPorBanco(resp, per)]);
+  const [doBanco, bancos, din] = await Promise.all([getDespesas(resp, per), getPorBanco(resp, per), getGastosDinheiro(resp, per.start, per.endExcl)]);
+  // E3: gasto em dinheiro vivo entra na lista e nos totais (com 💵), nunca nas contas do banco
+  const todas: (typeof doBanco[number] & { dinheiroId?: number })[] = [...doBanco, ...(paraLancamentos(din) as any[])];
   // filtros da URL (links da home e do bot): ?grupo=Mercado, ?tipo=livre; valor desconhecido não filtra
   const despesas = todas.filter((d) => categoriaNoFiltro(d.categoria, { grupo: searchParams.grupo, tipo: searchParams.tipo }));
   const filtroAtivo = searchParams.grupo && GRUPOS_VALIDOS.includes(searchParams.grupo) ? searchParams.grupo
@@ -27,12 +31,13 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
   for (const d of despesas) {
     const g = mapa.get(d.categoria) ?? { categoria: d.categoria, total: 0, n: 0, items: [] };
     g.total += d.valor; g.n += 1;
-    g.items.push({ id: d.id, data: d.data, valor: d.valor, descricao: d.descricao, banco: d.banco, responsavel: d.responsavel });
+    g.items.push({ id: d.id, data: d.data, valor: d.valor, descricao: d.descricao, banco: d.banco, responsavel: d.responsavel, dinheiroId: d.dinheiroId });
     mapa.set(d.categoria, g);
   }
   const grupos = [...mapa.values()].sort((a, b) => b.total - a.total);
   const totalMes = grupos.reduce((s, g) => s + g.total, 0);
   const totalBanco = bancos.reduce((s, b) => s + b.total, 0);
+  const totalDinheiro = despesas.reduce((s, d) => s + (d.dinheiroId ? d.valor : 0), 0);
 
   return (
     <div>
@@ -44,6 +49,8 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
           <Link href={linkPara('gastos', { resp, mes: searchParams.mes })} className="text-xs text-muted hover:text-text" aria-label="Limpar filtro">× limpar</Link>
         </div>
       )}
+
+      {totalDinheiro > 0 && <p className="mb-2 text-xs text-muted">Inclui <span className="money">{brl(totalDinheiro)}</span> em dinheiro vivo 💵</p>}
 
       {/* o que era o card "Resumo" — contagem e ticket médio são apoio, não manchete */}
       <StatStrip

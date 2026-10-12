@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { mesLongo } from '@/lib/format';
+import { mesNoLimite, podeIrParaMesSeguinte } from '@/lib/links';
 
 function shift(mes: string, delta: number): string {
   const [y, m] = mes.split('-').map(Number);
@@ -28,9 +29,12 @@ export function PeriodPicker() {
 
   const atual = mesAtualBR();
   const p = sp.get('p');
-  const kind = p === '7d' || p === '15d' || p === '30d' ? p : 'mes';
+  // atalhos 7/15/30 dias só fazem sentido em Gastos; nas outras telas é sempre o mês
+  const emGastos = path === '/gastos';
+  const kind = emGastos && (p === '7d' || p === '15d' || p === '30d') ? p : 'mes';
   const rawMes = sp.get('mes');
-  const mes = rawMes && /^\d{4}-\d{2}$/.test(rawMes) ? rawMes : atual;
+  // o seletor mostra o mesmo mês que a tela usa (a home não passa do mês atual, por exemplo)
+  const mes = mesNoLimite(rawMes, path, atual);
 
   function setParams(updates: Record<string, string | null>) {
     const params = new URLSearchParams(Array.from(sp.entries()));
@@ -43,11 +47,11 @@ export function PeriodPicker() {
   }
   const selectKind = (k: string) => (k === 'mes' ? setParams({ p: null }) : setParams({ p: k, mes: null }));
   const goMonth = (novo: string) => setParams({ p: null, mes: novo === atual ? null : novo });
-  // Contas do mês deixa olhar o mês que vem (planejar, lançar avulsa antes); o resto para no mês atual
-  const podeAvancar = shift(mes, 1) <= (path === '/contas' ? shift(atual, 1) : atual);
+  const podeAvancar = shift(mes, 1) <= (podeIrParaMesSeguinte(path) ? shift(atual, 1) : atual);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {emGastos && (
       <div className="inline-flex rounded-xl border border-border bg-surface p-1">
         {PRESETS.map((pr) => (
           <button
@@ -61,6 +65,7 @@ export function PeriodPicker() {
           </button>
         ))}
       </div>
+      )}
 
       {kind === 'mes' && (
         <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1">

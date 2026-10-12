@@ -469,6 +469,21 @@ export async function encerrarConta(id: number, ultimoMes: string): Promise<void
   await qw(`UPDATE financas_contas_fixas SET ate = ($2 || '-01')::date WHERE id = $1`, [id, ultimoMes]);
 }
 
+/** Movimento líquido da conta por dia (entrada +, saída −), só débito, de `desde` até `hoje`. */
+export async function getMovimentosDiarios(resp: Resp, desde: string, hoje: string = currentDateSP()): Promise<Record<string, number>> {
+  const r = rf(resp, 3);
+  const rows = await q<any>(
+    `SELECT to_char(data_lancamento,'YYYY-MM-DD') AS dia,
+            SUM(CASE WHEN tipo_movimento='Entrada' THEN valor ELSE -valor END)::float8 AS liquido
+     FROM financas_lancamentos
+     WHERE forma_pagamento='Débito' AND data_lancamento >= $1::date AND data_lancamento <= $2::date
+       AND ${SEM_ESPELHO}${r.sql}
+     GROUP BY 1`,
+    [desde, hoje, ...r.p],
+  );
+  return Object.fromEntries(rows.filter((x) => Number(x.liquido) !== 0).map((x) => [x.dia, Math.round(Number(x.liquido) * 100) / 100]));
+}
+
 export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {
   const r = rf(resp, 2);
   const rows = await q<any>(

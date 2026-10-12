@@ -3,31 +3,30 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
+import { qsNavegacao } from '@/lib/links';
 import {
   LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
   Telescope, Stethoscope, MoreHorizontal, ClipboardCheck,
 } from 'lucide-react';
 
 /**
- * Barra principal: as 5 perguntas que se faz no dia a dia.
- * Previsibilidade subiu pra cá (é a mais usada) e Orçamento/Casa/Faturas/
- * Investimentos viraram secundárias — são consulta pontual, não rotina.
+ * Barra principal (F1): os 4 lugares de uso diário. O resto fica em "Mais" — no celular,
+ * uma folha que sobe da barra; no computador, abaixo de um separador na barra lateral.
  */
 const LINKS = [
-  { href: '/', label: 'Visão geral', short: 'Visão', icon: LayoutDashboard },
-  { href: '/previsibilidade', label: 'Previsibilidade', short: 'Previsão', icon: Telescope },
-  { href: '/diagnostico', label: 'Diagnóstico', short: 'Diagnóst.', icon: Stethoscope },
+  { href: '/', label: 'Início', short: 'Início', icon: LayoutDashboard },
+  { href: '/contas', label: 'Contas do mês', short: 'Contas', icon: ClipboardCheck },
   { href: '/gastos', label: 'Gastos', short: 'Gastos', icon: Receipt },
-  { href: '/faturas', label: 'Faturas', short: 'Faturas', icon: CreditCard },
+  { href: '/previsibilidade', label: 'Previsão', short: 'Previsão', icon: Telescope },
 ];
 
-// secundárias — sidebar no desktop, ícones no header no mobile
 const EXTRA = [
-  { href: '/contas', label: 'Contas do mês', short: 'Contas', icon: ClipboardCheck },
+  { href: '/faturas', label: 'Faturas', short: 'Faturas', icon: CreditCard },
+  { href: '/diagnostico', label: 'Diagnóstico', short: 'Diagnóst.', icon: Stethoscope },
+  { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
+  { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },
   { href: '/orcamento', label: 'Orçamento', short: 'Orçam.', icon: Target },
   { href: '/casa', label: 'Casa', short: 'Casa', icon: Home },
-  { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },
-  { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
   { href: '/buscar', label: 'Buscar', short: 'Buscar', icon: Search },
 ];
 
@@ -40,10 +39,12 @@ const RESPS = [
 export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const path = usePathname();
   const sp = useSearchParams();
-  const qs = sp.toString();
+  const qs = qsNavegacao(sp.toString());
   return (
     <nav className="flex flex-col gap-1">
-      {[...LINKS, ...EXTRA].map(({ href, label, icon: Icon }) => {
+      {[...LINKS, null, ...EXTRA].map((l) => {
+        if (!l) return <div key="sep" className="my-2 border-t border-border" />;
+        const { href, label, icon: Icon } = l;
         const active = path === href;
         return (
           <Link
@@ -63,79 +64,41 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-/**
- * Um botão só pras páginas secundárias, em vez de uma fileira de ícones.
- * O header tinha 6 controles competindo por atenção; isso corta pra 4.
- */
-export function MoreMenu() {
-  const path = usePathname();
-  const sp = useSearchParams();
-  const qs = sp.toString();
-  const [aberto, setAberto] = useState(false);
-  const aqui = EXTRA.some((e) => e.href === path);
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setAberto(!aberto)}
-        aria-expanded={aberto}
-        aria-label="Mais páginas"
-        className={`grid h-9 w-9 place-items-center rounded-xl border border-border transition-colors ${
-          aqui || aberto ? 'bg-surface-3 text-accent' : 'bg-surface text-muted hover:text-text'
-        }`}
-      >
-        <MoreHorizontal size={17} />
-      </button>
-
-      {aberto && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => setAberto(false)} aria-hidden />
-          <div className="fadein absolute right-0 top-full mt-2 z-30 w-52 rounded-xl border border-border bg-surface-2 p-1 shadow-card">
-            {EXTRA.map(({ href, label, icon: Icon }) => {
-              const active = path === href;
-              return (
-                <Link
-                  key={href}
-                  href={href + (qs ? `?${qs}` : '')}
-                  onClick={() => setAberto(false)}
-                  className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                    active ? 'bg-surface-3 text-text' : 'text-muted hover:text-text hover:bg-surface-3/60'
-                  }`}
-                >
-                  <Icon size={16} className={active ? 'text-accent' : 'text-faint'} />
-                  {label}
-                </Link>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 export function MobileNav() {
   const path = usePathname();
   const sp = useSearchParams();
-  const qs = sp.toString();
+  const qs = qsNavegacao(sp.toString());
+  const [mais, setMais] = useState(false);
+  const noMais = EXTRA.some((e) => e.href === path);
+  const item = 'flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px]';
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 flex border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
-      {LINKS.map(({ href, short, icon: Icon }) => {
-        const active = path === href;
-        return (
-          <Link
-            key={href}
-            href={href + (qs ? `?${qs}` : '')}
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] ${
-              active ? 'text-accent' : 'text-muted'
-            }`}
-          >
-            <Icon size={19} />
-            {short}
+    <>
+      {mais && (
+        <>
+          <div className="md:hidden fixed inset-0 z-30 bg-black/40" onClick={() => setMais(false)} aria-hidden />
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-40 rounded-t-2xl border-t border-border bg-surface-2 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+            <div className="grid grid-cols-4 gap-2">
+              {EXTRA.map(({ href, short, icon: Icon }) => (
+                <Link key={href} href={href + (qs ? `?${qs}` : '')} onClick={() => setMais(false)}
+                  className={`flex min-h-[64px] flex-col items-center justify-center gap-1 rounded-xl text-[11px] ${path === href ? 'bg-surface-3 text-accent' : 'text-muted'}`}>
+                  <Icon size={20} />{short}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 flex border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
+        {LINKS.map(({ href, short, icon: Icon }) => (
+          <Link key={href} href={href + (qs ? `?${qs}` : '')} className={`${item} ${path === href ? 'text-accent' : 'text-muted'}`}>
+            <Icon size={20} />{short}
           </Link>
-        );
-      })}
-    </nav>
+        ))}
+        <button onClick={() => setMais(!mais)} className={`${item} ${mais || noMais ? 'text-accent' : 'text-muted'}`} aria-expanded={mais}>
+          <MoreHorizontal size={20} />Mais
+        </button>
+      </nav>
+    </>
   );
 }
 

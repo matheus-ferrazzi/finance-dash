@@ -7,7 +7,7 @@ export class PgAcoes {
   constructor(private readonly pool: Pool) {}
 
   /** Nova proposta; a pendente anterior da mesma pessoa vira 'substituida'. */
-  async criar(pessoa: string, tipo: 'categoria' | 'avulsa', params: object, resumo: string): Promise<number> {
+  async criar(pessoa: string, tipo: 'categoria' | 'avulsa' | 'dinheiro', params: object, resumo: string): Promise<number> {
     await this.pool.query(`UPDATE financas_bot_acoes SET estado = 'substituida', atualizado_em = now() WHERE pessoa = $1 AND estado = 'pendente'`, [pessoa]);
     const r = await this.pool.query(
       `INSERT INTO financas_bot_acoes (pessoa, tipo, params, resumo) VALUES ($1, $2, $3, $4) RETURNING id`,

@@ -58,6 +58,9 @@ export const FIXO_DEBITO_CATS: string[] = GRUPOS_GASTO.find((g) => g.nome === 'D
 
 export const GRUPOS_VALIDOS: string[] = [...GRUPOS_GASTO.map((g) => g.nome), 'Resto'];
 
+/** E3: só categorias de gasto (as dos grupos) — sem fatura, salário, investimento; gasto em dinheiro não pode cair nelas. */
+export const CATEGORIAS_GASTO: string[] = GRUPOS_GASTO.flatMap((g) => g.cats);
+
 /** Filtro de Gastos vindo da URL (?grupo= / ?tipo=livre). Valor desconhecido não filtra. */
 export function categoriaNoFiltro(cat: string, f: { grupo?: string | null; tipo?: string | null }): boolean {
   const g = grupoDaCategoria(cat);

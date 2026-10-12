@@ -1,5 +1,6 @@
 // E2: ferramentas que rodam no worker — busca (guarda as refs L1..L5) e propostas (não gravam: só criam a proposta).
-import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
+import { traduzCategoria } from '../../lib/format';
+import { CATEGORIAS_GASTO } from '../../lib/grupos';
 import type { PgAcoes } from './acoes';
 import { textoLista, textoPropostaAvulsa, textoPropostaCategoria, textoPropostaDinheiro } from './acoesTextos';
 
@@ -9,7 +10,9 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 const proxMes = (m: string) => { const [a, b] = m.split('-').map(Number); return b === 12 ? `${a + 1}-01` : `${a}-${String(b + 1).padStart(2, '0')}`; };
 const TIPO = { este: 'lancamento', pessoa: 'doc', texto: 'texto' } as const;
 const REFS_VALEM = 5 * 60_000;
-const somaDias = (dt: string, n: number) => new Date(Date.parse(`${dt}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+/** AAAA-MM-DD que existe no calendário (31/09 não). */
+const dataReal = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
+const somaDias =(dt: string, n: number) => new Date(Date.parse(`${dt}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
 export function criarLocais(d: {
   pessoa: string; hoje: string; refs: Map<string, { quando: number; itens: Map<string, Item> }>;
@@ -52,8 +55,9 @@ export function criarLocais(d: {
       const pessoa = !a.pessoa || a.pessoa === 'eu' ? d.pessoa : String(a.pessoa);
       if (!(valor >= 0.01 && valor <= 10000)) return { ok: false, dados: { erro: 'valor entre 0,01 e 10.000' } };
       if (!descricao || descricao.length > 80) return { ok: false, dados: { erro: 'descrição de 1 a 80 letras' } };
-      if (!CATEGORIAS_PAINEL.includes(a.categoria)) return { ok: false, dados: { erro: 'categoria da lista' } };
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || data > d.hoje || data < somaDias(d.hoje, -30)) {
+      // só categoria de gasto: fatura/salário/investimento em dinheiro contariam o mesmo dinheiro duas vezes
+      if (!CATEGORIAS_GASTO.includes(a.categoria)) return { ok: false, dados: { erro: 'categoria de gasto da lista' } };
+      if (!dataReal(data) || data > d.hoje || data < somaDias(d.hoje, -30)) {
         return { ok: false, dados: { erro: 'data de hoje até 30 dias atrás (AAAA-MM-DD)' } };
       }
       if (pessoa !== 'Matheus' && pessoa !== 'Ariane') return { ok: false, dados: { erro: 'pessoa: Matheus ou Ariane' } };

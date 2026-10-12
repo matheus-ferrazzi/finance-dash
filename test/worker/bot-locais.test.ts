@@ -77,3 +77,14 @@ describe('gasto em dinheiro (E3)', () => {
     expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'ok', categoria: 'Groceries', data: '2026-09-12', pessoa: 'Ariane' })).toMatchObject({ ok: true });
   });
 });
+
+describe('revisão E3', () => {
+  it('categoria de gasto só: fatura, salário e investimento recusados; data inexistente recusada', async () => {
+    const m = montar();
+    for (const categoria of ['Credit card payment', 'Salary', 'Investments']) {
+      expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'x', categoria })).toMatchObject({ ok: false });
+    }
+    expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'x', categoria: 'Groceries', data: '2026-09-31' })).toMatchObject({ ok: false });
+    expect(m.criadas).toEqual([]);
+  });
+});

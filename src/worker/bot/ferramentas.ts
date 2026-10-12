@@ -1,6 +1,6 @@
 // E1: as 8 ferramentas do bot — schema para o Groq, rota do painel, texto montado (trava) e gráfico.
 import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
-import { GRUPOS_VALIDOS } from '../../lib/grupos';
+import { CATEGORIAS_GASTO, GRUPOS_VALIDOS } from '../../lib/grupos';
 import { barraTrilha } from '../notificacoes/textosD';
 import { graficoBarras } from '../notificacoes/graficos';
 
@@ -28,7 +28,7 @@ export const TOOLS = [
   fn('propor_conta_avulsa', 'Propõe pôr uma conta avulsa nas contas do mês (NÃO grava: o casal confirma).',
     { nome: { type: 'string' }, valor: { type: 'number' }, mes: { type: 'string', description: 'AAAA-MM; padrão este mês' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['nome', 'valor']),
   fn('propor_gasto_dinheiro', 'Propõe lançar um gasto pago em dinheiro vivo (NÃO grava: o casal confirma). Não entra no saldo do banco.',
-    { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: { type: 'string', enum: CATEGORIAS_PAINEL },
+    { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: { type: 'string', enum: CATEGORIAS_GASTO },
       data: { type: 'string', description: 'AAAA-MM-DD; padrão hoje' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['valor', 'descricao', 'categoria']),
 ];
 // E2/E3: rodam no worker (busca guarda refs; propostas não gravam)

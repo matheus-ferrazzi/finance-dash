@@ -131,7 +131,7 @@ describe('barra da trilha', () => {
 describe('semanal com dinheiro (E3)', () => {
   it('dinheiro na semana: linha 💵 logo depois do total', () => {
     const t = montarSemanal({ ...sem, totalDinheiro: 70 }, { gastos: 'G', trilha: 'T' });
-    expect(t.split('\n')[2]).toBe(`💵 ${brl(70)} em dinheiro vivo`);
+    expect(t.split('\n')[2]).toBe(`💵 dos quais ${brl(70)} em dinheiro vivo`);
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('dinheiro vivo');
   });
 });

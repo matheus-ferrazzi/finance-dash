@@ -102,3 +102,12 @@ describe('💵 nas respostas de gasto (E3)', () => {
     expect(t.function.parameters.required).toEqual(['valor', 'descricao', 'categoria']);
   });
 });
+
+describe('revisão E3: categorias do gasto em dinheiro', () => {
+  it('o enum só tem categorias de gasto (sem fatura, salário, investimento)', () => {
+    const t: any = TOOLS.find((x: any) => x.function.name === 'propor_gasto_dinheiro');
+    const e: string[] = t.function.parameters.properties.categoria.enum;
+    expect(e).toContain('Groceries');
+    expect(e.some((c) => ['Credit card payment', 'Salary', 'Investments', 'Income'].includes(c))).toBe(false);
+  });
+});

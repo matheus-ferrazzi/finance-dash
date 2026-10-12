@@ -13,9 +13,9 @@ const trilha: Trilha = {
     { n: 3, titulo: 'Reserva de emergência', status: 'depois', quando: 'sem previsão', proximoPasso: 'Aplicar {{150}}/mês' },
     { n: 4, titulo: 'Construir patrimônio', status: 'depois', quando: null, proximoPasso: 'Aplicar 10%' },
   ],
-  reserva: { meta: 1200, aplicado: 300, ritmo: 0 }, patrimonio: { pct: 0, meta: 0.1 }, sobra: { cumpridos: 1, meses: [{ mes: '2026-09', sobra: 5 }] },
+  reserva: { meta: 1200, aplicado: 300, ritmo: 0, meses: 6 }, patrimonio: { pct: 0, meta: 0.1 }, sobra: { cumpridos: 1, meses: [{ mes: '2026-09', sobra: 5 }] },
 };
-const vazio = { dividas: [], atrasos: [], gastoTravado: { fixos: 0, casa: 0, debitoTravado: 0 }, aplicacaoMensal: [] };
+const vazio = { dividas: [], atrasos: [], gastoTravado: { fixos: 0, casa: 0, debitoTravado: 0 }, aplicacaoMensal: [], metasPadrao: { meses: true, patrimonio: true } };
 
 describe('faixa da trilha', () => {
   it('link para /trilha, fase N de 4, quatro tracinhos, título, quando e próximo passo', () => {
@@ -41,7 +41,7 @@ describe('cartão de fase', () => {
   it('dívidas: cada dívida com parcela, quantas faltam e até quando; sem fim conhecido; atraso com o mês', () => {
     const h = renderToStaticMarkup(createElement(CartaoFase, {
       ...vazio, fase: trilha.fases[0], trilha,
-      dividas: [{ nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }, { nome: 'empréstimo', banco: 'B2', valorParcela: 5, restantes: null, fim: null }],
+      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }, { chave: 'empréstimo|B2', nome: 'empréstimo', banco: 'B2', valorParcela: 5, restantes: null, fim: null }],
       atrasos: [{ mes: '2026-09', motivo: 'juros' }],
     }));
     expect(h).toContain('faltam 3');
@@ -52,5 +52,19 @@ describe('cartão de fase', () => {
   it('fazer sobrar: cada mês é link para o mês na Previsão', () => {
     const h = renderToStaticMarkup(createElement(CartaoFase, { ...vazio, fase: trilha.fases[1], trilha }));
     expect(h).toContain('href="/previsibilidade?mes=2026-09"');
+  });
+});
+
+describe('ajustes da trilha nos cartões (F4b)', () => {
+  it('dívidas com "não é dívida"; reserva e patrimônio com "ajustar meta" e o valor em uso', () => {
+    const h1 = renderToStaticMarkup(createElement(CartaoFase, { ...vazio, fase: trilha.fases[0], trilha,
+      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
+    expect(h1).toContain('não é dívida');
+    const h3 = renderToStaticMarkup(createElement(CartaoFase, { ...vazio, metasPadrao: { meses: false, patrimonio: true }, fase: trilha.fases[2], trilha }));
+    expect(h3).toContain('ajustar meta');
+    expect(h3).not.toContain('(padrão)');
+    expect(h3).toContain('6 × gasto travado');
+    const h4 = renderToStaticMarkup(createElement(CartaoFase, { ...vazio, fase: trilha.fases[3], trilha }));
+    expect(h4).toContain('ajustar meta (padrão)');
   });
 });

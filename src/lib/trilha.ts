@@ -24,16 +24,24 @@ export function ehAtraso(descricao: string, categoria: string | null): boolean {
 }
 
 export interface LancDivida { descricao: string; categoria: string | null; banco: string; forma: string; data: string; valor: number }
-export interface DividaAtiva { nome: string; banco: string; valorParcela: number; restantes: number | null; fim: string | null }
+export interface DividaAtiva { chave: string; nome: string; banco: string; valorParcela: number; restantes: number | null; fim: string | null }
+/** Correções do casal (F4b): grupos marcados "não é dívida" saem; "é dívida" entram mesmo sem a regra pegar. */
+export interface MarcasDivida { nao: ReadonlySet<string>; sim: ReadonlySet<string> }
+const SEM_MARCAS: MarcasDivida = { nao: new Set(), sim: new Set() };
 
 const nomeDivida = (d: string) => d.toLowerCase().replace(/[0-9/.]/g, ' ').replace(/\s+/g, ' ').trim();
 
+/** A chave de um grupo de dívida (as parcelas do mesmo parcelamento): descrição sem números + banco. */
+export function chaveDivida(descricao: string, banco: string): string {
+  return `${nomeDivida(descricao)}|${banco}`;
+}
+
 /** Dívidas ainda em aberto: parcelas depois de hoje; prestação no débito (sem data futura) fica sem fim. */
-export function agruparDividas(lancs: LancDivida[], hoje: string): DividaAtiva[] {
+export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: MarcasDivida = SEM_MARCAS): DividaAtiva[] {
   const grupos = new Map<string, LancDivida[]>();
   for (const l of lancs) {
-    if (!ehDivida(l.descricao, l.categoria)) continue;
-    const k = `${nomeDivida(l.descricao)}|${l.banco}`;
+    const k = chaveDivida(l.descricao, l.banco);
+    if (marcas.nao.has(k) || !(ehDivida(l.descricao, l.categoria) || marcas.sim.has(k))) continue;
     grupos.set(k, [...(grupos.get(k) ?? []), l]);
   }
   const out: DividaAtiva[] = [];
@@ -42,10 +50,10 @@ export function agruparDividas(lancs: LancDivida[], hoje: string): DividaAtiva[]
     const futuras = ls.filter((l) => l.data > hoje).sort((a, b) => a.data.localeCompare(b.data));
     if (futuras.length > 0) {
       const ult = futuras[futuras.length - 1];
-      out.push({ nome, banco, valorParcela: ult.valor, restantes: futuras.length, fim: ult.data.slice(0, 7) });
+      out.push({ chave: k, nome, banco, valorParcela: ult.valor, restantes: futuras.length, fim: ult.data.slice(0, 7) });
     } else if (ls.some((l) => l.forma === 'Débito')) {
       const ult = [...ls].sort((a, b) => a.data.localeCompare(b.data))[ls.length - 1];
-      out.push({ nome, banco, valorParcela: ult.valor, restantes: null, fim: null });
+      out.push({ chave: k, nome, banco, valorParcela: ult.valor, restantes: null, fim: null });
     }
   }
   return out.sort((a, b) => (a.fim ?? '9999').localeCompare(b.fim ?? '9999'));
@@ -66,6 +74,29 @@ export function mesesComContaNegativa(saldoHoje: number, movs: Record<string, nu
 
 export const MESES_RESERVA = 6;
 export const META_PATRIMONIO = 0.1;
+
+/** Metas que o casal ajusta pela tela (F4b); sem ajuste, os padrões acima. */
+export interface MetasTrilha { mesesReserva: number; metaPatrimonio: number }
+export const METAS_PADRAO: MetasTrilha = { mesesReserva: MESES_RESERVA, metaPatrimonio: META_PATRIMONIO };
+
+export type ChaveMeta = 'meses_reserva' | 'meta_patrimonio';
+/** Valor da tela (meses ou %, aceita vírgula) → valor gravado (meses inteiros; patrimônio em fração). */
+export function validarMeta(chave: unknown, valor: unknown): { ok: true; chave: ChaveMeta; valor: number } | { ok: false; erro: string } {
+  // só número simples ("12", "12,5", "12.5"): Number() sozinho aceitaria "0x10" e "1e1"
+  const txt = String(valor ?? '').trim();
+  const valido = typeof valor === 'number' ? Number.isFinite(valor) : /^\d+([.,]\d+)?$/.test(txt);
+  const vazio = !valido;
+  const n = typeof valor === 'number' ? valor : Number(txt.replace(',', '.'));
+  if (chave === 'meses_reserva') {
+    if (vazio || !Number.isInteger(n) || n < 1 || n > 24) return { ok: false, erro: 'Meses da reserva: número inteiro de 1 a 24.' };
+    return { ok: true, chave, valor: n };
+  }
+  if (chave === 'meta_patrimonio') {
+    if (vazio || !Number.isFinite(n) || n < 1 || n > 50) return { ok: false, erro: 'Patrimônio: de 1% a 50%.' };
+    return { ok: true, chave, valor: Math.round(n * 10) / 1000 };
+  }
+  return { ok: false, erro: 'Meta desconhecida.' };
+}
 export const MESES_ATRASO = 2;
 export const MESES_SOBRA = 3;
 
@@ -83,12 +114,14 @@ export interface DadosTrilha {
   aplicado: number;
   /** aplicação líquida (aplicou − resgatou) dos meses fechados */
   aplicacaoMensal: { mes: string; valor: number }[];
+  /** metas ajustadas pelo casal; ausente = padrão */
+  metas?: MetasTrilha;
 }
 export type StatusFase = 'cumprida' | 'atual' | 'depois';
 export interface Fase { n: 1 | 2 | 3 | 4; titulo: string; status: StatusFase; quando: string | null; proximoPasso: string }
 export interface Trilha {
   atual: 1 | 2 | 3 | 4; fases: Fase[];
-  reserva: { meta: number; aplicado: number; ritmo: number };
+  reserva: { meta: number; aplicado: number; ritmo: number; meses: number };
   patrimonio: { pct: number; meta: number };
   sobra: { cumpridos: number; meses: { mes: string; sobra: number }[] };
 }
@@ -107,6 +140,7 @@ export function partesDoTexto(s: string): (string | number)[] {
 /** As quatro fases: cumprida pelo que já aconteceu, "quando" pela previsão; a atual é a primeira não cumprida. */
 export function avaliarTrilha(d: DadosTrilha): Trilha {
   const mesAtual = d.hoje.slice(0, 7);
+  const metas = d.metas ?? METAS_PADRAO;
 
   // 1. dívidas: atraso só some da janela MESES_ATRASO meses depois
   const semFim = d.dividas.some((x) => x.fim === null);
@@ -132,7 +166,7 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
 
   // 3. reserva
   const g = d.gastoTravado;
-  const meta = r2(MESES_RESERVA * (g.fixos + g.casa + g.debitoTravado));
+  const meta = r2(metas.mesesReserva * (g.fixos + g.casa + g.debitoTravado));
   const f3ok = d.aplicado >= meta;
   const ritmo = d.aplicacaoMensal.length ? r2(d.aplicacaoMensal.reduce((s, m) => s + m.valor, 0) / d.aplicacaoMensal.length) : 0;
   const falta = Math.max(0, meta - d.aplicado);
@@ -155,10 +189,10 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
       { n: 1, titulo: 'Sair das dívidas', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
       { n: 2, titulo: 'Fazer sobrar', status: st(2, f2ok), quando: f2ok ? null : q2, proximoPasso: d.textoMeta },
       { n: 3, titulo: 'Reserva de emergência', status: st(3, f3ok), quando: q3, proximoPasso: p3 },
-      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar 10% do que entra (${marcaDinheiro(receitaMedia * META_PATRIMONIO)}/mês).` },
+      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar ${Math.round(metas.metaPatrimonio * 1000) / 10}% do que entra (${marcaDinheiro(receitaMedia * metas.metaPatrimonio)}/mês).` },
     ],
-    reserva: { meta, aplicado: d.aplicado, ritmo },
-    patrimonio: { pct, meta: META_PATRIMONIO },
+    reserva: { meta, aplicado: d.aplicado, ritmo, meses: metas.mesesReserva },
+    patrimonio: { pct, meta: metas.metaPatrimonio },
     sobra: { cumpridos, meses: meses.map((m) => ({ mes: m.mes, sobra: m.sobra })) },
   };
 }

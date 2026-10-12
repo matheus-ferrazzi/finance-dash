@@ -15,6 +15,7 @@ describe('folha mudar categoria', () => {
     expect(h).toContain('money');
     expect(h).toContain('do banco');
     expect(h).toContain('Mercado'); // categorias em português
+    expect(h).toContain('Isto é dívida (entra na trilha)');
   });
   it('sem documento: só duas opções', () => {
     const h = renderToStaticMarkup(createElement(FormCategoria, { lanc: { ...lanc, temDoc: false, nomeContraparte: null }, onSalvo: () => {} }));
@@ -33,5 +34,20 @@ describe('tela regras', () => {
   });
   it('sem regras: mensagem', () => {
     expect(renderToStaticMarkup(createElement(ListaRegras, { regras: [] }))).toContain('Nenhuma regra criada pelo painel');
+  });
+});
+
+describe('tela regras: seção trilha', () => {
+  it('marcações e metas alteradas, com apagar', async () => {
+    const { ListaAjustesTrilha } = await import('../../src/app/components/AjustesTrilha');
+    const h = renderToStaticMarkup(createElement(ListaAjustesTrilha, { ajustes: { marcacoes: [{ id: 1, tipo: 'nao_divida', nome: 'crediario loja', criadoEm: '2026-10-11' }], metas: [{ chave: 'meses_reserva', valor: 3 }] } }));
+    expect(h).toContain('Não é dívida');
+    expect(h).toContain('crediario loja');
+    expect(h).toContain('Reserva: 3 meses');
+    expect((h.match(/Apagar/g) ?? []).length).toBe(2);
+  });
+  it('sem ajustes: mensagem', async () => {
+    const { ListaAjustesTrilha } = await import('../../src/app/components/AjustesTrilha');
+    expect(renderToStaticMarkup(createElement(ListaAjustesTrilha, { ajustes: { marcacoes: [], metas: [] } }))).toContain('Nenhum ajuste da trilha');
   });
 });

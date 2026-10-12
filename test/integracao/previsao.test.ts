@@ -14,11 +14,13 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     // o painel lê a conexão das variáveis de ambiente na importação
     Object.assign(process.env, {
       DB_HOST: u.hostname, DB_PORT: u.port, DB_NAME: u.pathname.slice(1),
-      DB_USER: u.username, DB_PASSWORD: u.password,
+      DB_USER: u.username, DB_PASSWORD: u.password, DB_WRITER_USER: u.username, DB_WRITER_PASSWORD: u.password,
     });
     pool = new Pool({ connectionString: url });
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {
@@ -217,13 +219,17 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('tr-7', '2038-03-07', 80, 'PIX APLICACAO', 'Transfers', 'Débito', 'B1', 'Ariane', 'aporte', 'Saída', '2038-03-07'),
       ('tr-8', '2038-02-11', 40, 'LOJA X 2/5', 'Shopping', 'Crédito', 'B1', 'Ariane', 'despesa', 'Saída', '2038-02-11')`);
     const d = await queries.getTrilhaDados('2038-04-15');
-    expect(d.dividas).toEqual([{ nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2038-06' }]);
+    expect(d.dividas).toEqual([{ chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2038-06' }]);
     expect(d.atrasos).toContainEqual({ mes: '2038-03', motivo: 'juros' });
     expect(d.aplicacaoMensal).toEqual([{ mes: '2038-01', valor: 0 }, { mes: '2038-02', valor: 200 }, { mes: '2038-03', valor: 30 }]);
     expect(d.passados.map((p) => p.mes)).toEqual(['2038-01', '2038-02', '2038-03']);
     expect(d.sobraPrevista).toHaveLength(24);
     expect(typeof d.textoMeta).toBe('string');
     expect(d.aplicado).toBeGreaterThanOrEqual(0);
+    expect(d.metas).toEqual({ mesesReserva: 6, metaPatrimonio: 0.1 });
+    // F4b: marcar "não é dívida" tira a renegociação da trilha
+    await queries.marcarDivida({ tipo: 'nao_divida', chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências' });
+    expect((await queries.getTrilhaDados('2038-04-15')).dividas).toEqual([]);
   });
   it('dados da trilha: parcelamento de fatura e encargo vêm como pagamento_fatura no cartão; pagar a fatura pelo débito não é dívida', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
@@ -231,7 +237,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('tf-2', '2039-03-09', 12, 'ENC ATRASO PARC FATURA', 'Credit card fees', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-03-09'),
       ('tf-3', '2039-04-05', 900, 'PAGAMENTO FATURA PARC CARTAO', 'Credit card payment', 'Débito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-05')`);
     const d = await queries.getTrilhaDados('2039-04-15');
-    expect(d.dividas).toEqual([{ nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
+    expect(d.dividas).toEqual([{ chave: 'parcelamento de fatura|B3', nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
     expect(d.atrasos).toContainEqual({ mes: '2039-03', motivo: 'juros' });
   });
   it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {

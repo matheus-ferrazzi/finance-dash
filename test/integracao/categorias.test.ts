@@ -19,6 +19,7 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {
@@ -94,5 +95,32 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     expect((await queries.getLancamentoParaCorrigir('d1'))!.nomeContraparte).toBe('FESTAS MEI');
     await queries.salvarRegra({ tipo: 'doc', idTransacao: 'd1', categoria: 'Gifts' });
     expect(JSON.stringify(await queries.listarRegras())).not.toContain('55566677788');
+  });
+  it('trilha: "é dívida" pelo lançamento, "não é dívida" pela chave; o oposto substitui; apagar', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, categoria_banco, forma_pagamento, banco, responsavel, classe, tipo_movimento)
+      VALUES ('tj1', '2041-01-05', 50, 'CREDIARIO LOJA Y 2/8', 'Shopping', 'Shopping', 'Crédito', 'B9', 'Ariane', 'despesa', 'Saída')`);
+    expect(await queries.marcarDivida({ tipo: 'divida', idTransacao: 'tj1' })).toHaveProperty('id');
+    const nao = await queries.marcarDivida({ tipo: 'nao_divida', chave: 'crediario loja y|B9', nome: 'crediario loja y' });
+    const aj = await queries.listarAjustesTrilha();
+    expect(aj.marcacoes.filter((m) => m.nome === 'crediario loja y').map((m) => m.tipo)).toEqual(['nao_divida']); // o oposto saiu
+    expect('id' in nao && (await queries.apagarMarcacao(nao.id))).toBe(true);
+    expect(await queries.apagarMarcacao(999999)).toBe(false);
+    expect(await queries.marcarDivida({ tipo: 'divida', idTransacao: 'nao-existe' })).toEqual({ erro: 'Lançamento não encontrado.' });
+    expect(await queries.marcarDivida({ tipo: 'nao_divida', chave: 'sem barra', nome: 'x' })).toEqual({ erro: 'Dívida inválida.' });
+    // receita (ou pagamento de fatura pela conta) não entra na trilha: marcar seria enganoso
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, categoria_banco, forma_pagamento, banco, responsavel, classe, tipo_movimento)
+      VALUES ('tj2', '2041-01-06', 500, 'PIX RECEBIDO', 'Transfers', 'Transfers', 'Débito', 'B9', 'Ariane', 'receita', 'Entrada')`);
+    expect(await queries.marcarDivida({ tipo: 'divida', idTransacao: 'tj2' })).toEqual({ erro: 'Só despesa ou parcela no cartão entra na trilha.' });
+  });
+
+  it('trilha: metas gravadas e apagadas (volta ao padrão)', async () => {
+    expect(await queries.getMetasTrilha()).toEqual({ mesesReserva: 6, metaPatrimonio: 0.1 });
+    await queries.salvarMeta('meses_reserva', 3);
+    await queries.salvarMeta('meta_patrimonio', 0.2);
+    expect(await queries.getMetasTrilha()).toEqual({ mesesReserva: 3, metaPatrimonio: 0.2 });
+    expect((await queries.listarAjustesTrilha()).metas).toEqual([{ chave: 'meses_reserva', valor: 3 }, { chave: 'meta_patrimonio', valor: 0.2 }]);
+    expect(await queries.apagarMeta('meses_reserva')).toBe(true);
+    expect((await queries.getMetasTrilha()).mesesReserva).toBe(6);
+    await queries.apagarMeta('meta_patrimonio');
   });
 });

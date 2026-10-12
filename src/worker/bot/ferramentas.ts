@@ -73,8 +73,11 @@ export function formatar(nome: string, d: any, painel: string): string {
       for (const g of d.grupos.slice(0, 5)) l.push(`${g.diferenca > 0 ? '⬆️' : g.diferenca < 0 ? '⬇️' : '➖'} ${g.nome}: ${brl(g.a)} × ${brl(g.b)}`);
       break;
     case 'faturas':
-      l.push(`💳 Faturas: *${brl(d.total)}* em aberto`);
-      for (const f of d.itens) l.push(`${f.paga ? '✅' : '🔸'} ${f.banco} (${f.pessoa}): ${brl(f.valor)}${f.vencimento ? `, vence ${f.vencimento}` : ''}`);
+      // fatura com vencimento passado é a última fechada (a Pluggy segue mostrando): não entra no "a vencer"
+      l.push(`💳 Faturas a vencer: *${brl(d.total)}*`);
+      for (const f of d.itens.filter((x: any) => !x.vencida && !x.paga)) l.push(`🔸 ${f.banco} (${f.pessoa}): ${brl(f.valor)}${f.vencimento ? `, vence ${f.vencimento}` : ''}`);
+      for (const f of d.itens.filter((x: any) => x.vencida && !x.paga)) l.push(`🗓️ ${f.banco} (${f.pessoa}): ${brl(f.valor)}, venceu ${f.vencimento} (última fechada; confira se foi paga)`);
+      for (const f of d.itens.filter((x: any) => x.paga)) l.push(`✅ ${f.banco} (${f.pessoa}): sem valor em aberto`);
       break;
     case 'contas_do_mes':
       l.push(`🧾 Contas de ${d.mesLabel}: falta *${brl(d.totalFalta)}*`);

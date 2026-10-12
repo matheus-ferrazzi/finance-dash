@@ -54,3 +54,17 @@ describe('gráfico da ferramenta', () => {
     expect(graficoDaFerramenta('trilha', {})).toBeNull();
   });
 });
+
+describe('faturas vencidas (E1)', () => {
+  it('em aberto soma só as que ainda vão vencer; as vencidas aparecem à parte como última fatura fechada', () => {
+    const t = formatar('faturas', { itens: [
+      { banco: 'A', pessoa: 'Ariane', valor: 100, vencimento: '02/10', paga: false, vencida: true },
+      { banco: 'B', pessoa: 'Matheus', valor: 50, vencimento: '20/10', paga: false, vencida: false },
+      { banco: 'C', pessoa: 'Matheus', valor: 0, vencimento: '10/11', paga: true, vencida: false },
+    ], total: 50, link: '/faturas' }, 'https://p');
+    expect(t).toContain(`💳 Faturas a vencer: *${brl(50)}*`);
+    expect(t).toContain(`🔸 B (Matheus): ${brl(50)}, vence 20/10`);
+    expect(t).toContain(`🗓️ A (Ariane): ${brl(100)}, venceu 02/10 (última fechada; confira se foi paga)`);
+    expect(t).toContain('✅ C (Matheus): sem valor em aberto');
+  });
+});

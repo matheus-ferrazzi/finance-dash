@@ -13,6 +13,14 @@ function montar(busca = itens) {
   return { locais, criadas, posts, refs };
 }
 
+function criarLocaisZero() {
+  const criadas: any[] = []; const refs = new Map();
+  const locais = criarLocais({ pessoa: 'Matheus', hoje: '2026-10-12', refs,
+    painel: async () => ({ ok: true, dados: { itens } }), painelPost: async () => ({ ok: true, dados: { tipo: 'lancamento', afetados: 0, nome: 'x' } }),
+    acoes: { criar: async (...a: any[]) => { criadas.push(a); return 1; } } });
+  return { locais, criadas };
+}
+
 describe('executores locais', () => {
   it('busca guarda refs L1.. (sem id para o modelo) e devolve a lista quando há mais de um', async () => {
     const m = montar();
@@ -20,7 +28,7 @@ describe('executores locais', () => {
     expect(r.dados.itens.map((x: any) => x.ref)).toEqual(['L1', 'L2']);
     expect(JSON.stringify(r.dados)).not.toContain('T1');
     expect(r.dados.lista).toContain('1) 10/10 PIX FULANO');
-    expect(m.refs.get('Matheus').get('L2').id).toBe('T2');
+    expect(m.refs.get('Matheus').itens.get('L2').id).toBe('T2');
   });
   it('propor_categoria: ref da busca → prévia → proposta com o texto montado', async () => {
     const m = montar();
@@ -43,5 +51,15 @@ describe('executores locais', () => {
     expect(await m.locais.propor_conta_avulsa({ nome: 'X', valor: 0 })).toMatchObject({ ok: false });
     expect(await m.locais.propor_conta_avulsa({ nome: 'X', valor: 10, mes: '2026-12' })).toMatchObject({ ok: false });
     expect(await m.locais.propor_conta_avulsa({ nome: 'X', valor: 10, mes: '2026-11', pessoa: 'Ariane' })).toMatchObject({ ok: true });
+  });
+  it('revisão E2: ref de busca com mais de 5 min é recusada; prévia sem efeito vira erro', async () => {
+    const m = montar();
+    await m.locais.buscar_lancamentos({ texto: 'fulano' });
+    m.refs.get('Matheus').quando -= 6 * 60_000;
+    expect(await m.locais.propor_categoria({ ref: 'L1', categoria: 'Groceries', escopo: 'este' })).toMatchObject({ ok: false });
+    const z = criarLocaisZero();
+    await z.locais.buscar_lancamentos({ texto: 'fulano' });
+    expect(await z.locais.propor_categoria({ ref: 'L1', categoria: 'Groceries', escopo: 'este' })).toMatchObject({ ok: false, dados: { erro: expect.stringContaining('já está') } });
+    expect(z.criadas).toEqual([]);
   });
 });

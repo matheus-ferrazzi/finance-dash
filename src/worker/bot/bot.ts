@@ -27,6 +27,10 @@ export function criarBot(d: {
   const enviados = new Set<string>();
   const refs = new Map();                      // pessoa → refs L1..L5 da última busca (só no worker)
   const listas = new Map<string, number>();    // pessoa → quando recebeu a última lista de candidatos
+  const vistos = new Set<string>();            // ids de mensagens já tratadas (webhook pode entregar de novo)
+  let curtas: Promise<void> = Promise.resolve(); // "sim/não/número" em série, fora da fila de perguntas
+  // escrita no painel: falha de rede vira resposta de erro (nunca silêncio)
+  const post = (c: string, corpo: object): Promise<Res> => d.painelPost(c, corpo).catch((e) => ({ ok: false, dados: { erro: e instanceof Error ? e.message : String(e) } }));
   const lembrar = (id: string | null) => {
     if (!id) return;
     enviados.add(id);
@@ -48,7 +52,7 @@ export function criarBot(d: {
       if (pend.expirada) { await mandar(EXPIRADO, null); return { tratado: true }; }
       if (r === 'nao') { await d.acoes.cancelar(pend.id); await mandar(CANCELADO, null); return { tratado: true }; }
       if (!(await d.acoes.confirmar(pend.id))) return { tratado: true };   // outro "sim" já confirmou
-      const ex = await d.painelPost('/api/bot/executar', { id: pend.id });
+      const ex = await post('/api/bot/executar', { id: pend.id });
       await mandar(ex.ok ? textoFeito(ex.dados.resumo, pend.tipo === 'avulsa' ? '/contas' : '/gastos', d.painelUrl)
         : `⚠️ Não consegui gravar: ${ex.dados?.erro ?? 'erro'}`, null);
       if (!ex.ok) d.log(`bot: ação ${pend.id} não gravou`);
@@ -57,7 +61,7 @@ export function criarBot(d: {
     if (r === 'desfaz') {
       const f = await d.acoes.ultimaFeita(p.pessoa);
       if (!f) { await mandar(NADA_DESFAZER, null); return { tratado: true }; }
-      const dz = await d.painelPost('/api/bot/desfazer', { id: f.id, pessoa: p.pessoa });
+      const dz = await post('/api/bot/desfazer', { id: f.id, pessoa: p.pessoa });
       await mandar(dz.ok ? textoDesfeito(f.resumo) : `⚠️ Não consegui desfazer: ${dz.dados?.erro ?? 'erro'}`, null);
       return { tratado: true };
     }
@@ -91,8 +95,22 @@ export function criarBot(d: {
     enviados,
     receber(corpo: unknown) {
       const e = lerWebhook(corpo, d.cfg, enviados);
+      if (e.tipo === 'pergunta' || e.tipo === 'resposta') {
+        if (e.p.id) {
+          if (vistos.has(e.p.id)) return;
+          vistos.add(e.p.id);
+          if (vistos.size > 500) vistos.delete(vistos.values().next().value as string);
+        }
+      }
       if (e.tipo === 'pergunta') fila.colocar(e.p);
-      else if (e.tipo === 'resposta') fila.colocar({ ...e.p, curta: true });
+      else if (e.tipo === 'resposta') {
+        // nunca ocupa vaga de pergunta nem gera "⏳": sem nada pendente, some em silêncio
+        const p: Item = { ...e.p, curta: true };
+        curtas = curtas.then(async () => {
+          const c = await respostaCurta(p);
+          if (!c.tratado && c.texto) fila.colocar({ ...p, curta: false, texto: c.texto });
+        }).catch((err) => d.log(`bot: resposta curta falhou (${err instanceof Error ? err.message : String(err)})`));
+      }
       else if (e.tipo === 'nao_texto') void mandar(SO_TEXTO, null).catch(() => {});
     },
   };

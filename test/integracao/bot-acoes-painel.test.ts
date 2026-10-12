@@ -81,4 +81,24 @@ describe.skipIf(!url)('ações do bot no painel (integração)', () => {
     expect(r).toEqual([{ id: 'eb1', data: '03/02', valor: 50, descricao: 'PIX ENVIADO FULANO', pessoa: 'Matheus', categoria: 'Transfers' }]);
     expect(await getBuscaBot('casal', '2046-02-01', '2046-03-01', 'fulano', 51)).toEqual([]);
   });
+  it('revisão E2: dois executar ao mesmo tempo no mesmo id gravam uma vez', async () => {
+    const id = await acao('avulsa', { mes: '2046-03', nome: 'Duplo', valor: 10, responsavel: 'Matheus' });
+    const rs = await Promise.all([executarAcao(id), executarAcao(id)]);
+    expect(rs.filter((r: any) => r.ok)).toHaveLength(1);
+    expect((await pool.query(`SELECT count(*)::int n FROM financas_contas_marcas WHERE nome='Duplo'`)).rows[0].n).toBe(1);
+  });
+
+  it('revisão E2: desfazer avulsa já apagada no painel ou regra mudada depois: recusa e não mexe', async () => {
+    const av = await acao('avulsa', { mes: '2046-03', nome: 'Sumiu', valor: 10, responsavel: 'Matheus' });
+    await executarAcao(av);
+    await pool.query(`DELETE FROM financas_contas_marcas WHERE nome='Sumiu'`);
+    expect(await desfazerAcao(av, 'Matheus')).toMatchObject({ ok: false });
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, categoria_banco, classe, forma_pagamento, banco, responsavel)
+      VALUES ('ea3', '2046-03-04', 70, 'PIX ENVIADO TERCEIRO', 'Transfers', 'Transfers', 'despesa', 'Débito', 'B', 'Matheus')`);
+    const cat = await acao('categoria', { tipo: 'lancamento', idTransacao: 'ea3', categoria: 'Groceries' });
+    await executarAcao(cat);
+    await salvarRegra({ tipo: 'lancamento', idTransacao: 'ea3', categoria: 'Pharmacy' }); // mudou depois, pela tela
+    expect(await desfazerAcao(cat, 'Matheus')).toMatchObject({ ok: false });
+    expect((await pool.query(`SELECT categoria FROM financas_lancamentos WHERE id_transacao='ea3'`)).rows[0].categoria).toBe('Pharmacy');
+  });
 });

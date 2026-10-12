@@ -45,6 +45,8 @@ export async function responder(p: Pergunta, d: {
   const ferramentas: RespostaBot['ferramentas'] = [];
   const resultados: unknown[] = [];
   let ultima: { nome: string; dados: any } | null = null;
+  // E2: a proposta criada nesta conversa sempre é mostrada (uma proposta escondida seria confirmada às cegas)
+  let proposta: string | null = null;
   const msgs: MsgChat[] = [
     { role: 'system', content: SISTEMA(p.pessoa, d.hoje) },
     ...d.contexto.flatMap((c): MsgChat[] => [{ role: 'user', content: c.pergunta }, { role: 'assistant', content: c.resposta }]),
@@ -63,7 +65,7 @@ export async function responder(p: Pergunta, d: {
         const texto = (r.content ?? '').trim();
         if (!ferramentas.length) return fimCom(SEM_FERRAMENTA, { modelo, semFerramenta: true });
         // E2: proposta e lista são textos do sistema — o modelo não reescreve
-        if (ultima?.dados?.proposta) return fimCom(ultima.dados.proposta, { modelo, svg: null });
+        if (proposta) return fimCom(proposta, { modelo, svg: null });
         if (ultima?.dados?.lista) return fimCom(ultima.dados.lista, { modelo, svg: null });
         // decisão (simular) e listas que o modelo resumia mal (faturas, contas): sempre o texto montado
         if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo });
@@ -92,10 +94,12 @@ export async function responder(p: Pergunta, d: {
         }
         ferramentas.push({ nome: t.nome, args, ok: res.ok });
         if (res.ok) { resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados }; }
+        if (res.ok && res.dados?.proposta) proposta = res.dados.proposta;
         msgs.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(res.dados) });
       }
     }
-    // rodadas esgotadas: responde com o que já tem
+    // rodadas esgotadas: responde com o que já tem (proposta primeiro)
+    if (proposta) return fimCom(proposta, { modelo, svg: null });
     return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: true }) : fimCom(FALHA, { modelo, erro: 'rodadas esgotadas sem dados' });
   } catch (e) {
     return fimCom(FALHA, { modelo, erro: e instanceof Error ? e.message : String(e), svg: null });

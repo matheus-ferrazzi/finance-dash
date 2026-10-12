@@ -54,6 +54,6 @@ describe('revisão final F2a', () => {
     expect(r.aprofunda).toBe(50);
     const t = textoVeredito(r, (m) => m, (v) => `R$ ${v}`);
     expect(t.startsWith('Cabe')).toBe(false);
-    expect(t).toBe('Atenção: 2027-02 já fica no vermelho sem ela; a compra aprofunda em R$ 50.');
+    expect(t).toBe('Atenção: já está no vermelho sem ela; no pior mês (2027-02) a compra aprofunda o vermelho em R$ 50.');
   });
 });

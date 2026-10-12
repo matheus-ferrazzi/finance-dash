@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkPara, mesValido, podeIrParaMesSeguinte } from '../../src/lib/links';
+import { linkPara, mesValido, podeIrParaMesSeguinte, temSeletorDeMes } from '../../src/lib/links';
 
 describe('linkPara', () => {
   it('cada tela tem seu caminho', () => {
@@ -7,6 +7,7 @@ describe('linkPara', () => {
     expect(linkPara('previsao')).toBe('/previsibilidade');
     expect(linkPara('contas')).toBe('/contas');
     expect(linkPara('buscar')).toBe('/buscar');
+    expect(linkPara('simulador', { resp: 'Ariane' })).toBe('/simulador?resp=Ariane');
   });
   it('omite padrão: casal e mês atual', () => {
     expect(linkPara('contas', { resp: 'casal', mes: '2026-10' }, '2026-10')).toBe('/contas');
@@ -53,5 +54,15 @@ describe('revisão final: mês e filtros na navegação', () => {
     const { qsNavegacao } = await import('../../src/lib/links');
     expect(qsNavegacao('resp=Ariane&mes=2026-09&grupo=Mercado&cartao=X&tipo=livre&p=7d')).toBe('resp=Ariane&mes=2026-09');
     expect(qsNavegacao('grupo=Mercado')).toBe('');
+  });
+});
+
+describe('seletor de mês do topo', () => {
+  it('some na Previsão (as setas do detalhe navegam) e no Simulador (não tem mês); fica no resto', () => {
+    expect(temSeletorDeMes('/previsibilidade')).toBe(false);
+    expect(temSeletorDeMes('/simulador')).toBe(false);
+    expect(temSeletorDeMes('/gastos')).toBe(true);
+    expect(temSeletorDeMes('/')).toBe(true);
+    expect(temSeletorDeMes('/contas')).toBe(true);
   });
 });

@@ -737,18 +737,54 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
-export async function getRealizado(mes: string): Promise<Componentes> {
+export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<Componentes> {
+  const rr = rf(resp, 3);
   const [r] = await q<any>(
     `SELECT
        COALESCE(SUM(valor) FILTER (WHERE classe='receita'),0) AS receita,
        COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}),0) AS debito,
        COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND categoria = ANY($2::text[])),0) AS casa,
        COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SEM_ESPELHO}),0) AS fatura
-     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date`,
-    [`${mes}-01`, CASA_CATS],
+     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date${rr.sql}`,
+    [`${mes}-01`, CASA_CATS, ...rr.p],
   );
   const c = { receita: Number(r.receita), debito: Number(r.debito), casa: Number(r.casa), fatura: Number(r.fatura) };
   return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
+}
+
+export interface MesPassado { mes: string; previsto: Componentes; real: Componentes; saldoFim: number }
+
+// só o PREVISTO fica em cache (feito na véspera, não muda e é a parte cara); o real e o saldo são
+// consultas leves, refeitas a cada acesso para acompanhar lançamento que a sincronização trouxer depois.
+// Promessa por pessoa+mês; virou o mês, as chaves do mês anterior saem (as das outras pessoas ficam).
+const cachePrevisto = new Map<string, Promise<Componentes>>();
+
+function previstoNaVespera(resp: Resp, mes: string, mesRef: string): Promise<Componentes> {
+  const chave = `${resp}|${mesRef}|${mes}`;
+  const ja = cachePrevisto.get(chave);
+  if (ja) return ja;
+  for (const k of Array.from(cachePrevisto.keys())) if (k.split('|')[1] !== mesRef) cachePrevisto.delete(k);
+  const ant = addMonths(mes, -1);
+  const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
+  // mesma régua da calibração: véspera do mês e a regra do débito em uso
+  const p = getProjecaoBase(resp, vesp, { regraDebito: REGRA_DEBITO })
+    .then((base) => componentesPrevistos(computeProjecao(base, 1, vesp)[1]));
+  cachePrevisto.set(chave, p);
+  p.catch(() => cachePrevisto.delete(chave));
+  return p;
+}
+
+/** Os `n` meses fechados antes do atual: previsto na véspera × real × saldo em conta no fim (reconstruído). */
+export async function getMesesPassados(resp: Resp, hoje: string = currentDateSP(), n = 3): Promise<MesPassado[]> {
+  const atual = hoje.slice(0, 7);
+  const meses = Array.from({ length: n }, (_, i) => addMonths(atual, -(n - i)));
+  const [saldo, movs] = await Promise.all([getSaldoContas(resp), getMovimentosDiarios(resp, `${meses[0]}-01`, hoje)]);
+  return Promise.all(meses.map(async (mes) => {
+    const [previsto, real] = await Promise.all([previstoNaVespera(resp, mes, atual), getRealizado(mes, resp)]);
+    const fimDoMes = `${mes}-${String(diasNoMes(mes)).padStart(2, '0')}`;
+    const depois = Object.entries(movs).filter(([d]) => d > fimDoMes).reduce((s, [, v]) => s + v, 0);
+    return { mes, previsto, real, saldoFim: Math.round((saldo.total - depois) * 100) / 100 };
+  }));
 }
 
 /** Débito dos `n` meses fechados antes do mês de `hoje`: livre × travado, fora casa e espelhos; mês vazio = 0. */

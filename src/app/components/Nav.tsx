@@ -6,7 +6,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { qsNavegacao } from '@/lib/links';
 import {
   LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
-  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck,
+  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck, Calculator,
 } from 'lucide-react';
 
 /**
@@ -22,6 +22,7 @@ const LINKS = [
 
 const EXTRA = [
   { href: '/faturas', label: 'Faturas', short: 'Faturas', icon: CreditCard },
+  { href: '/simulador', label: 'Simulador de compra', short: 'Simular', icon: Calculator },
   { href: '/diagnostico', label: 'Diagnóstico', short: 'Diagnóst.', icon: Stethoscope },
   { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
   { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },

@@ -128,10 +128,6 @@ export function SimuladorCompra({
               </span>
             ))}
           </div>
-
-          <p className="mt-3 text-[11px] text-faint">
-            A linha tracejada no gráfico abaixo mostra como fica o dinheiro em conta com essa compra.
-          </p>
         </div>
       )}
 

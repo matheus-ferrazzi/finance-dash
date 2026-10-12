@@ -54,7 +54,11 @@ const SQL_CONSENT = `SELECT banco, responsavel,
   ORDER BY consent_expires_at`;
 
 /** `urlPainel`: base interna do painel (rede do Docker); os resumos do D e o ritmo vêm de lá. */
-export function criarFontes(pool: Pool, urlPainel = 'http://finance-dashboard:3000', fetcher: Fetcher = fetch as unknown as Fetcher): Fontes {
+export function criarFontes(
+  pool: Pool, urlPainel = 'http://finance-dashboard:3000', fetcher: Fetcher = fetch as unknown as Fetcher,
+  /** E1: falhas do bot e modelos da lista que sumiram da Groq (para o aviso técnico) */
+  bot?: () => Promise<{ falhas24h: number; modelosSumidos: string[] }>,
+): Fontes {
   const um = async (sql: string, campo: string) => (await pool.query(sql)).rows[0]?.[campo];
   const painel = async (caminho: string) => {
     const r = await fetcher(`${urlPainel}${caminho}`, { signal: AbortSignal.timeout(30000) });
@@ -70,6 +74,8 @@ export function criarFontes(pool: Pool, urlPainel = 'http://finance-dashboard:30
       saude: await um(SQL_SAUDE, 'saude'),
       backup: await um(SQL_BACKUP, 'st'),
       consentimentos: (await pool.query(SQL_CONSENT)).rows.map((x) => ({ banco: x.banco, responsavel: x.responsavel, dias: Number(x.dias) })),
+      // checar o bot nunca derruba o aviso técnico
+      bot: bot ? await bot().catch(() => ({ falhas24h: 0, modelosSumidos: [] })) : undefined,
     }),
     fatura: () => um(SQL_FATURA, 'faturas'),
     gasto: () => um(SQL_GASTO, 'txs'),

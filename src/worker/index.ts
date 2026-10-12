@@ -2,6 +2,12 @@ import { writeFileSync } from 'node:fs';
 import { Cron } from 'croner';
 import { Pool } from 'pg';
 import { AGENDA, AGENDA_NOTIF, lerArgs, lerModo } from './cli';
+import { criarBot } from './bot/bot';
+import { lerMembros } from './bot/entrada';
+import { ClienteGroq } from './bot/groq';
+import { PgRegistroBot } from './bot/registro';
+import { criarServidor } from './bot/servidor';
+import { currentDateSP } from '../lib/format';
 import { CanalTelegram } from './notificacoes/canal';
 import { CanalWhatsApp } from './notificacoes/whatsapp';
 import { criarFontes } from './notificacoes/fontes';
@@ -49,8 +55,13 @@ async function main() {
   const waInst = process.env.WA_INSTANCIA ?? 'financas';
   const wa = (destino: string | undefined) => (waKey && destino ? new CanalWhatsApp(waUrl, waKey, waInst, destino) : null);
   const canais = { grupo: wa(process.env.WA_GRUPO) ?? telegram, matheus: wa(process.env.WA_MATHEUS), telegram };
+  // E1: bot de perguntas (só sobe no "agendar" e com tudo configurado)
+  const groqKey = process.env.GROQ_API_KEY;
+  const groq = groqKey ? new ClienteGroq(groqKey, (process.env.GROQ_MODELOS ?? 'openai/gpt-oss-120b').split(',').map((s) => s.trim()).filter(Boolean)) : null;
+  const registroBot = new PgRegistroBot(pool);
   const notif = {
-    fontes: criarFontes(pool, process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000'),
+    fontes: criarFontes(pool, process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000', undefined,
+      groq ? async () => ({ falhas24h: await registroBot.falhas24h(), modelosSumidos: await groq.modelosSumidos() }) : undefined),
     registro: new PgRegistroNotif(pool), canais, painelUrl: process.env.PAINEL_URL ?? '',
   };
   const notificar = async (bot: Bot, dryRun: boolean) => {
@@ -80,6 +91,26 @@ async function main() {
     if (!canais.matheus) log('aviso técnico em sombra: sem WA_MATHEUS');
     if (!canais.telegram) log('bots do C2 em sombra: sem Telegram');
     if (!notif.painelUrl) log('PAINEL_URL vazio: as mensagens saem sem link do painel');
+    new Cron('20 4 * * *', { timezone: TZ, protect: true }, async () => {
+      const n = await registroBot.limpar(90).catch(() => 0);
+      if (n) log(`bot: ${n} conversa(s) com mais de 90 dias apagada(s)`);
+    });
+    const faltando = ['GROQ_API_KEY', 'BOT_TOKEN', 'BOT_MEMBROS', 'BOT_JIDS', 'WA_GRUPO', 'WA_API_KEY'].filter((k) => !process.env[k]);
+    if (faltando.length) log(`bot desligado: falta ${faltando.join(', ')}`);
+    else {
+      const painelBase = process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000';
+      const wa = new CanalWhatsApp(waUrl, waKey!, waInst, process.env.WA_GRUPO!);
+      const bot = criarBot({
+        cfg: { grupo: process.env.WA_GRUPO!, membros: lerMembros(process.env.BOT_MEMBROS!), botJids: process.env.BOT_JIDS!.split('|').filter(Boolean) },
+        groq: groq!, registro: registroBot, wa, renderizar: (s) => paraPng(s), hoje: currentDateSP, painelUrl: notif.painelUrl, log,
+        painel: async (c) => {
+          const r = await fetch(`${painelBase}${c}`, { signal: AbortSignal.timeout(30000) });
+          return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
+        },
+      });
+      const porta = Number(process.env.BOT_PORTA ?? 8090);
+      criarServidor(process.env.BOT_TOKEN!, (c) => bot.receber(c)).listen(porta, '0.0.0.0', () => log(`bot no ar na porta interna ${porta}`));
+    }
     log(`worker no ar, modo=${modo}, ${AGENDA.length} tarefas + ${AGENDA_NOTIF.length} notificações agendadas (${TZ})`);
     return;
   }

@@ -114,6 +114,12 @@ describe('técnico', () => {
       '🔴 Consentimento do B2 (R) na Pluggy venceu',
     ].join('\n'));
   });
+  it('bot: falhas e modelo sumido viram linhas 🔴; zerado não aparece', () => {
+    const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], bot: { falhas24h: 2, modelosSumidos: ['m-velho'] } })!;
+    expect(t).toContain('🔴 Bot: 2 pergunta(s) com falha nas últimas 24h');
+    expect(t).toContain('🔴 Bot: modelo m-velho não existe mais na Groq');
+    expect(montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], bot: { falhas24h: 0, modelosSumidos: [] } })).toBeNull();
+  });
 });
 
 describe('barra da trilha', () => {

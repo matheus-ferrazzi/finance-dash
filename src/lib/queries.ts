@@ -7,7 +7,7 @@ import {
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
 import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
-import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
+import { agruparGastos, FIXO_DEBITO_CATS, grupoDaCategoria, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
 import { componentesPrevistos, type Componentes } from './backtest';
@@ -1504,15 +1504,16 @@ export async function listarAjustesTrilha(): Promise<AjustesTrilha> {
 // ==================== RESUMOS DO D ====================
 
 /** Gasto do casal por categoria (efetiva) num intervalo [inicio, fimExcl). */
-export async function getGastoPorCategoriaEntre(inicio: string, fimExcl: string): Promise<Map<string, number>> {
+export async function getGastoPorCategoriaEntre(inicio: string, fimExcl: string, resp: Resp = 'casal'): Promise<Map<string, number>> {
+  const r = rf(resp, 3);
   const rows = await q<any>(
     `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS cat, SUM(valor)::float8 AS v
      FROM financas_lancamentos
-     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date
+     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}
      GROUP BY 1`,
-    [inicio, fimExcl],
+    [inicio, fimExcl, ...r.p],
   );
-  return new Map(rows.map((r) => [r.cat as string, Math.round(Number(r.v) * 100) / 100]));
+  return new Map(rows.map((x) => [x.cat as string, Math.round(Number(x.v) * 100) / 100]));
 }
 
 /** Gasto livre por dia do mês de `hoje`, até `hoje` (o mesmo filtro do variavelJaGasto: débito, fora casa e fixos). */
@@ -1530,4 +1531,22 @@ export async function getGastoLivrePorDia(resp: Resp, hoje: string): Promise<{ d
     [...r.p, hoje, CASA_CATS, FIXO_DEBITO_CATS],
   );
   return rows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.valor) * 100) / 100 }));
+}
+
+/** E1: maiores despesas de um período (grupo opcional, pelos grupos do painel). */
+export async function getMaioresGastos(resp: Resp, inicio: string, fimExcl: string, grupo: string | null, limite = 10) {
+  const r = rf(resp, 3);
+  const rows = await q<any>(
+    `SELECT to_char(data_lancamento,'DD/MM') AS data, valor::float8 AS valor, COALESCE(descricao,'(sem descrição)') AS descricao,
+            COALESCE(responsavel,'—') AS pessoa, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria
+     FROM financas_lancamentos
+     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}
+     ORDER BY valor DESC, data_lancamento`,
+    [inicio, fimExcl, ...r.p],
+  );
+  return rows
+    .filter((x) => grupo === null || (grupoDaCategoria(x.categoria)?.nome ?? 'Resto') === grupo)
+    .slice(0, limite)
+    // sem CPF/CNPJ: a descrição vai para a Groq e para o grupo
+    .map((x) => ({ data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: nomeSemDocumento(x.descricao) ?? '(sem descrição)', pessoa: x.pessoa, categoria: x.categoria }));
 }

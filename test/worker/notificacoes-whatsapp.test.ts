@@ -40,3 +40,11 @@ describe('WhatsApp: imagem', () => {
     await expect(c.enviarImagem(Buffer.from('x'), 'l')).rejects.not.toThrow(/CHAVE-FALSA/);
   });
 });
+
+describe('WhatsApp: id da mensagem enviada (E1)', () => {
+  it('enviarComId e enviarImagemComId devolvem key.id', async () => {
+    const c = new CanalWhatsApp('http://evo', 'K', 'financas', 'G', (async () => ({ ok: true, json: async () => ({ key: { id: 'MSG1' } }) })) as any);
+    expect(await c.enviarComId('oi')).toBe('MSG1');
+    expect(await c.enviarImagemComId(Buffer.from('x'), 'l')).toBe('MSG1');
+  });
+});

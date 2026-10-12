@@ -8,6 +8,15 @@ export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alg
 export const SEM_FERRAMENTA = '🤷 Ainda não sei responder isso. Anotei a pergunta.';
 export const SO_TEXTO = '🎧 Por enquanto só leio texto.';
 const RODADAS = 4;
+const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes']);
+
+/** O link do painel é do sistema, não do modelo: tira o que ele escreveu (relativo ou completo) e põe o certo no fim. */
+function comLink(texto: string, painelUrl: string, link: string | undefined): string {
+  if (!link) return texto;
+  const base = painelUrl.replace(/\/+$/, '');
+  const linhas = texto.split('\n').filter((l) => !(base && l.includes(base)) && !/(^|\s)\/[a-z][\w-]*(\?\S*)?\s*$/i.test(l));
+  return `${linhas.join('\n').trimEnd()}\n\n👉 ${base}${link}`;
+}
 
 export interface RespostaBot {
   texto: string; svg: string | null; ferramentas: { nome: string; args: unknown; ok: boolean }[];
@@ -20,6 +29,7 @@ const SISTEMA = (quem: string, hoje: string) => [
   'Use SEMPRE as ferramentas para qualquer número. Nunca some, subtraia, calcule percentual ou invente valor: copie os valores das ferramentas.',
   'Se nenhuma ferramenta serve, diga que ainda não sabe responder. Não chute.',
   'Responda em português, tom contido, até 8 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
+  'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
 ].join('\n');
 
@@ -48,12 +58,15 @@ export async function responder(p: Pergunta, d: {
       if (!r.toolCalls.length) {
         const texto = (r.content ?? '').trim();
         if (!ferramentas.length) return fimCom(SEM_FERRAMENTA, { modelo, semFerramenta: true });
+        // decisão (simular) e listas que o modelo resumia mal (faturas, contas): sempre o texto montado
+        if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
           return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: !!texto }) : fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
         // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia
-        return fimCom(/^\s*bot(?![\p{L}\p{N}])/iu.test(texto) ? `🤖 ${texto}` : texto, { modelo });
+        const final = /^\s*bot(?![\p{L}\p{N}])/iu.test(texto) ? `🤖 ${texto}` : texto;
+        return fimCom(ultima ? comLink(final, d.painelUrl, ultima.dados?.link) : final, { modelo });
       }
       msgs.push({ role: 'assistant', content: r.content, tool_calls: r.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.nome, arguments: t.args } })) });
       for (const t of r.toolCalls) {

@@ -14,7 +14,7 @@ describe('agente', () => {
       { content: '🛒 Mercado: R$ 400,00 este mês.', toolCalls: [], modelo: 'm' },
     ]);
     const r = await responder(p, { ...base, groq: g });
-    expect(r.texto).toBe('🛒 Mercado: R$ 400,00 este mês.');
+    expect(r.texto).toBe('🛒 Mercado: R$ 400,00 este mês.\n\n👉 https://p/gastos');
     expect(r.trava).toBe(false);
     expect(r.ferramentas).toEqual([{ nome: 'gasto_periodo', args: { periodo: 'este_mes', grupo: null }, ok: true }]);
     expect(r.svg).toContain('class="barra"');
@@ -65,6 +65,35 @@ describe('resposta nunca começa com "bot" (revisão E1)', () => {
       { content: 'Bot aqui: Mercado R$ 400,00.', toolCalls: [], modelo: 'm' },
     ]);
     const r = await responder(p, { ...base, groq: g });
-    expect(r.texto).toBe('🤖 Bot aqui: Mercado R$ 400,00.');
+    expect(r.texto).toBe('🤖 Bot aqui: Mercado R$ 400,00.\n\n👉 https://p/gastos');
+  });
+});
+
+describe('ajustes do teste em produção (E1)', () => {
+  it('resposta do modelo sempre termina com o link do painel; link relativo escrito pelo modelo sai', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' },
+      { content: '🛒 Mercado: R$ 400,00.\n🔗 Detalhes: /gastos', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g });
+    expect(r.texto).toBe('🛒 Mercado: R$ 400,00.\n\n👉 https://p/gastos');
+  });
+  it('link completo já escrito pelo modelo não duplica', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' },
+      { content: '🛒 Mercado: R$ 400,00.\n👉 https://p/gastos', toolCalls: [], modelo: 'm' },
+    ]);
+    expect((await responder(p, { ...base, groq: g })).texto).toBe('🛒 Mercado: R$ 400,00.\n\n👉 https://p/gastos');
+  });
+  it('simular, faturas e contas: sempre o texto montado (o modelo não pode omitir a ressalva)', async () => {
+    const sim = { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: true, mesQueFura: null, aprofunda: 3000, link: '/simulador' };
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'simular_compra', args: '{"valor_total":3000,"parcelas":10}' }], modelo: 'm' },
+      { content: '📺 R$ 300,00 por parcela, cabe ✅', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g, painel: async () => ({ ok: true, dados: sim }) });
+    expect(r.texto).toContain('Aprofunda o pior mês');
+    expect(r.texto.endsWith('👉 https://p/simulador')).toBe(true);
+    expect(r.trava).toBe(false);
   });
 });

@@ -2,7 +2,7 @@
 import { currentMonthSP } from './format';
 
 export type Tela = 'inicio' | 'previsao' | 'contas' | 'gastos' | 'faturas' | 'diagnostico' | 'assinaturas'
-  | 'investimentos' | 'orcamento' | 'casa' | 'buscar' | 'simulador';
+  | 'investimentos' | 'orcamento' | 'casa' | 'buscar' | 'simulador' | 'trilha';
 
 export interface Filtros {
   resp?: 'casal' | 'Matheus' | 'Ariane'; mes?: string; grupo?: string; cartao?: string; tipo?: 'livre';
@@ -11,7 +11,7 @@ export interface Filtros {
 const CAMINHO: Record<Tela, string> = {
   inicio: '/', previsao: '/previsibilidade', contas: '/contas', gastos: '/gastos', faturas: '/faturas',
   diagnostico: '/diagnostico', assinaturas: '/assinaturas', investimentos: '/investimentos',
-  orcamento: '/orcamento', casa: '/casa', buscar: '/buscar', simulador: '/simulador',
+  orcamento: '/orcamento', casa: '/casa', buscar: '/buscar', simulador: '/simulador', trilha: '/trilha',
 };
 
 export function mesValido(v: string | undefined): string | null {
@@ -35,9 +35,9 @@ export function podeIrParaMesSeguinte(path: string): boolean {
   return path === '/contas' || path === '/previsibilidade';
 }
 
-/** O seletor de mês do topo: a Previsão navega pelas setas do próprio detalhe; o Simulador não tem mês. */
+/** O seletor de mês do topo: a Previsão navega pelas setas do próprio detalhe; Simulador e Trilha não têm mês. */
 export function temSeletorDeMes(path: string): boolean {
-  return path !== '/previsibilidade' && path !== '/simulador';
+  return path !== '/previsibilidade' && path !== '/simulador' && path !== '/trilha';
 }
 
 /** Mês que a tela de `path` pode mostrar: até o seguinte em Contas/Previsão, até o atual no resto. */

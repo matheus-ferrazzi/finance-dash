@@ -206,4 +206,36 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       await pool.query(`UPDATE financas_compromissos SET ativo = false WHERE nome LIKE '% teste'`);
     }
   });
+  it('dados da trilha: dívida futura, atraso, aplicação líquida e aplicado', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('tr-1', '2038-05-10', 100, 'RENEGOCIAÇÃO DE PENDÊNCIAS 5/7', 'Loans and financing', 'Crédito', 'B1', 'Matheus', 'despesa', 'Saída', '2038-04-01'),
+      ('tr-2', '2038-06-10', 100, 'RENEGOCIAÇÃO DE PENDÊNCIAS 6/7', 'Loans and financing', 'Crédito', 'B1', 'Matheus', 'despesa', 'Saída', '2038-04-01'),
+      ('tr-3', '2038-03-20', 30, 'JUROS DE MORA', 'Late payment and overdraft costs', 'Crédito', 'B1', 'Matheus', 'despesa', 'Saída', '2038-03-20'),
+      ('tr-4', '2038-02-05', 200, 'APLICAÇÃO RDB', 'Investments', 'Débito', 'B1', 'Ariane', 'transferencia_interna', 'Saída', '2038-02-05'),
+      ('tr-5', '2038-03-05', 50, 'RESGATE RDB', 'Investments', 'Débito', 'B1', 'Ariane', 'transferencia_interna', 'Entrada', '2038-03-05'),
+      ('tr-6', '2038-03-06', 1, 'REND PAGO APLIC AUT', 'Proceeds interests and dividends', 'Débito', 'B1', 'Ariane', 'receita', 'Entrada', '2038-03-06'),
+      ('tr-7', '2038-03-07', 80, 'PIX APLICACAO', 'Transfers', 'Débito', 'B1', 'Ariane', 'aporte', 'Saída', '2038-03-07'),
+      ('tr-8', '2038-02-11', 40, 'LOJA X 2/5', 'Shopping', 'Crédito', 'B1', 'Ariane', 'despesa', 'Saída', '2038-02-11')`);
+    const d = await queries.getTrilhaDados('2038-04-15');
+    expect(d.dividas).toEqual([{ nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2038-06' }]);
+    expect(d.atrasos).toContainEqual({ mes: '2038-03', motivo: 'juros' });
+    expect(d.aplicacaoMensal).toEqual([{ mes: '2038-01', valor: 0 }, { mes: '2038-02', valor: 200 }, { mes: '2038-03', valor: 30 }]);
+    expect(d.passados.map((p) => p.mes)).toEqual(['2038-01', '2038-02', '2038-03']);
+    expect(d.sobraPrevista).toHaveLength(24);
+    expect(typeof d.textoMeta).toBe('string');
+    expect(d.aplicado).toBeGreaterThanOrEqual(0);
+  });
+  it('dados da trilha: parcelamento de fatura e encargo vêm como pagamento_fatura no cartão; pagar a fatura pelo débito não é dívida', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('tf-1', '2039-05-08', 70, 'PARCELAMENTO DE FATURA 4/6', 'Credit card payment', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-01'),
+      ('tf-2', '2039-03-09', 12, 'ENC ATRASO PARC FATURA', 'Credit card fees', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-03-09'),
+      ('tf-3', '2039-04-05', 900, 'PAGAMENTO FATURA PARC CARTAO', 'Credit card payment', 'Débito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-05')`);
+    const d = await queries.getTrilhaDados('2039-04-15');
+    expect(d.dividas).toEqual([{ nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
+    expect(d.atrasos).toContainEqual({ mes: '2039-03', motivo: 'juros' });
+  });
+  it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {
+    const base = await queries.getProjecaoBase('casal', '2038-04-15');
+    expect(await queries.getTrilhaDados('2038-04-15', base)).toEqual(await queries.getTrilhaDados('2038-04-15'));
+  });
 });

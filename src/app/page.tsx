@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getContasDoMes, getDespesas, getFaturas, getMovimentosDiarios, getProjecaoBase, getCalibracaoPara, diasNoMes, computeProjecao, computeRitmo, resolvePeriodo, Resp } from '@/lib/queries';
+import { getContasDoMes, getDespesas, getFaturas, getMovimentosDiarios, getProjecaoBase, getCalibracaoPara, diasNoMes, computeProjecao, computeRitmo, resolvePeriodo, getTrilhaDados, Resp } from '@/lib/queries';
 import { brl, currentDateSP, currentMonthSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
 import { linkPara, mesValido } from '@/lib/links';
@@ -8,6 +8,8 @@ import { cartaoDestaque, contasResumo, topGrupos } from '@/lib/home';
 import { faixaMesCorrente } from '@/lib/faixa';
 import { LinhaDoMes } from './components/LinhaDoMes';
 import { BlocoHome } from './components/BlocoHome';
+import { FaixaTrilha } from './components/FaixaTrilha';
+import { avaliarTrilha } from '@/lib/trilha';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,9 +27,13 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   const corrente = mes === atual;
   const hoje = currentDateSP();
 
-  const [base, contas, despesas, faturas, movimentos, { calib }] = await Promise.all([
-    getProjecaoBase(resp), getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
+  const basePromise = getProjecaoBase(resp);
+  const [base, contas, despesas, faturas, movimentos, { calib }, trilhaDados] = await Promise.all([
+    basePromise, getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
     getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje), corrente ? getCalibracaoPara(resp) : Promise.resolve({ calib: null }),
+    // a trilha é do casal e é complemento: se falhar, a home abre sem ela
+    // na visão do casal, a trilha reaproveita a base que a home já está buscando
+    (resp === 'casal' ? basePromise.then((b) => getTrilhaDados(hoje, b)) : getTrilhaDados(hoje)).catch((e) => { console.error('trilha falhou', e); return null; }),
   ]);
   const mesProj = computeProjecao(base, 1)[0];
   const ritmo = corrente && mesProj ? computeRitmo(base, mesProj) : null;
@@ -47,6 +53,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
 
   return (
     <div>
+      {trilhaDados && <FaixaTrilha trilha={avaliarTrilha(trilhaDados)} />}
       <LinhaDoMes serie={serie} faixa={calib && ritmo ? faixaMesCorrente(serie.fechamento, ritmo.diasRestantes, diasNoMes(mes), calib) : null} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
       <div className="grid grid-cols-2 gap-3">
         <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre' }, atual)}

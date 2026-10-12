@@ -33,8 +33,5 @@ export async function apagarDinheiro(id: number): Promise<boolean> {
   return (await qw<any>(`DELETE FROM financas_gastos_dinheiro WHERE id = $1 RETURNING id`, [id])).length > 0;
 }
 
-export function somarMapas(a: ReadonlyMap<string, number>, b: ReadonlyMap<string, number>): Map<string, number> {
-  const m = new Map(a);
-  for (const [k, v] of b) m.set(k, r2((m.get(k) ?? 0) + v));
-  return m;
-}
+// mora em ./bot (puro); reexportado aqui para quem já soma o dinheiro
+export { somarMapas } from './bot';

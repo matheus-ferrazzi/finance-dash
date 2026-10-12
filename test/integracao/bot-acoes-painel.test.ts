@@ -23,6 +23,7 @@ describe.skipIf(!url)('ações do bot no painel (integração)', () => {
     await pool.query(readFileSync('db/migrations/003_contas_do_mes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/004_contas_pela_tela.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/010_bot_acoes.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/011_gastos_dinheiro.sql', 'utf8'));
     ({ salvarRegra, getBuscaBot } = await import('../../src/lib/queries'));
     ({ executarAcao, desfazerAcao } = await import('../../src/lib/botAcoes'));
   });
@@ -100,5 +101,16 @@ describe.skipIf(!url)('ações do bot no painel (integração)', () => {
     await salvarRegra({ tipo: 'lancamento', idTransacao: 'ea3', categoria: 'Pharmacy' }); // mudou depois, pela tela
     expect(await desfazerAcao(cat, 'Matheus')).toMatchObject({ ok: false });
     expect((await pool.query(`SELECT categoria FROM financas_lancamentos WHERE id_transacao='ea3'`)).rows[0].categoria).toBe('Pharmacy');
+  });
+  it('dinheiro: executa (insere), desfaz (apaga); já apagado pela tela: recusa', async () => {
+    const id = await acao('dinheiro', { data: '2047-03-02', valor: 50, descricao: 'feira', categoria: 'Groceries', responsavel: 'Ariane' });
+    expect(await executarAcao(id)).toMatchObject({ ok: true, resumo: expect.stringContaining('💵 feira') });
+    expect((await pool.query(`SELECT count(*)::int n FROM financas_gastos_dinheiro WHERE descricao='feira'`)).rows[0].n).toBe(1);
+    expect(await desfazerAcao(id, 'Matheus')).toEqual({ ok: true });
+    expect((await pool.query(`SELECT count(*)::int n FROM financas_gastos_dinheiro WHERE descricao='feira'`)).rows[0].n).toBe(0);
+    const id2 = await acao('dinheiro', { data: '2047-03-02', valor: 5, descricao: 'pastel', categoria: 'Eating out', responsavel: 'Matheus' });
+    await executarAcao(id2);
+    await pool.query(`DELETE FROM financas_gastos_dinheiro WHERE descricao='pastel'`);
+    expect(await desfazerAcao(id2, 'Matheus')).toMatchObject({ ok: false });
   });
 });

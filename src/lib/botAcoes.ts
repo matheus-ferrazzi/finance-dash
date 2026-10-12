@@ -1,6 +1,7 @@
 // E2: grava e desfaz as ações confirmadas pelo bot, com as mesmas funções das telas.
 import { writerPool } from './db';
 import { mesLabel, traduzCategoria } from './format';
+import { apagarDinheiro, inserirDinheiro } from './dinheiro';
 import { alvoDaRegra, apagarRegra, categoriaDaRegra, criarMarca, salvarRegra } from './queries';
 
 type R = { ok: true; resumo: string; afetados?: number } | { ok: false; erro: string };
@@ -31,6 +32,12 @@ export async function executarAcao(id: number): Promise<R> {
       await marcar(id, 'feita', { regraId: r.id, afetados: r.afetados, anterior: anterior?.categoria ?? null, tipo: alvo.tipo, chave: alvo.chave, categoria: p.categoria });
       return { ok: true, afetados: r.afetados, resumo: `${r.afetados} lançamento(s) → ${traduzCategoria(p.categoria)}` };
     }
+    if (a.tipo === 'dinheiro') {
+      const p = a.params;
+      const dinheiroId = await inserirDinheiro({ data: p.data, valor: p.valor, descricao: p.descricao, categoria: p.categoria, responsavel: p.responsavel });
+      await marcar(id, 'feita', { dinheiroId });
+      return { ok: true, resumo: `💵 ${p.descricao} ${brl(p.valor)} em ${traduzCategoria(p.categoria)}` };
+    }
     const p = a.params;
     // avulsa nasce marcada (pago = true, exigido pela tabela): fica "a confirmar" até o banco achar o pagamento
     const marcaId = await criarMarca({ mes: p.mes, contaId: null, responsavel: p.responsavel, nome: p.nome, valor: p.valor, pago: true });
@@ -59,6 +66,8 @@ export async function desfazerAcao(id: number, pessoa: string): Promise<{ ok: tr
     } else if (!(await apagarRegra(res.regraId))) {
       return { ok: false, erro: 'a regra já não existe' };
     }
+  } else if (a.tipo === 'dinheiro') {
+    if (!(await apagarDinheiro(a.resultado.dinheiroId))) return { ok: false, erro: 'esse gasto em dinheiro já não existe' };
   } else {
     const del = await writerPool.query(`DELETE FROM financas_contas_marcas WHERE id = $1 RETURNING id`, [a.resultado.marcaId]);
     if (!del.rowCount) return { ok: false, erro: 'essa conta já não existe nas contas do mês' };

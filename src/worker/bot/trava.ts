@@ -7,6 +7,7 @@ const RE_PCT = /(-?\d+(?:,\d+)?)\s*%/g;
 const DINHEIRO = new Set([
   'valor', 'total', 'totalA', 'totalB', 'a', 'b', 'diferenca', 'parcela', 'valorTotal', 'aprofunda',
   'dapraGastarHoje', 'ritmoAtualDia', 'ritmoSeguroDia', 'fechaCom', 'aplicado', 'meta', 'totalFalta',
+  'dinheiro', 'totalDinheiro', 'totalDinheiroA', 'totalDinheiroB',
 ]);
 // valor negativo dito sem sinal só vale se a linha disser que é negativo
 const DIZ_NEGATIVO = /-|negativ|vermelho|falt/i;

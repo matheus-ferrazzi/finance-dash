@@ -63,3 +63,17 @@ describe('executores locais', () => {
     expect(z.criadas).toEqual([]);
   });
 });
+
+describe('gasto em dinheiro (E3)', () => {
+  it('valida e cria a proposta; padrão hoje e quem pediu; recusa futuro, > 30 dias, valor e descrição fora', async () => {
+    const m = montar();
+    const r = await m.locais.propor_gasto_dinheiro({ valor: 50, descricao: 'feira', categoria: 'Groceries' });
+    expect(m.criadas[0]).toEqual(['Matheus', 'dinheiro', { data: '2026-10-12', valor: 50, descricao: 'feira', categoria: 'Groceries', responsavel: 'Matheus' }, expect.stringContaining('feira')]);
+    const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    expect(r.dados.proposta).toBe(`🟡 Lançar 💵 *${brl(50)}* em *Mercado* (feira, 12/10, Matheus)?\n👉 Responde *sim* ou *não*.`);
+    for (const a of [{ data: '2026-10-13' }, { data: '2026-09-11' }, { valor: 0 }, { valor: 10000.01 }, { descricao: '' }, { descricao: 'x'.repeat(81) }, { categoria: 'Inventada' }]) {
+      expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'ok', categoria: 'Groceries', ...a })).toMatchObject({ ok: false });
+    }
+    expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'ok', categoria: 'Groceries', data: '2026-09-12', pessoa: 'Ariane' })).toMatchObject({ ok: true });
+  });
+});

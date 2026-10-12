@@ -6,7 +6,7 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 describe('ferramentas', () => {
   it('8 ferramentas, schema com nome e parâmetros', () => {
     expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra',
-      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa']);
+      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro']);
     expect(TOOLS.every((t: any) => t.type === 'function' && t.function.parameters)).toBe(true);
   });
   it('caminho: query com período, pessoa ("eu" vira quem perguntou) e grupo; nome desconhecido → null', () => {
@@ -86,5 +86,19 @@ describe('ferramentas de ação (E2)', () => {
     const t: any = TOOLS.find((x: any) => x.function.name === 'propor_categoria');
     expect(t.function.parameters.properties.escopo.enum).toEqual(['este', 'pessoa', 'texto']);
     expect(t.function.parameters.properties.categoria.enum).toContain('Groceries');
+  });
+});
+
+describe('💵 nas respostas de gasto (E3)', () => {
+  it('gasto_periodo mostra quanto foi em dinheiro', () => {
+    const t = formatar('gasto_periodo', { periodo: 'out/26', pessoa: 'casal', grupo: null, total: 370, totalDinheiro: 70, itens: [{ nome: 'Mercado', valor: 350, dinheiro: 50 }, { nome: 'Lazer', valor: 20, dinheiro: 0 }], link: '/gastos' }, 'https://p');
+    expect(t).toContain(`💰 Gasto em out/26 (casal): *${brl(370)}* (💵 ${brl(70)})`);
+    expect(t).toContain(`• Mercado: ${brl(350)} (💵 ${brl(50)})`);
+    expect(t).toContain(`• Lazer: ${brl(20)}\n`);
+  });
+  it('schema tem propor_gasto_dinheiro com categoria em enum', () => {
+    const t: any = TOOLS.find((x: any) => x.function.name === 'propor_gasto_dinheiro');
+    expect(t.function.parameters.properties.categoria.enum).toContain('Groceries');
+    expect(t.function.parameters.required).toEqual(['valor', 'descricao', 'categoria']);
   });
 });

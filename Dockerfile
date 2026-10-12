@@ -12,6 +12,21 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
+# ---- worker (ingestao da Pluggy) ----
+# docker build --target worker -t finance-worker:1 .
+FROM node:20-alpine AS worker-build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build:worker
+
+FROM node:20-alpine AS worker
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=worker-build /app/dist/worker.js /app/dist/equivalencia.js ./
+USER node
+CMD ["node", "worker.js"]
+
 # ---- runner ----
 FROM node:20-alpine AS runner
 WORKDIR /app

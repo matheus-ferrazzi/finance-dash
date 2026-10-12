@@ -26,7 +26,26 @@ Painel financeiro pessoal em **Next.js 14**, que lê os lançamentos, faturas e 
 
 ## 🔐 Classificação dos dados
 
-O painel só considera **gastos e receitas reais** — transferências internas, pagamentos de fatura e aportes ficam fora dos totais, evitando números inflados. A lógica de classificação vive na automação (n8n) que popula o banco; aqui só é feita a leitura (idealmente com um usuário **somente-leitura**).
+O painel só considera **gastos e receitas reais** — transferências internas, pagamentos de fatura e aportes ficam fora dos totais, evitando números inflados. A classificação é feita pelo **worker de ingestão** (`src/worker/`) na hora de gravar; o painel só lê (com um usuário **somente-leitura**).
+
+## ⚙️ Worker de ingestão (Pluggy → Postgres)
+
+Container separado (`docker build --target worker -t finance-worker:1 .`) que busca transações, faturas, saldos, investimentos e status das conexões na Pluggy, em horário de São Paulo.
+
+- **Modos** (`WORKER_MODO`): `sombra` (padrão — só lê a Pluggy e grava o próprio diagnóstico em `pluggy_*`), `real` (grava nas tabelas `financas_*`). `--dry-run` na linha de comando não grava nada.
+- **Reconciliação:** lançamento que a Pluggy não devolve mais (cancelado ou recriado com outro id) sai de `financas_lancamentos` e vai para `financas_lancamentos_removidos` (a linha inteira em JSON). Trava se a Pluggy vier vazia ou se a remoção passar de 20% da conta.
+- **Execução manual:** `docker exec finance-worker node worker.js <transacoes|faturas|saldos|investimentos|itens|atualizar-itens> [--dry-run] [--desde AAAA-MM-DD] [--limite 0.2]`.
+- **Contas:** tabela `pluggy_contas`. O seed real é gerado fora do git (`node scripts/gerar_seed_contas.mjs <export-do-n8n>` → `db/seed_contas.local.sql`).
+
+### Testes
+
+```bash
+npm test                         # unitários
+# integração do repositório (Postgres descartável):
+docker run -d --rm --name pg-teste-c1 -e POSTGRES_PASSWORD=teste -p 127.0.0.1:55432:5432 postgres:15-alpine
+docker exec pg-teste-c1 psql -U postgres -c "CREATE DATABASE personal_hub_db"
+TEST_DATABASE_URL=postgres://postgres:teste@127.0.0.1:55432/personal_hub_db npx vitest run test/integracao
+```
 
 ## 🚀 Rodando
 

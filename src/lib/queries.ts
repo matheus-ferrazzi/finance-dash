@@ -1,5 +1,6 @@
 import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
+import { agruparGastos, type GrupoGasto } from './grupos';
 
 export { currentDateSP };
 
@@ -969,21 +970,8 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number): Proje
 // Cruza o passado (o que já aconteceu) com a projeção pra responder
 // "onde eu estou errando" — em vez de só mostrar números.
 
-/** Grupos de gasto: é isso que dá a leitura de "pra onde vai cada R$100". */
-export const GRUPOS_GASTO: { nome: string; emoji: string; cats: string[]; travado: boolean }[] = [
-  { nome: 'Casa', emoji: '🏠', travado: true, cats: ['Housing', 'Electricity', 'Water', 'Telecommunications', 'Gas'] },
-  { nome: 'Dívida e seguro', emoji: '🏦', travado: true, cats: ['Loans and financing', 'Loans', 'Insurance', 'Taxes', 'Bank fees', 'Interests charged'] },
-  { nome: 'Mercado', emoji: '🛒', travado: false, cats: ['Groceries'] },
-  { nome: 'Comer fora', emoji: '🍔', travado: false, cats: ['Food delivery', 'Eating out', 'Food and drinks'] },
-  { nome: 'Lazer e digital', emoji: '🎮', travado: false, cats: ['Digital services', 'Gaming', 'Cinema, theater and concerts', 'Tickets', 'Travel'] },
-  { nome: 'Saúde', emoji: '💊', travado: false, cats: ['Healthcare', 'Pharmacy', 'Hospital clinics and labs', 'Optometry'] },
-  { nome: 'Transporte', emoji: '🚗', travado: false, cats: ['Gas stations', 'Automotive', 'Taxi and ride-hailing', 'Public transportation', 'Parking', 'Tolls and in vehicle payment', 'Vehicle maintenance'] },
-  { nome: 'Compras', emoji: '🛍️', travado: false, cats: ['Shopping', 'Clothing', 'Online shopping', 'Electronics', 'Houseware'] },
-];
+export { GRUPOS_GASTO, type GrupoGasto } from './grupos';
 
-export interface GrupoGasto {
-  nome: string; emoji: string; total: number; pctRenda: number; travado: boolean;
-}
 export interface VariacaoCat {
   categoria: string; anterior: number; atual: number; delta: number; pct: number | null;
 }
@@ -1029,21 +1017,7 @@ export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
   catRows.forEach((x) => porCat.set(x.categoria, Number(x.total)));
   const gasto = [...porCat.values()].reduce((s, v) => s + v, 0);
 
-  const usadas = new Set<string>();
-  const grupos: GrupoGasto[] = GRUPOS_GASTO.map((g) => {
-    let total = 0;
-    g.cats.forEach((c) => { if (porCat.has(c)) { total += porCat.get(c)!; usadas.add(c); } });
-    return {
-      nome: g.nome, emoji: g.emoji, total, travado: g.travado,
-      pctRenda: renda > 0 ? (total / renda) * 100 : 0,
-    };
-  }).filter((g) => g.total > 0);
-
-  const resto = [...porCat.entries()].filter(([c]) => !usadas.has(c)).reduce((s, [, v]) => s + v, 0);
-  if (resto > 0) {
-    grupos.push({ nome: 'Resto', emoji: '❓', total: resto, travado: false, pctRenda: renda > 0 ? (resto / renda) * 100 : 0 });
-  }
-  grupos.sort((a, b) => b.total - a.total);
+  const grupos = agruparGastos(porCat, renda);
 
   const travado = grupos.filter((g) => g.travado).reduce((s, g) => s + g.total, 0);
 

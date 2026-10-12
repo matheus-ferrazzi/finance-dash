@@ -5,7 +5,8 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 
 describe('lerResposta', () => {
   it('sim, não, desfaz e número; o resto null', () => {
-    expect(['sim', 'Sim!', 's', 'confirma', 'pode', 'ok'].map(lerResposta)).toEqual(Array(6).fill('sim'));
+    expect(['sim', 'Sim!', 'confirma', 'confirmo'].map(lerResposta)).toEqual(Array(4).fill('sim'));
+    expect(['s', 'ok', 'pode'].map(lerResposta)).toEqual([null, null, null]); // casual demais para gravar
     expect(['não', 'nao', 'N', 'cancela'].map(lerResposta)).toEqual(Array(4).fill('nao'));
     expect(['desfaz', 'desfazer'].map(lerResposta)).toEqual(['desfaz', 'desfaz']);
     expect(lerResposta('2')).toEqual({ numero: 2 });
@@ -20,7 +21,7 @@ describe('textos das ações', () => {
   });
   it('propostas', () => {
     expect(textoPropostaCategoria({ afetados: 3, categoria: 'Mercado', escopo: 'pessoa', nome: 'FULANO', item: { data: '10/10', descricao: 'PIX FULANO', valor: 50 } }))
-      .toBe('🟡 Mudar *3* lançamento(s) para *Mercado* (todos da pessoa/empresa: FULANO)?\n👉 Responde *sim* ou *não*.');
+      .toBe('🟡 Mudar *3* lançamento(s) para *Mercado* (todos da pessoa/empresa: FULANO; vale também para os próximos)?\n👉 Responde *sim* ou *não*.');
     expect(textoPropostaCategoria({ afetados: 1, categoria: 'Mercado', escopo: 'este', nome: 'x', item: { data: '10/10', descricao: 'PIX FULANO', valor: 50 } }))
       .toContain(`(só este: 10/10 PIX FULANO ${brl(50)})`);
     expect(textoPropostaAvulsa({ nome: 'Dentista', valor: 150, mes: '2026-10', pessoa: 'Ariane' }))

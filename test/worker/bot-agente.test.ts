@@ -129,3 +129,20 @@ describe('ferramentas locais (E2)', () => {
     expect(r.texto).toBe('🔎 Achei estes.');
   });
 });
+
+describe('proposta nunca escondida (revisão E2)', () => {
+  it('propor e depois outra ferramenta: a resposta é a proposta', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'propor_conta_avulsa', args: '{"nome":"X","valor":1}' }], modelo: 'm' },
+      { content: null, toolCalls: [{ id: 'c2', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' },
+      { content: 'Mercado R$ 400,00', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g, locais: { propor_conta_avulsa: async () => ({ ok: true, dados: { proposta: '🟡 PROPOSTA' } }) } });
+    expect(r.texto).toBe('🟡 PROPOSTA');
+  });
+  it('rodadas esgotadas depois de propor: a resposta é a proposta', async () => {
+    const chamada = { content: null, toolCalls: [{ id: 'c', nome: 'propor_conta_avulsa', args: '{"nome":"X","valor":1}' }], modelo: 'm' };
+    const r = await responder(p, { ...base, groq: groqRoteiro([chamada, chamada, chamada, chamada]), locais: { propor_conta_avulsa: async () => ({ ok: true, dados: { proposta: '🟡 PROPOSTA' } }) } });
+    expect(r.texto).toBe('🟡 PROPOSTA');
+  });
+});

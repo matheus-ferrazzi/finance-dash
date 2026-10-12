@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS financas_bot_acoes (
   params        jsonb NOT NULL,
   resumo        text NOT NULL,
   estado        text NOT NULL DEFAULT 'pendente'
-                CHECK (estado IN ('pendente','confirmada','feita','cancelada','expirada','substituida','desfeita','erro')),
+                CHECK (estado IN ('pendente','confirmada','executando','feita','cancelada','expirada','substituida','desfeita','erro')),
   resultado     jsonb
 );
 CREATE INDEX IF NOT EXISTS financas_bot_acoes_pessoa_idx ON financas_bot_acoes (pessoa, id DESC);

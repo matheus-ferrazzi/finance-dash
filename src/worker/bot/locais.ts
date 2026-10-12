@@ -8,9 +8,10 @@ type Item = { id: string; data: string; valor: number; descricao: string; pessoa
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const proxMes = (m: string) => { const [a, b] = m.split('-').map(Number); return b === 12 ? `${a + 1}-01` : `${a}-${String(b + 1).padStart(2, '0')}`; };
 const TIPO = { este: 'lancamento', pessoa: 'doc', texto: 'texto' } as const;
+const REFS_VALEM = 5 * 60_000;
 
 export function criarLocais(d: {
-  pessoa: string; hoje: string; refs: Map<string, Map<string, Item>>;
+  pessoa: string; hoje: string; refs: Map<string, { quando: number; itens: Map<string, Item> }>;
   painel: (c: string) => Promise<Res>; painelPost: (c: string, corpo: object) => Promise<Res>; acoes: Pick<PgAcoes, 'criar'>;
 }): Record<string, (args: any) => Promise<Res>> {
   return {
@@ -23,18 +24,21 @@ export function criarLocais(d: {
       const r = await d.painel(`/api/bot/buscar?${q}`);
       if (!r.ok) return r;
       const itens: Item[] = r.dados.itens ?? [];
-      d.refs.set(d.pessoa, new Map(itens.map((x, i) => [`L${i + 1}`, x])));
+      d.refs.set(d.pessoa, { quando: Date.now(), itens: new Map(itens.map((x, i) => [`L${i + 1}`, x])) });
       const paraModelo = itens.map(({ id: _id, ...x }, i) => ({ ref: `L${i + 1}`, ...x }));
       return { ok: true, dados: { itens: paraModelo, ...(itens.length > 1 ? { lista: textoLista(paraModelo) } : {}), ...(itens.length ? {} : { aviso: 'nenhum gasto encontrado' }) } };
     },
     async propor_categoria(a) {
-      const it = d.refs.get(d.pessoa)?.get(String(a.ref));
-      if (!it) return { ok: false, dados: { erro: 'ref desconhecida: use buscar_lancamentos e uma ref L1..L5 que ela devolveu' } };
+      // ref só vale da busca recente (5 min) da mesma pessoa
+      const busca = d.refs.get(d.pessoa);
+      const it = busca && Date.now() - busca.quando <= REFS_VALEM ? busca.itens.get(String(a.ref)) : undefined;
+      if (!it) return { ok: false, dados: { erro: 'ref desconhecida ou velha: use buscar_lancamentos agora e uma ref L1..L5 que ela devolveu' } };
       const escopo = a.escopo as 'este' | 'pessoa' | 'texto';
       const corpo: any = { idTransacao: it.id, escopo, categoria: a.categoria, ...(a.texto ? { texto: a.texto } : {}) };
       const pr = await d.painelPost('/api/bot/previa', corpo);
       if (!pr.ok) return pr;
       const categoria = traduzCategoria(a.categoria);
+      if (!(pr.dados.afetados > 0)) return { ok: false, dados: { erro: `já está em ${categoria}: nada muda` } };
       const params = { tipo: TIPO[escopo], idTransacao: it.id, categoria: a.categoria, ...(pr.dados.texto ? { texto: pr.dados.texto } : {}) };
       await d.acoes.criar(d.pessoa, 'categoria', params, `${pr.dados.afetados} lançamento(s) → ${categoria}`);
       return { ok: true, dados: { proposta: textoPropostaCategoria({ afetados: pr.dados.afetados, categoria, escopo, nome: pr.dados.nome, item: it }) } };

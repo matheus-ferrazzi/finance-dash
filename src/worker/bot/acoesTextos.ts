@@ -9,7 +9,8 @@ export const NADA_DESFAZER = '🤷 Nada para desfazer nas últimas 24 h.';
 
 export function lerResposta(texto: string): 'sim' | 'nao' | 'desfaz' | { numero: number } | null {
   const t = texto.trim().toLowerCase().replace(/[.!?]+$/, '');
-  if (/^(sim|s|confirma|confirmo|pode|ok)$/.test(t)) return 'sim';
+  // só palavras inequívocas: "ok", "pode" e "s" são casuais demais para gravar
+  if (/^(sim|confirma|confirmo)$/.test(t)) return 'sim';
   if (/^(n[aã]o|n|cancela|cancelar)$/.test(t)) return 'nao';
   if (/^(desfaz|desfazer)$/.test(t)) return 'desfaz';
   if (/^[1-5]$/.test(t)) return { numero: Number(t) };
@@ -22,7 +23,9 @@ export function textoLista(itens: { ref: string; data: string; valor: number; de
 
 export function textoPropostaCategoria(d: { afetados: number; categoria: string; escopo: 'este' | 'pessoa' | 'texto'; nome: string; item: { data: string; descricao: string; valor: number } }): string {
   const alvo = d.escopo === 'este' ? `só este: ${d.item.data} ${d.item.descricao} ${brl(d.item.valor)}`
-    : d.escopo === 'pessoa' ? `todos da pessoa/empresa: ${d.nome}` : `todos com o texto "${d.nome}"`;
+    // regra por pessoa/texto também vale para os lançamentos que ainda vão chegar: tem que dizer
+    : d.escopo === 'pessoa' ? `todos da pessoa/empresa: ${d.nome}; vale também para os próximos`
+      : `todos com o texto "${d.nome}"; vale também para os próximos`;
   return `🟡 Mudar *${d.afetados}* lançamento(s) para *${d.categoria}* (${alvo})?\n👉 Responde *sim* ou *não*.`;
 }
 

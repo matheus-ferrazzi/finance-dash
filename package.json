@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "build:worker": "esbuild src/worker/index.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/worker.js && esbuild scripts/equivalencia.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/equivalencia.js"
+    "build:worker": "esbuild src/worker/index.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/worker.js && esbuild scripts/equivalencia.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/equivalencia.js && esbuild scripts/backtest.ts --bundle --platform=node --target=node20 --external:pg-native --outfile=dist/backtest.js"
   },
   "dependencies": {
     "next": "14.2.5",

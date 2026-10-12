@@ -1,6 +1,15 @@
 import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import { agruparGastos, type GrupoGasto } from './grupos';
+import {
+  addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
+} from './previsao';
+
+export {
+  addMonths, computeProjecao, computeRitmo, diasNoMes, mediana,
+  type CompromissoManual, type ProjecaoBase, type ProjecaoMes, type ReceitaPrevista, type Ritmo, type SaldoConta,
+} from './previsao';
 
 export { currentDateSP };
 
@@ -436,12 +445,6 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
   });
 }
 
-/** compromissos cadastrados manualmente (aluguel, luz, água, financiamentos — a Pluggy não sabe "até quando") */
-export interface CompromissoManual {
-  id: number; nome: string; categoria: string; valor: number; responsavel: string;
-  dataInicio: string; mesesTotais: number | null; observacao: string | null; dataFim: string | null;
-}
-
 export async function getCompromissosManuais(resp: Resp): Promise<CompromissoManual[]> {
   const filtro = resp === 'casal' ? '' : ` AND responsavel IN ($1,'casal')`;
   const params = resp === 'casal' ? [] : [resp];
@@ -489,10 +492,6 @@ export async function deleteCompromisso(id: number): Promise<void> {
   await qw(`DELETE FROM financas_compromissos WHERE id=$1`, [id]);
 }
 
-export interface SaldoConta {
-  banco: string; responsavel: string; saldo: number; atualizadoPluggy: string | null;
-}
-
 /** saldo real das contas correntes (vem da Pluggy via workflow "Pluggy - Saldos das Contas") */
 export async function getSaldoContas(resp: Resp): Promise<{ total: number; contas: SaldoConta[] }> {
   const r = rf(resp, 1);
@@ -507,42 +506,15 @@ export async function getSaldoContas(resp: Resp): Promise<{ total: number; conta
   return { total: contas.reduce((s, c) => s + c.saldo, 0), contas };
 }
 
-/** ingredientes crus da projeção — combinados por computeProjecao (função pura, sem DB) */
-export interface ProjecaoBase {
-  patrimonioAtual: number;
-  saldoContasAtual: number;
-  /** reaproveitado pela página — evita refazer as mesmas consultas */
-  saldoContas: { total: number; contas: SaldoConta[] };
-  receitaMediaMensal: number;
-  /** gasto no DÉBITO (fora casa) — o que sai direto da conta */
-  despesaVariavelMediaMensal: number;
-  /** compras novas no crédito por mês (fora parcelamentos) — vira fatura */
-  creditoNovoMedio: number;
-  /** média mensal por categoria da casa (aluguel/luz/água/internet/telefone/gás) */
-  despesaCasaPorCategoria: Record<string, number>;
-  despesaFixaPorMes: Record<string, number>; // 'YYYY-MM' -> soma de lançamentos futuros já confirmados pela Pluggy
-  compromissosManuais: CompromissoManual[];
-  /** o que já aconteceu no mês em andamento — usado pra fechar o mês corrente */
-  mesCorrente: {
-    receitaJaRecebida: number;
-    receitaAgendada: number;
-    /** entradas recorrentes que ainda não caíram (ex.: salário do dia 20) */
-    receitasAReceber: ReceitaPrevista[];
-    variavelJaGasto: number;               // no débito, fora casa
-    agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
-    faturaJaPaga: number;                  // fatura de cartão já paga neste mês
-    casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
-  };
-}
-
 /**
  * Meses cujos dados dão pra confiar. Detector: transferência entre contas próprias
  * tem que se anular (sai de uma, entra na outra). Quando não anula, é porque alguma
  * conta ainda não estava conectada na Pluggy e faltam lançamentos naquele mês.
  * Sem esse filtro as médias ficam infladas por meses pela metade.
  */
-async function getMesesConfiaveis(resp: Resp): Promise<string[]> {
+async function getMesesConfiaveis(resp: Resp, hoje: string): Promise<string[]> {
   const r = rf(resp, 1);
+  const h = `$${r.p.length + 1}::date`;
   const rows = await q<any>(
     `SELECT to_char(mes,'YYYY-MM-DD') AS mes FROM (
        SELECT date_trunc('month',data_lancamento) AS mes,
@@ -550,21 +522,16 @@ async function getMesesConfiaveis(resp: Resp): Promise<string[]> {
                 - COALESCE(SUM(valor) FILTER (WHERE tipo_movimento='Saída'),0)) AS gap
        FROM financas_lancamentos
        WHERE classe='transferencia_interna' AND forma_pagamento='Débito'
-         AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '6 months'
-         AND data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)${r.sql}
+         AND data_lancamento >= date_trunc('month',${h}) - interval '6 months'
+         AND data_lancamento <  date_trunc('month',${h})${r.sql}
        GROUP BY 1
      ) x WHERE gap < 1000 ORDER BY mes DESC LIMIT 3`,
-    r.p,
+    [...r.p, hoje],
   );
   const confiaveis = rows.map((x) => x.mes);
   if (confiaveis.length > 0) return confiaveis;
   // nenhum mês passou no teste — cai pros últimos 3 pra não zerar a projeção
-  const hoje = currentDateSP().slice(0, 7);
-  return [1, 2, 3].map((i) => `${addMonthsSP(hoje, -i)}-01`);
-}
-
-export interface ReceitaPrevista {
-  nome: string; valor: number; diaTipico: number; responsavel: string;
+  return [1, 2, 3].map((i) => `${addMonths(hoje.slice(0, 7), -i)}-01`);
 }
 
 export interface PrevisaoResumo {
@@ -584,46 +551,6 @@ export interface PrevisaoResumo {
  * Os bots chamam isto via HTTP em vez de reimplementar a conta em SQL — assim
  * não existe uma segunda versão da lógica pra desandar em relação ao site.
  */
-export interface Ritmo {
-  diaHoje: number;
-  diasRestantes: number;
-  /** quanto dá pra gastar por dia, daqui até o fim do mês, sem fechar no vermelho */
-  ritmoSeguroDia: number;
-  /** média diária que já está sendo praticada neste mês */
-  ritmoAtualDia: number;
-  /** o total livre que sobra pro dia a dia no resto do mês */
-  sobraParaODiaADia: number;
-  fechaCom: number;
-}
-
-/**
- * O número mais acionável do app: quanto cabe gastar hoje.
- *
- * Fica aqui, e não dentro de quem exibe, porque a home e o endpoint dos bots
- * precisam do mesmo número — duas cópias da conta viravam duas verdades.
- */
-export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes): Ritmo {
-  const [, , diaStr] = currentDateSP().split('-');
-  const diaHoje = Number(diaStr);
-  const [ano, mes] = atual.mes.split('-').map(Number);
-  const diasNoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
-  const diasRestantes = Math.max(0, diasNoMes - diaHoje);
-
-  // tudo que não é gasto do dia a dia já está comprometido; o que sobra é o que
-  // dá pra gastar até o fim do mês sem fechar no vermelho
-  const sobraParaODiaADia = base.saldoContasAtual + atual.receita
-    - atual.despesaFixa - atual.despesaManual - atual.despesaCasa - atual.fatura;
-
-  return {
-    diaHoje,
-    diasRestantes,
-    sobraParaODiaADia,
-    ritmoSeguroDia: diasRestantes > 0 ? Math.max(0, sobraParaODiaADia / diasRestantes) : 0,
-    ritmoAtualDia: diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
-    fechaCom: atual.saldoProjetado,
-  };
-}
-
 export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
   const base = await getProjecaoBase(resp);
   const proj = computeProjecao(base, 6);
@@ -648,65 +575,38 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
   };
 }
 
-/**
- * Entradas recorrentes que AINDA não caíram neste mês (ex.: a 2ª parcela do
- * salário, que cai sempre no dia 20). Agrupa por descrição + metade do mês,
- * porque o mesmo salário pode vir em duas parcelas com a mesma descrição.
- */
-async function getReceitasAReceber(resp: Resp): Promise<ReceitaPrevista[]> {
-  const r = rf(resp, 1);
-  const rows = await q<any>(
-    `WITH base AS (
-       SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
-              CASE WHEN EXTRACT(day FROM data_lancamento) <= 15 THEN 'inicio' ELSE 'fim' END AS metade,
-              valor, responsavel, date_trunc('month',data_lancamento) AS mes,
-              EXTRACT(day FROM data_lancamento) AS dia
-       FROM financas_lancamentos
-       WHERE classe='receita' AND valor >= 300
-         AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) - interval '3 months'
-         AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
-     ),
-     por_mes AS (
-       SELECT chave, metade, mes, SUM(valor) AS total, MIN(dia) AS dia,
-              mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel
-       FROM base GROUP BY 1,2,3
-     )
-     SELECT chave, metade,
-            ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY total)
-                  FILTER (WHERE mes < date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date))::numeric, 2) AS media,
-            ROUND(percentile_cont(0.5) WITHIN GROUP (ORDER BY dia)
-                  FILTER (WHERE mes < date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date))::numeric) AS dia_tipico,
-            mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel,
-            COUNT(*) FILTER (WHERE mes < date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)) AS meses_antes,
-            COUNT(*) FILTER (WHERE mes = date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)) AS ja_caiu
-     FROM por_mes GROUP BY 1,2`,
-    r.p,
-  );
-  return rows
-    .filter((x) => Number(x.meses_antes) >= 2 && Number(x.ja_caiu) === 0 && Number(x.media) > 0)
-    .map((x) => ({
-      nome: String(x.chave).trim(), valor: Number(x.media),
-      diaTipico: Number(x.dia_tipico), responsavel: x.responsavel,
-    }));
-}
-
-export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
+export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()): Promise<ProjecaoBase> {
   const [patrimonioAtual, saldoContas, meses] = await Promise.all([
-    getPatrimonioAtual(resp), getSaldoContas(resp), getMesesConfiaveis(resp),
+    getPatrimonioAtual(resp), getSaldoContas(resp), getMesesConfiaveis(resp, hoje),
   ]);
   const saldoContasAtual = saldoContas.total;
 
-  const r1 = rf(resp, 2);
-  const receitaRows = await q<any>(
-    `SELECT ROUND(AVG(m.total),2) AS media FROM (
-       SELECT date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
-       FROM financas_lancamentos
-       WHERE classe='receita'
-         AND date_trunc('month',data_lancamento) = ANY($1::date[])${r1.sql}
-       GROUP BY 1
-     ) m`,
-    [meses, ...r1.p],
+  const basesReceita = mesesBaseReceita(hoje);
+  // receita por FONTE (quem paga): documento da contraparte, ou a descrição sem dígitos
+  // quando o banco não manda documento. Meses-base + o mês de hoje (para o "já recebido").
+  const r1 = rf(resp, 3);
+  const entradaRows = await q<any>(
+    `SELECT COALESCE(contraparte_doc,
+              trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g'))) AS fonte,
+            trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS nome,
+            to_char(data_lancamento,'YYYY-MM') AS mes, EXTRACT(day FROM data_lancamento)::int AS dia,
+            valor::float8 AS valor, responsavel
+     FROM financas_lancamentos
+     WHERE classe='receita'
+       AND data_lancamento >= ($1 || '-01')::date
+       AND data_lancamento <= $2::date${r1.sql}`,
+    [basesReceita[basesReceita.length - 1], hoje, ...r1.p],
   );
+  const entradas: EntradaReceita[] = entradaRows.map((x) => ({
+    fonte: x.fonte, nome: x.nome, mes: x.mes, dia: Number(x.dia), valor: Number(x.valor), responsavel: x.responsavel,
+  }));
+  const fontesReceita = receitaRecorrente(entradas, basesReceita);
+  const recebidoPorFonte: Record<string, number> = {};
+  for (const e of entradas) {
+    if (e.mes !== hoje.slice(0, 7)) continue;
+    const k = chaveParte(e.fonte, e.dia);
+    recebidoPorFonte[k] = (recebidoPorFonte[k] ?? 0) + e.valor;
+  }
 
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.
@@ -726,21 +626,23 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
 
   // compras novas no crédito (fora parcelamentos) — é o que vira fatura do mês seguinte
   const rcn = rf(resp, 2);
+  const hcn = `$${rcn.p.length + 2}::date`;
   const creditoRows = await q<any>(
     `WITH chaves_parceladas AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave
        FROM financas_lancamentos
-       WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date
+       WHERE classe='despesa' AND data_lancamento > ${hcn} AND criado_em::date <= ${hcn}
      )
      SELECT ROUND(AVG(m.total),2) AS media FROM (
        SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
        FROM financas_lancamentos l
        WHERE l.classe='despesa' AND l.forma_pagamento='Crédito'
          AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT chave FROM chaves_parceladas)
+         AND NOT (COALESCE(l.parcela_total,0) > 1 OR l.descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$')
          AND date_trunc('month',l.data_lancamento) = ANY($1::date[])${rcn.sql}
        GROUP BY 1
      ) m`,
-    [meses, ...rcn.p],
+    [meses, ...rcn.p, hoje],
   );
 
   // gastos da casa entram pela média real por categoria (aluguel, luz, água...).
@@ -760,36 +662,66 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
   const despesaCasaPorCategoria: Record<string, number> = {};
   casaRows.forEach((x) => { despesaCasaPorCategoria[x.categoria] = Number(x.media); });
 
-  const r3 = rf(resp, 1);
-  const fixaRows = await q<any>(
-    `SELECT to_char(date_trunc('month',data_lancamento),'YYYY-MM') AS mes, SUM(valor) AS total
-     FROM financas_lancamentos
-     WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date${r3.sql}
-     GROUP BY 1 ORDER BY 1`,
-    r3.p,
+  // Compras no crédito pelo MÊS DE VENCIMENTO da fatura em que caem, nesta ordem:
+  // 1) fatura_id -> vencimento real; 2) fatura_prevista + deslocamento da conta, aprendido dos
+  // lançamentos que têm os dois (no Nubank fatura_prevista é o mês do vencimento; no Neon e no
+  // Santander, o mês anterior); 3) mês seguinte ao lançamento. Só o conhecido em hoje.
+  const r3 = rf(resp, 2);
+  const credVencRows = await q<any>(
+    `WITH desloc AS (
+       SELECT l.account_id,
+              mode() WITHIN GROUP (ORDER BY (EXTRACT(year FROM h.vencimento) * 12 + EXTRACT(month FROM h.vencimento))
+                - (left(l.fatura_prevista, 4)::int * 12 + right(l.fatura_prevista, 2)::int)) AS meses
+       FROM financas_lancamentos l JOIN financas_faturas_historico h ON h.id = l.fatura_id
+       WHERE l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
+       GROUP BY 1
+     )
+     SELECT to_char(COALESCE(
+              h.vencimento,
+              CASE WHEN l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
+                   THEN (to_date(l.fatura_prevista, 'YYYY-MM') + make_interval(months => COALESCE(d.meses, 0)::int))::date END,
+              (date_trunc('month', l.data_lancamento) + interval '1 month')::date), 'YYYY-MM') AS venc,
+            SUM(l.valor)::float8 AS total
+     FROM financas_lancamentos l
+     LEFT JOIN financas_faturas_historico h ON h.id = l.fatura_id
+     LEFT JOIN desloc d ON d.account_id = l.account_id
+     WHERE l.classe = 'despesa' AND l.forma_pagamento = 'Crédito'
+       AND (l.data_lancamento <= $1::date OR l.criado_em::date <= $1::date)${r3.sql}
+     GROUP BY 1`,
+    [hoje, ...r3.p],
   );
-  const despesaFixaPorMes: Record<string, number> = {};
-  fixaRows.forEach((x) => { despesaFixaPorMes[x.mes] = Number(x.total); });
+  const creditoPorVencimento: Record<string, number> = {};
+  credVencRows.forEach((x) => { creditoPorVencimento[x.venc] = Number(x.total); });
+
+  // fatura real (histórico da Pluggy) das que vencem até o mês de hoje
+  const filtroResp = resp === 'casal' ? '' : ' AND c.responsavel = $2';
+  const faturaRows = await q<any>(
+    `SELECT to_char(h.vencimento, 'YYYY-MM') AS venc, SUM(h.total)::float8 AS total
+     FROM financas_faturas_historico h LEFT JOIN pluggy_contas c ON c.account_id = h.account_id
+     WHERE date_trunc('month', h.vencimento) <= date_trunc('month', $1::date)${filtroResp}
+     GROUP BY 1`,
+    resp === 'casal' ? [hoje] : [hoje, resp],
+  );
+  const faturaReal: Record<string, number> = {};
+  faturaRows.forEach((x) => { faturaReal[x.venc] = Number(x.total); });
 
   const compromissosManuais = await getCompromissosManuais(resp);
-  const receitasAReceber = await getReceitasAReceber(resp);
+  const receitasAReceber = receitaAindaAEntrar(fontesReceita, recebidoPorFonte);
 
   // --- mês em andamento: o que já entrou/saiu e o que ainda falta ---
   const rmc = rf(resp, 1);
   const mesRows = await q<any>(
-    `WITH sp AS (SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date AS hoje),
+    `WITH sp AS (SELECT $${rmc.p.length + 2}::date AS hoje),
      lim AS (SELECT date_trunc('month',(SELECT hoje FROM sp))::date AS ini,
                     (date_trunc('month',(SELECT hoje FROM sp)) + interval '1 month')::date AS fim),
      chaves AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS ch
        FROM financas_lancamentos, sp
-       WHERE classe='despesa' AND data_lancamento > sp.hoje
+       WHERE classe='despesa' AND data_lancamento > sp.hoje AND criado_em::date <= sp.hoje
      )
      SELECT
        (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
-         WHERE classe='receita' AND data_lancamento >= lim.ini AND data_lancamento <= sp.hoje${rmc.sql}) AS receita_recebida,
-       (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
-         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim${rmc.sql}) AS receita_agendada,
+         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim AND criado_em::date <= sp.hoje${rmc.sql}) AS receita_agendada,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
@@ -797,25 +729,27 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
            AND ${SEM_ESPELHO}${rmc.sql}) AS variavel_gasto,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
-           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim
+           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim AND l.criado_em::date <= sp.hoje
            AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
            AND ${SEM_ESPELHO}${rmc.sql}) AS agendado_restante,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='pagamento_fatura' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
            AND ${SEM_ESPELHO}${rmc.sql}) AS fatura_ja_paga`,
-    [...rmc.p, CASA_CATS],
+    [...rmc.p, CASA_CATS, hoje],
   );
 
   const rcm = rf(resp, 2);
+  const hcm = `$${rcm.p.length + 2}::date`;
   const casaMesRows = await q<any>(
     `SELECT categoria_efetiva(descricao, categoria) AS categoria, ROUND(SUM(valor),2) AS total
      FROM financas_lancamentos
      WHERE classe='despesa' AND categoria = ANY($1::text[])
-       AND data_lancamento >= date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date)
-       AND data_lancamento <  date_trunc('month',(now() AT TIME ZONE 'America/Sao_Paulo')::date) + interval '1 month'${rcm.sql}
+       AND data_lancamento >= date_trunc('month',${hcm})
+       AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
+       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
      GROUP BY 1`,
-    [CASA_CATS, ...rcm.p],
+    [CASA_CATS, ...rcm.p, hoje],
   );
   const casaNoMesPorCategoria: Record<string, number> = {};
   casaMesRows.forEach((x) => { casaNoMesPorCategoria[x.categoria] = Number(x.total); });
@@ -825,7 +759,7 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
     saldoContasAtual,
     saldoContas,
     mesCorrente: {
-      receitaJaRecebida: Number(mesRows[0]?.receita_recebida ?? 0),
+      recebidoPorFonte,
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
       receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
@@ -833,137 +767,14 @@ export async function getProjecaoBase(resp: Resp): Promise<ProjecaoBase> {
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
       casaNoMesPorCategoria,
     },
-    receitaMediaMensal: Number(receitaRows[0]?.media ?? 0),
+    fontesReceita,
     despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
     creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,
-    despesaFixaPorMes,
+    creditoPorVencimento,
+    faturaReal,
     compromissosManuais,
   };
-}
-
-export interface ProjecaoMes {
-  mes: string; mesLabel: string;
-  receita: number;
-  despesaFixa: number;     // débito já agendado no mês
-  despesaManual: number;   // fixos cadastrados
-  despesaCasa: number;
-  despesaVariavel: number; // gasto no débito
-  fatura: number;          // fatura de cartão que sai da conta no mês
-  parcelas: number;        // parte da fatura já contratada (parcelamentos)
-  saldo: number;           // fluxo de CAIXA do mês
-  saldoProjetado: number;  // dinheiro em conta no fim daquele mês
-  /** no mês em andamento os valores são o que AINDA falta acontecer, não o mês inteiro */
-  emAndamento?: boolean;
-}
-
-function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
-  if (mes < c.dataInicio.slice(0, 7)) return false;
-  if (c.dataFim && mes > c.dataFim.slice(0, 7)) return false;
-  return true;
-}
-
-/**
- * Fatura que sai da conta no mês: as parcelas já agendadas para ele
- * (a Pluggy lança as futuras) mais as compras novas no crédito, que você
- * faz todo mês e caem na fatura seguinte.
- */
-function faturaDoMes(base: ProjecaoBase, mes: string): number {
-  return (base.despesaFixaPorMes[mes] ?? 0) + base.creditoNovoMedio;
-}
-
-function addMonthsSP(anchorYYYYMM: string, n: number): string {
-  const [y, m] = anchorYYYYMM.split('-').map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + n, 1));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-/**
- * Função pura (sem DB) — monta a série mês a mês.
- * Regra central: mês futuro NUNCA fica vazio. Mesmo sem nada lançado nele, ele já
- * nasce com as parcelas conhecidas + os fixos cadastrados + a média real de gasto
- * variável. É isso que evita o falso otimismo de planilha ("não preenchi, logo sobrou").
- * `saldoProjetado` parte do saldo REAL das contas correntes (Pluggy) e vai
- * somando o fluxo de cada mês = quanto dinheiro você teria em conta naquele mês.
- */
-export function computeProjecao(base: ProjecaoBase, horizonMeses: number): ProjecaoMes[] {
-  const anchor = currentMonthSP();
-  const out: ProjecaoMes[] = [];
-  let saldoProjetado = base.saldoContasAtual;
-
-  // --- mês em andamento: só o que AINDA falta acontecer ---
-  // O saldo de hoje já reflete tudo que passou, então somar o mês inteiro contaria duplicado.
-  {
-    const mc = base.mesCorrente;
-    const ativos = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, anchor));
-    const cobertas = new Set(ativos.map((c) => c.categoria));
-
-    // Fixo cadastrado que ainda não saiu neste mês. O desconto do que já foi pago
-    // é POR CATEGORIA, não por item: com dois compromissos "Housing" de R$1000 e
-    // R$1000 já pago, descontar em cada um zerava os dois (some R$1000 da conta).
-    const pagoPorCategoria: Record<string, number> = {};
-    const despesaManual = ativos.reduce((s, c) => {
-      const jaPago = mc.casaNoMesPorCategoria[c.categoria] ?? 0;
-      const consumido = pagoPorCategoria[c.categoria] ?? 0;
-      const abate = Math.min(c.valor, Math.max(0, jaPago - consumido));
-      pagoPorCategoria[c.categoria] = consumido + abate;
-      return s + (c.valor - abate);
-    }, 0);
-    // casa: o que falta pra atingir a média de cada categoria ainda não coberta por cadastro
-    const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
-      .filter(([cat]) => !cobertas.has(cat))
-      .reduce((s, [cat, media]) => s + Math.max(0, media - (mc.casaNoMesPorCategoria[cat] ?? 0)), 0);
-    // Gasto do dia a dia é diário. Depois da 1ª semana o ritmo REAL do mês é um
-    // previsor melhor que a média histórica — se você está gastando menos, a
-    // projeção acompanha em vez de insistir que você vai recuperar o atraso.
-    const [, , diaHojeStr] = currentDateSP().split('-');
-    const diaHoje = Number(diaHojeStr);
-    const [anoA, mesA] = anchor.split('-').map(Number);
-    const diasNoMes = new Date(Date.UTC(anoA, mesA, 0)).getUTCDate();
-    const ritmo = diaHoje >= 7
-      ? mc.variavelJaGasto / diaHoje
-      : base.despesaVariavelMediaMensal / diasNoMes;
-    const despesaVariavel = ritmo * (diasNoMes - diaHoje);
-    const despesaFixa = mc.agendadoRestante;
-    // Entradas recorrentes que ainda não caíram (salário do dia 20, etc).
-    // Mais preciso que "média menos o que já entrou": sabe QUAL entrada falta.
-    const recorrentes = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0);
-    const receita = (recorrentes > 0
-      ? recorrentes
-      : Math.max(0, base.receitaMediaMensal - mc.receitaJaRecebida)) + mc.receitaAgendada;
-    const fatura = Math.max(0, faturaDoMes(base, anchor) - mc.faturaJaPaga);
-    const parcelas = Math.min(fatura, base.despesaFixaPorMes[anchor] ?? 0);
-
-    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
-    saldoProjetado += saldo;
-    out.push({
-      mes: anchor, mesLabel: mesLabel(anchor), receita, despesaFixa, despesaManual,
-      despesaCasa, despesaVariavel, fatura, parcelas, saldo, saldoProjetado, emAndamento: true,
-    });
-  }
-
-  for (let i = 1; i <= horizonMeses; i++) {
-    const mes = addMonthsSP(anchor, i);
-    const despesaFixa = 0; // no caixa, parcela de cartão sai dentro da fatura
-    const ativosNoMes = base.compromissosManuais.filter((c) => compromissoAtivoNoMes(c, mes));
-    const despesaManual = ativosNoMes.reduce((s, c) => s + c.valor, 0);
-
-    // se você cadastrou um compromisso naquela categoria da casa, o SEU número manda
-    // e a média histórica daquela categoria não entra (senão contaria duas vezes)
-    const categoriasCobertas = new Set(ativosNoMes.map((c) => c.categoria));
-    const despesaCasa = Object.entries(base.despesaCasaPorCategoria)
-      .filter(([cat]) => !categoriasCobertas.has(cat))
-      .reduce((s, [, v]) => s + v, 0);
-
-    const despesaVariavel = base.despesaVariavelMediaMensal;
-    const receita = base.receitaMediaMensal;
-    const fatura = faturaDoMes(base, mes);
-    const parcelas = base.despesaFixaPorMes[mes] ?? 0;
-    const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
-    saldoProjetado += saldo;
-    out.push({ mes, mesLabel: mesLabel(mes), receita, despesaFixa, despesaManual, despesaCasa, despesaVariavel, fatura, parcelas, saldo, saldoProjetado });
-  }
-  return out;
 }
 
 // ==================== DIAGNÓSTICO ====================
@@ -993,7 +804,7 @@ export interface Diagnostico {
 export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
   // mês de referência = último mês COMPLETO (o atual ainda está correndo)
   const anchor = currentMonthSP();
-  const mesRef = addMonthsSP(anchor, -1);
+  const mesRef = addMonths(anchor, -1);
 
   const r1 = rf(resp, 2);
   const catRows = await q<any>(

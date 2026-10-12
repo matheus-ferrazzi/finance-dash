@@ -10,6 +10,7 @@ import { SimuladorCompra, simularCompra } from './SimuladorCompra';
 import { CATEGORIAS_COMPROMISSO } from '@/lib/validation';
 import type { Calibracao } from '@/lib/faixa';
 import { compraCabe, saiDoVermelho, textoVeredito } from '@/lib/decisoes';
+import { textoMetaAlvo } from '@/lib/meta';
 import type { ProjecaoMes, CompromissoParcelado, CompromissoManual, SaldoConta, ReceitaPrevista } from '@/lib/queries';
 
 const HORIZONTES = [3, 6, 12, 24] as const;
@@ -61,8 +62,10 @@ const FORM_VAZIO: FormState = {
 };
 
 export function PrevisibilidadeClient({
-  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null, calib = null, motivoSemFaixa = null,
+  patrimonioAtual, saldoContas, projecao, parcelados, manuais, receitasAReceber, mesFoco = null, calib = null, motivoSemFaixa = null, meta = null,
 }: {
+  /** meta de gasto no débito: em que mês sai do vermelho para cada nível de gasto */
+  meta?: { debitoAtual: number; alvo: string; alvoLabel: string; linhas: { debito: number; sai: string | null }[]; maxDebito: number | null } | null;
   /** por que não há faixa (para dizer o motivo certo na tela) */
   motivoSemFaixa?: 'historico_curto' | 'visao_individual' | null;
   /** faixa 8 em 10 (F2a); null = sem calibração ou visão individual */
@@ -286,6 +289,20 @@ export function PrevisibilidadeClient({
             {!calib && motivoSemFaixa === 'visao_individual' && <span className="text-faint"> · faixa de incerteza só na visão do casal</span>}
             {!calib && motivoSemFaixa !== 'visao_individual' && <span className="text-faint"> · sem faixa de incerteza ainda: a fase atual tem menos de 6 meses de histórico</span>}
           </p>
+          {meta && (
+            <div className="mt-3 rounded-lg bg-surface-2 px-3 py-2.5">
+              <div className="text-xs font-medium text-text">Meta de gasto no débito</div>
+              <p className="mt-1 text-xs text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v))}</p>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+                {meta.linhas.map((l, i) => (
+                  <div key={l.debito} className="flex justify-between gap-2">
+                    <span className="tnum money text-muted">{brl(l.debito)}/mês{i === 0 ? ' (hoje)' : ''}</span>
+                    <span className={l.sai ? 'text-accent' : 'text-despesa'}>{l.sai ? `sai em ${mesLabel(l.sai)}` : 'não sai'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {/* uma linha em vez de cinco chips: a quebra detalhada não precisa
               competir de igual pra igual com os quatro números que importam */}
           <p className="mt-3 text-xs leading-relaxed text-muted">

@@ -88,3 +88,11 @@ describe('revisão E3', () => {
     expect(m.criadas).toEqual([]);
   });
 });
+
+describe('mensagem de data (E3)', () => {
+  it('data futura e data velha têm motivo claro', async () => {
+    const m = montar();
+    expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'x', categoria: 'Groceries', data: '2026-10-13' })).toMatchObject({ ok: false, dados: { erro: expect.stringContaining('data futura') } });
+    expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'x', categoria: 'Groceries', data: '2026-09-01' })).toMatchObject({ ok: false, dados: { erro: expect.stringContaining('mais de 30 dias') } });
+  });
+});

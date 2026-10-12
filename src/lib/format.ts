@@ -66,7 +66,7 @@ const CAT_PT: Record<string, string> = {
   Houseware: 'Utensílios domésticos', Housing: 'Moradia', Income: 'Renda', Insurance: 'Seguro',
   'Interests charged': 'Juros cobrados', Internet: 'Internet', Investments: 'Investimentos',
   'Kids and toys': 'Crianças e brinquedos', 'Late payment and overdraft costs': 'Juros de atraso',
-  Loans: 'Empréstimos', 'Loans and financing': 'Empréstimos e financiamentos', 'Mileage programs': 'Programas de milhas',
+  Loans: 'Empréstimos', 'Loans and financing': 'Empréstimos e financiamentos', Consortium: 'Consórcio', 'Mileage programs': 'Programas de milhas',
   'Mutual funds': 'Fundos', 'Non-recurring income': 'Renda extra', 'Online Courses': 'Cursos online',
   'Online shopping': 'Compras online', Optometry: 'Ótica', Outros: 'Outros', Parking: 'Estacionamento',
   'Pet supplies and vet': 'Pet e veterinário', Pharmacy: 'Farmácia', 'Proceeds interests and dividends': 'Juros e dividendos',
@@ -75,7 +75,7 @@ const CAT_PT: Record<string, string> = {
   'Taxes on investments': 'Impostos s/ investimentos', 'Taxi and ride-hailing': 'Táxi e apps',
   Telecommunications: 'Telecom', 'Third party transfer - Debit Card': 'Transferência (débito)', Tickets: 'Ingressos',
   'Tolls and in vehicle payment': 'Pedágios', 'Transfer - Bank Slip': 'Boleto', 'Transfer - Internal': 'Transferência interna',
-  'Transfer - PIX': 'PIX', Transfers: 'Transferências', Transportation: 'Transporte', Travel: 'Viagem',
+  'Transfer - PIX': 'PIX', Transfers: 'Transferências', Transportation: 'Transporte', Travel: 'Viagem', Gifts: 'Presentes',
   'Vehicle maintenance': 'Manutenção do veículo', 'Vehicle ownership taxes and fees': 'IPVA e taxas',
   Water: 'Água', Wellness: 'Bem-estar', 'Wellness and fitness': 'Bem-estar e fitness',
 };

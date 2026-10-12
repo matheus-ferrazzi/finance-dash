@@ -19,4 +19,4 @@ CREATE TABLE financas_sync_log (id serial PRIMARY KEY, banco varchar, responsave
   observed_at timestamptz DEFAULT now());
 CREATE TABLE financas_compromissos (id serial PRIMARY KEY, nome text, categoria text, valor numeric, responsavel text,
   data_inicio date, meses_totais int, ativo boolean DEFAULT true, observacao text, criado_em timestamp DEFAULT now(), atualizado_em timestamp);
-CREATE FUNCTION categoria_efetiva(d text, c text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT c $$;
+CREATE FUNCTION categoria_efetiva(desc_ text, cat_ text, doc_ text DEFAULT NULL) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT cat_ $$;

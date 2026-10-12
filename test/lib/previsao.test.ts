@@ -182,3 +182,42 @@ describe('extra (plantão, bônus) não vira valor típico', () => {
     expect(r[0].valor).toBe(4650);
   });
 });
+
+describe('débito do mês em andamento: contas fixas à parte e perfil do mês (10/10/2026)', () => {
+  const mc = (p: Partial<ProjecaoBase['mesCorrente']>) => ({ ...baseFake().mesCorrente, ...p });
+
+  it('meses seguintes: débito = livre + fixo (o total de antes)', () => {
+    const p = computeProjecao(baseFake({ despesaVariavelMediaMensal: 2500, despesaFixaDebitoMedia: 500 }), 1, '2026-08-11');
+    expect(p[1].despesaVariavel).toBe(3000);
+  });
+
+  it('conta fixa que ainda não saiu entra como compromisso, não no ritmo; a já paga não conta de novo', () => {
+    const b = baseFake({ despesaFixaDebitoMedia: 500, fracaoRestanteDebito: 0.4, mesCorrente: mc({ fixoJaGasto: 300 }) });
+    expect(computeProjecao(b, 0, '2026-08-03')[0].despesaFixa).toBe(200);
+    const paga = baseFake({ despesaFixaDebitoMedia: 500, fracaoRestanteDebito: 0.4, mesCorrente: mc({ fixoJaGasto: 575 }) });
+    expect(computeProjecao(paga, 0, '2026-08-03')[0].despesaFixa).toBe(0);
+  });
+
+  it('antes do dia 7: gasto livre que falta = média × fração histórica que sai depois de hoje', () => {
+    const b = baseFake({ despesaVariavelMediaMensal: 3000, fracaoRestanteDebito: 0.7, mesCorrente: mc({ variavelJaGasto: 2000 }) });
+    expect(computeProjecao(b, 0, '2026-08-03')[0].despesaVariavel).toBeCloseTo(2100);
+  });
+
+  it('do dia 7 em diante: metade pela média, metade pelo observado escalado pelo perfil', () => {
+    // média 3000 × 0.4 = 1200; observado 1500 até hoje, perfil diz que 60% já saiu → resto 1500 × 0.4/0.6 = 1000
+    const b = baseFake({ despesaVariavelMediaMensal: 3000, fracaoRestanteDebito: 0.4, mesCorrente: mc({ variavelJaGasto: 1500 }) });
+    expect(computeProjecao(b, 0, '2026-08-10')[0].despesaVariavel).toBeCloseTo(1100);
+  });
+
+  it('sem perfil (pouco histórico), a fração é a dos dias que faltam', () => {
+    const b = baseFake({ despesaVariavelMediaMensal: 3100, fracaoRestanteDebito: null, mesCorrente: mc({ variavelJaGasto: 0 }) });
+    expect(computeProjecao(b, 0, '2026-08-01')[0].despesaVariavel).toBeCloseTo(3000); // 30 de 31 dias
+  });
+
+  it('conta fixa que ainda vai sair é descontada do que sobra para o dia a dia (é compromisso)', () => {
+    const b = baseFake({ saldoContasAtual: 3000, despesaFixaDebitoMedia: 500, fracaoRestanteDebito: 0.4, despesaCasaPorCategoria: {},
+      fontesReceita: [], mesCorrente: mc({ fixoJaGasto: 0 }) });
+    const p = computeProjecao(b, 0, '2026-08-11');
+    expect(computeRitmo(b, p[0], '2026-08-11').sobraParaODiaADia).toBe(2500);
+  });
+});

@@ -58,3 +58,26 @@ describe('classificar', () => {
     expect(classificar('Groceries', 'x', false, 'Débito', 'Matheus')).toBe('estorno');
   });
 });
+
+describe('consórcio (B, 10/10/2026)', () => {
+  const boleto = 'PAGAMENTO DE BOLETO OUTROS BANCOS   BRADESCO ADMINISTRADORA D';
+  it('boleto da administradora de consórcio é despesa, não pagamento de fatura', () => {
+    expect(classificar('Transfer - Bank Slip', boleto, true, 'Débito', 'Ariane')).toBe('despesa');
+  });
+  it('categoria Consortium', () => {
+    expect(corrigirCategoria('Transfer - Bank Slip', boleto)).toBe('Consortium');
+    expect(corrigirCategoria(null, 'PGTO CONSORCIO GRUPO 123')).toBe('Consortium');
+  });
+  it('fatura do cartão Bradesco continua pagamento de fatura', () => {
+    expect(classificar('Credit card payment', 'GASTOS CARTAO DE CREDITO - DOCTO: 1', true, 'Débito', 'Matheus')).toBe('pagamento_fatura');
+  });
+});
+
+describe('fatura do cartão paga por PIX QR Code (B, 10/10/2026)', () => {
+  it('PIX QR para o banco que emite o cartão é pagamento de fatura, não despesa', () => {
+    expect(classificar('Transfer - PIX', 'Pagamento de Pix QR Code BANCO SANTANDER (BRASIL) S.A.', true, 'Débito', 'Matheus')).toBe('pagamento_fatura');
+  });
+  it('PIX QR para loja continua despesa', () => {
+    expect(classificar('Transfer - PIX', 'Pagamento de Pix QR Code LOJA EXEMPLO LTDA', true, 'Débito', 'Matheus')).toBe('despesa');
+  });
+});

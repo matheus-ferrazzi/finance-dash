@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { Cron } from 'croner';
 import { Pool } from 'pg';
 import { AGENDA, AGENDA_NOTIF, lerArgs, lerModo } from './cli';
+import { PgAcoes } from './bot/acoes';
 import { criarBot } from './bot/bot';
 import { lerMembros } from './bot/entrada';
 import { ClienteGroq } from './bot/groq';
@@ -107,6 +108,12 @@ async function main() {
           const r = await fetch(`${painelBase}${c}`, { signal: AbortSignal.timeout(30000) });
           return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
         },
+        // E2: escrita só pelas rotas /api/bot/{previa,executar,desfazer}, depois do "sim" lido pelo código
+        painelPost: async (c, corpo) => {
+          const r = await fetch(`${painelBase}${c}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });
+          return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
+        },
+        acoes: new PgAcoes(pool),
       });
       const porta = Number(process.env.BOT_PORTA ?? 8090);
       const servidor = criarServidor(process.env.BOT_TOKEN!, (c) => bot.receber(c));

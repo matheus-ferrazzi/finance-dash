@@ -97,3 +97,13 @@ describe('ajustes do teste em produção (E1)', () => {
     expect(r.trava).toBe(false);
   });
 });
+
+describe('formato do WhatsApp (E1)', () => {
+  it('**negrito** do modelo vira *negrito*', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' },
+      { content: '🛒 Gasto com **Mercado**: **R$ 400,00**', toolCalls: [], modelo: 'm' },
+    ]);
+    expect((await responder(p, { ...base, groq: g })).texto).toBe('🛒 Gasto com *Mercado*: *R$ 400,00*\n\n👉 https://p/gastos');
+  });
+});

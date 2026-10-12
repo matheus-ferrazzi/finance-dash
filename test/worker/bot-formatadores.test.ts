@@ -68,3 +68,10 @@ describe('faturas vencidas (E1)', () => {
     expect(t).toContain('✅ C (Matheus): sem valor em aberto');
   });
 });
+
+describe('percentual em pt-BR (E1)', () => {
+  it('comparar mostra 35,2% e não 35.2%', () => {
+    const t = formatar('comparar', { a: 'out/26', b: 'set/26', pessoa: 'casal', totalA: 135.2, totalB: 100, diferenca: 35.2, pct: 35.2, grupos: [], link: '/gastos' }, 'https://p');
+    expect(t).toContain('🔺 35,2%');
+  });
+});

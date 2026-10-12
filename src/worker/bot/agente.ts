@@ -52,7 +52,8 @@ export async function responder(p: Pergunta, d: {
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
           return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: !!texto }) : fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
-        return fimCom(texto, { modelo });
+        // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia
+        return fimCom(/^\s*bot(?![\p{L}\p{N}])/iu.test(texto) ? `🤖 ${texto}` : texto, { modelo });
       }
       msgs.push({ role: 'assistant', content: r.content, tool_calls: r.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.nome, arguments: t.args } })) });
       for (const t of r.toolCalls) {

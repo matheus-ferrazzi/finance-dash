@@ -35,7 +35,8 @@ export function lerWebhook(corpo: unknown, cfg: ConfigEntrada, enviados: Readonl
   const mencoes: string[] = ctx?.mentionedJid ?? [];
   const mencionou = mencoes.some((j) => cfg.botJids.some((b) => usuario(b) === usuario(j)));
   if (texto === null) return mencionou ? { tipo: 'nao_texto', pessoa } : IGNORAR;
-  const prefixo = /^\s*bot\b[\s,:;.!-]*/i;
+  // sem \b: com acento ("botão") o \b do JS acha fronteira; aqui só não pode vir letra ou número depois
+  const prefixo = /^\s*bot(?![\p{L}\p{N}])[\s,:;.!-]*/iu;
   if (!prefixo.test(texto) && !mencionou) return IGNORAR;
   const limpo = texto.replace(prefixo, '').replace(/@\d+\s*/g, '').trim();
   return { tipo: 'pergunta', p: { id: String(key.id ?? ''), pessoa, texto: limpo || 'oi' } };

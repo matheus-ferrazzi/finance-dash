@@ -7,7 +7,9 @@ const igual = (a: string, b: string) => a.length === b.length && timingSafeEqual
 
 export function criarServidor(token: string, aoReceber: (corpo: unknown) => void): Server {
   return createServer((req, res) => {
-    const url = new URL(req.url ?? '/', 'http://x');
+    let url: URL;
+    // alvo mal formado (ex.: "//x:99999") faria o new URL lançar e derrubar o worker inteiro, ingestão junto
+    try { url = new URL(req.url ?? '/', 'http://x'); } catch { res.writeHead(400).end(); req.resume(); return; }
     if (req.method === 'GET' && url.pathname === '/saude') { res.writeHead(200).end('ok'); return; }
     if (req.method !== 'POST' || url.pathname !== '/whatsapp') { res.writeHead(404).end(); return; }
     if (!igual(url.searchParams.get('t') ?? '', token)) { res.writeHead(403).end(); req.resume(); return; }

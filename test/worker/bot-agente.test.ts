@@ -57,3 +57,14 @@ describe('agente', () => {
     expect(r.texto).toBe('Não consegui ver os dados.');
   });
 });
+
+describe('resposta nunca começa com "bot" (revisão E1)', () => {
+  it('texto do modelo começando com "bot" ganha um emoji na frente (o bot não se chama de volta)', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' },
+      { content: 'Bot aqui: Mercado R$ 400,00.', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g });
+    expect(r.texto).toBe('🤖 Bot aqui: Mercado R$ 400,00.');
+  });
+});

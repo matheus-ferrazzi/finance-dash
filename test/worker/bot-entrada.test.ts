@@ -45,3 +45,11 @@ describe('lerMembros', () => {
     expect(lerMembros('')).toEqual({});
   });
 });
+
+describe('prefixo com acento (revisão E1)', () => {
+  it('"botão" e "Botões" não chamam o bot; "bot!" chama', () => {
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'botão quebrou' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'Botões novos' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'bot! trilha' }), cfg, new Set())).toMatchObject({ tipo: 'pergunta', p: { texto: 'trilha' } });
+  });
+});

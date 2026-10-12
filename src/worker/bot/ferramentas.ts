@@ -69,7 +69,7 @@ export function formatar(nome: string, d: any, painel: string): string {
       break;
     case 'comparar':
       l.push(`📊 ${d.a} × ${d.b} (${quem(d.pessoa)})`);
-      l.push(`💰 ${brl(d.totalA)} × ${brl(d.totalB)}${d.pct === null ? '' : `, ${d.diferenca > 0 ? `🔺 ${d.pct}%` : `🔻 ${Math.abs(d.pct)}%`}`}`);
+      l.push(`💰 ${brl(d.totalA)} × ${brl(d.totalB)}${d.pct === null ? '' : `, ${d.diferenca > 0 ? '🔺' : '🔻'} ${Math.abs(d.pct).toLocaleString('pt-BR')}%`}`);
       for (const g of d.grupos.slice(0, 5)) l.push(`${g.diferenca > 0 ? '⬆️' : g.diferenca < 0 ? '⬇️' : '➖'} ${g.nome}: ${brl(g.a)} × ${brl(g.b)}`);
       break;
     case 'faturas':

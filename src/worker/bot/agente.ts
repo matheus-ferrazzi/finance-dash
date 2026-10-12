@@ -65,7 +65,9 @@ export async function responder(p: Pergunta, d: {
           return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: !!texto }) : fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
         // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia
-        const final = /^\s*bot(?![\p{L}\p{N}])/iu.test(texto) ? `🤖 ${texto}` : texto;
+        // WhatsApp usa *um* asterisco para negrito; o modelo às vezes escreve o **Markdown**
+        const zap = texto.replace(/\*\*([^*\n]+)\*\*/g, '*$1*');
+        const final = /^\s*bot(?![\p{L}\p{N}])/iu.test(zap) ? `🤖 ${zap}` : zap;
         return fimCom(ultima ? comLink(final, d.painelUrl, ultima.dados?.link) : final, { modelo });
       }
       msgs.push({ role: 'assistant', content: r.content, tool_calls: r.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.nome, arguments: t.args } })) });

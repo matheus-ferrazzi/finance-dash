@@ -48,8 +48,10 @@ export function simularCompra(
 }
 
 export function SimuladorCompra({
-  valorStr, setValorStr, parcelasStr, setParcelasStr, resultado,
+  valorStr, setValorStr, parcelasStr, setParcelasStr, resultado, veredito = null,
 }: {
+  /** "cabe" / "fura em…" pelo pior caso da faixa (F2a) */
+  veredito?: string | null;
   valorStr: string;
   setValorStr: (v: string) => void;
   parcelasStr: string;
@@ -87,20 +89,21 @@ export function SimuladorCompra({
 
       {resultado && (
         <div className="fadein mt-4">
-          <div
-            className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm ${
-              resultado.mesesVermelho > 0 ? 'bg-despesa/10 text-despesa' : 'bg-accent/10 text-accent'
-            }`}
-          >
-            {resultado.mesesVermelho > 0
-              ? <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-              : <CheckCircle2 size={16} className="mt-0.5 shrink-0" />}
-            <span>
-              {resultado.mesesVermelho > 0
-                ? `Fica no vermelho em ${resultado.mesesVermelho} mês(es) — o dinheiro em conta não cobre.`
-                : 'Não fica no vermelho em nenhum mês da projeção.'}
-            </span>
-          </div>
+          {(() => {
+            // uma mensagem só: com o veredito do F2a (pior caso, 24 meses) ele substitui o aviso antigo
+            const ruim = veredito ? !veredito.startsWith('Cabe') : resultado.mesesVermelho > 0;
+            const tom = veredito?.startsWith('Atenção') ? 'bg-warn/10 text-warn' : ruim ? 'bg-despesa/10 text-despesa' : 'bg-accent/10 text-accent';
+            return (
+              <div className={`flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm ${tom}`}>
+                {ruim ? <AlertTriangle size={16} className="mt-0.5 shrink-0" /> : <CheckCircle2 size={16} className="mt-0.5 shrink-0" />}
+                <span>
+                  {veredito ?? (resultado.mesesVermelho > 0
+                    ? `Fica no vermelho em ${resultado.mesesVermelho} mês(es) — o dinheiro em conta não cobre.`
+                    : 'Não fica no vermelho em nenhum mês da projeção.')}
+                </span>
+              </div>
+            );
+          })()}
 
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <span className="rounded-lg bg-surface-2 px-2.5 py-1 text-muted">

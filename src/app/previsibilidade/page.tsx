@@ -1,5 +1,5 @@
 import {
-  getProjecaoBase, computeProjecao, getCompromissosParcelados, Resp,
+  getProjecaoBase, computeProjecao, getCalibracaoPara, getCompromissosParcelados, Resp,
 } from '@/lib/queries';
 import { PageTitle } from '../components/ui';
 import { mesValido } from '@/lib/links';
@@ -17,9 +17,10 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   const resp = resolveResp(searchParams.resp);
 
   // getProjecaoBase já traz saldos e compromissos manuais — não consultar de novo
-  const [base, parcelados] = await Promise.all([
+  const [base, parcelados, { calib, motivo }] = await Promise.all([
     getProjecaoBase(resp),
     getCompromissosParcelados(resp),
+    getCalibracaoPara(resp),
   ]);
   const projecao = computeProjecao(base, HORIZONTE_MAX);
 
@@ -37,6 +38,8 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         parcelados={parcelados}
         manuais={base.compromissosManuais}
         mesFoco={mesValido(searchParams.mes)}
+        calib={calib}
+        motivoSemFaixa={motivo}
       />
     </div>
   );

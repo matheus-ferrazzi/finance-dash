@@ -87,4 +87,21 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(base.mesCorrente.variavelJaGasto).toBe(40);
     expect(base.fracaoRestanteDebito).toBeCloseTo(0.25); // em out: 100 de 400 saiu depois do dia 10
   });
+
+  it('débito mensal: 6 meses fechados, mês vazio = 0, livre × travado, sem espelho; a regra muda a média', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('dm-1', '2029-04-10', 600, 'mercado', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2029-04-10'),
+      ('dm-2', '2029-06-10', 300, 'mercado', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2029-06-10'),
+      ('dm-3', '2029-06-11', 50, 'seguro', 'Insurance', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2029-06-11'),
+      ('dm-4', '2029-07-10', 900, 'MORA CARTAO DE CREDITO', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2029-07-10'),
+      ('dm-5', '2029-08-10', 100, 'mercado', 'Groceries', 'Crédito', 'X', 'Ariane', 'despesa', 'Saída', '2029-08-10'),
+      ('dm-6', '2029-09-10', 150, 'mercado', 'Groceries', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2029-09-10')`);
+    const meses = await queries.getDebitoMensal('Ariane', '2029-10-15');
+    expect(meses).toEqual([
+      { mes: '2029-04', livre: 600, fixo: 0 }, { mes: '2029-05', livre: 0, fixo: 0 }, { mes: '2029-06', livre: 300, fixo: 50 },
+      { mes: '2029-07', livre: 0, fixo: 0 }, { mes: '2029-08', livre: 0, fixo: 0 }, { mes: '2029-09', livre: 150, fixo: 0 },
+    ]);
+    const b = await queries.getProjecaoBase('Ariane', '2029-10-15', { regraDebito: 'media3' });
+    expect(b.despesaVariavelMediaMensal).toBe(50); // (0 + 0 + 150) / 3
+  });
 });

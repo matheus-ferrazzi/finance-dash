@@ -3,9 +3,13 @@ import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from 
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, type GrupoGasto } from './grupos';
 import { montarMes, padraoDe, type ResumoMes } from './contas';
+import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
+import { componentesPrevistos, type Componentes } from './backtest';
+import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
+import { saiDoVermelho } from './decisoes';
 import type { MarcaInput } from './validation';
 import {
-  addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -655,17 +659,27 @@ export interface PrevisaoResumo {
   /** quanto você está gastando por dia neste mês */
   ritmoAtualDia: number;
   receitasAReceber: ReceitaPrevista[];
-  proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number }[];
+  proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number; piorCaso: number }[];
+  /** faixa "8 em 10" do fechamento do mês; null sem calibração (histórico curto) ou fora da visão do casal */
+  faixa: { piorCaso: number; melhorCaso: number; n: number } | null;
+  /** por que não há faixa: fase atual com menos de 6 meses (ou cálculo falhou) / visão de uma pessoa */
+  faixaMotivo: MotivoSemFaixa | null;
+  /** primeiro mês em que o saldo fica ≥ 0 e continua (horizonte de 24 meses) */
+  saiDoVermelho: { provavel: string | null; piorCaso: string | null };
 }
 
-/**
- * Resumo da previsão num formato pronto pra consumo (site e bots do Telegram).
- * Os bots chamam isto via HTTP em vez de reimplementar a conta em SQL — assim
- * não existe uma segunda versão da lógica pra desandar em relação ao site.
- */
+export type MotivoSemFaixa = 'historico_curto' | 'visao_individual';
+
+/** A faixa é calibrada com os erros do casal: só vale para a visão do casal. Sem faixa, diz o motivo. */
+export async function getCalibracaoPara(resp: Resp): Promise<{ calib: Calibracao | null; motivo: MotivoSemFaixa | null }> {
+  if (resp !== 'casal') return { calib: null, motivo: 'visao_individual' };
+  const calib = await getCalibracao();
+  return { calib, motivo: calib ? null : 'historico_curto' };
+}
+
 export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
-  const base = await getProjecaoBase(resp);
-  const proj = computeProjecao(base, 6);
+  const [base, { calib, motivo }] = await Promise.all([getProjecaoBase(resp), getCalibracaoPara(resp)]);
+  const proj = computeProjecao(base, 24);
   const atual = proj[0];
   const ritmo = computeRitmo(base, atual);
 
@@ -681,13 +695,85 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
     ritmoSeguroDia: ritmo.ritmoSeguroDia,
     ritmoAtualDia: ritmo.ritmoAtualDia,
     receitasAReceber: base.mesCorrente.receitasAReceber,
-    proximosMeses: proj.slice(1).map((m) => ({
+    proximosMeses: proj.slice(1, 7).map((m, i) => ({
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
+      piorCaso: faixaMes(m.saldoProjetado, i + 1, calib).piorCaso,
     })),
+    faixa: calib ? { ...faixaMesCorrente(atual.saldoProjetado, ritmo.diasRestantes, diasNoMes(atual.mes), calib), n: calib.n } : null,
+    faixaMotivo: motivo,
+    saiDoVermelho: saiDoVermelho(proj, calib),
   };
 }
 
-export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()): Promise<ProjecaoBase> {
+// promessa por mês: acessos simultâneos (home, tela e bot no 1º acesso) esperam o mesmo cálculo
+const cacheCalib = new Map<string, Promise<Calibracao | null>>();
+
+/**
+ * Faixa da previsão: erros do saldo (1 mês à frente, casal, regra em uso) nos meses fechados da fase
+ * atual (desde INICIO_REGIME), dentro dos 12 últimos. Calculada uma vez por mês de referência; com
+ * menos de 6 meses na fase atual sai na hora, sem consultar; erro de consulta não fica em cache.
+ */
+export function getCalibracao(hoje: string = currentDateSP()): Promise<Calibracao | null> {
+  const chave = hoje.slice(0, 7);
+  const ja = cacheCalib.get(chave);
+  if (ja) return ja;
+  const meses = doRegime(Array.from({ length: 12 }, (_, i) => addMonths(chave, -(12 - i))));
+  const p = meses.length < 6 ? Promise.resolve(null) : calcularCalibracao(meses, hoje);
+  cacheCalib.clear();
+  cacheCalib.set(chave, p);
+  p.catch(() => cacheCalib.delete(chave));
+  return p.catch((e) => { console.error('calibração da faixa falhou', e); return null; });
+}
+
+async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibracao | null> {
+  const erros = await Promise.all(meses.map(async (mes) => {
+    const ant = addMonths(mes, -1);
+    const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
+    const [base, real] = await Promise.all([getProjecaoBase('casal', vesp, { regraDebito: REGRA_DEBITO }), getRealizado(mes)]);
+    if (real.receita === 0 && real.debito === 0) return null; // mês sem dado não calibra
+    return componentesPrevistos(computeProjecao(base, 1, vesp)[1]).saldo - real.saldo;
+  }));
+  return calibrar(erros.filter((e): e is number => e !== null), hoje);
+}
+
+/** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
+export async function getRealizado(mes: string): Promise<Componentes> {
+  const [r] = await q<any>(
+    `SELECT
+       COALESCE(SUM(valor) FILTER (WHERE classe='receita'),0) AS receita,
+       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}),0) AS debito,
+       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND categoria = ANY($2::text[])),0) AS casa,
+       COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SEM_ESPELHO}),0) AS fatura
+     FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date`,
+    [`${mes}-01`, CASA_CATS],
+  );
+  const c = { receita: Number(r.receita), debito: Number(r.debito), casa: Number(r.casa), fatura: Number(r.fatura) };
+  return { ...c, saldo: c.receita - c.debito - c.casa - c.fatura };
+}
+
+/** Débito dos `n` meses fechados antes do mês de `hoje`: livre × travado, fora casa e espelhos; mês vazio = 0. */
+export async function getDebitoMensal(resp: Resp, hoje: string, n = 6): Promise<MesDebito[]> {
+  const r = rf(resp, 5);
+  // filtros no ON do LEFT JOIN (descricao/responsavel só existem em financas_lancamentos): mês vazio fica com 0
+  const rows = await q<any>(
+    `WITH ms AS (
+       SELECT to_char(generate_series(date_trunc('month', $1::date) - ($2::int || ' months')::interval,
+                                      date_trunc('month', $1::date) - interval '1 month', interval '1 month'), 'YYYY-MM') AS mes)
+     SELECT ms.mes,
+            COALESCE(SUM(l.valor) FILTER (WHERE NOT (l.categoria = ANY($4::text[]))), 0)::float8 AS livre,
+            COALESCE(SUM(l.valor) FILTER (WHERE l.categoria = ANY($4::text[])), 0)::float8 AS fixo
+     FROM ms LEFT JOIN financas_lancamentos l
+       ON to_char(l.data_lancamento, 'YYYY-MM') = ms.mes
+      AND l.classe = 'despesa' AND l.forma_pagamento = 'Débito'
+      AND NOT (l.categoria = ANY($3::text[]))
+      AND ${SEM_ESPELHO}${r.sql}
+     GROUP BY ms.mes ORDER BY ms.mes`,
+    [hoje, n, CASA_CATS, FIXO_DEBITO_CATS, ...r.p],
+  );
+  return rows.map((x) => ({ mes: x.mes, livre: Math.round(Number(x.livre) * 100) / 100, fixo: Math.round(Number(x.fixo) * 100) / 100 }));
+}
+
+export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP(), opcoes: { regraDebito?: RegraDebito } = {}): Promise<ProjecaoBase> {
   const [patrimonioAtual, saldoContas, meses] = await Promise.all([
     getPatrimonioAtual(resp), getSaldoContas(resp), getMesesConfiaveis(resp, hoje),
   ]);
@@ -723,22 +809,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   // BASE CAIXA: só o que sai da CONTA (débito). Compra no crédito não sai aqui —
   // ela vira fatura e é descontada quando a fatura é paga.
   // dividido em gasto livre (o dia a dia) e contas travadas (consórcio, seguro, imposto…), que
-  // no mês em andamento entram como compromisso e não como ritmo
-  const r2 = rf(resp, 4);
-  const varRows = await q<any>(
-    `SELECT ROUND(AVG(m.livre),2) AS media, ROUND(AVG(m.fixo),2) AS media_fixo FROM (
-       SELECT date_trunc('month',l.data_lancamento) AS mes,
-              SUM(l.valor) FILTER (WHERE NOT (l.categoria = ANY($3::text[]))) AS livre,
-              COALESCE(SUM(l.valor) FILTER (WHERE l.categoria = ANY($3::text[])),0) AS fixo
-       FROM financas_lancamentos l
-       WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
-         AND NOT (l.categoria = ANY($1::text[]))
-         AND ${SEM_ESPELHO}
-         AND date_trunc('month',l.data_lancamento) = ANY($2::date[])${r2.sql}
-       GROUP BY 1
-     ) m`,
-    [CASA_CATS, meses, FIXO_DEBITO_CATS, ...r2.p],
-  );
+  // no mês em andamento entram como compromisso e não como ritmo. A média vem da regra escolhida
+  // pelo teste contra o passado (F2a): o gasto vem caindo e a média dos meses confiáveis não acompanha.
+  const debito = estimarDebito(await getDebitoMensal(resp, hoje), opcoes.regraDebito ?? REGRA_DEBITO, meses.map((d) => d.slice(0, 7)));
   // perfil do mês: que fração do gasto livre saiu DEPOIS do dia de hoje, nos 6 meses anteriores
   const rpf = rf(resp, 5);
   const perfilRows = await q<any>(
@@ -905,8 +978,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       casaNoMesPorCategoria,
     },
     fontesReceita,
-    despesaVariavelMediaMensal: Number(varRows[0]?.media ?? 0),
-    despesaFixaDebitoMedia: Number(varRows[0]?.media_fixo ?? 0),
+    despesaVariavelMediaMensal: debito.livre,
+    despesaFixaDebitoMedia: debito.fixo,
     fracaoRestanteDebito,
     creditoNovoMedio: Number(creditoRows[0]?.media ?? 0),
     despesaCasaPorCategoria,

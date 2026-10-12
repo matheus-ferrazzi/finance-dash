@@ -5,7 +5,11 @@ import type { SerieMes } from '@/lib/linhaDoMes';
 const W = 320, H = 110, PAD = 8;
 
 /** Saldo do mês: passado cheio, futuro tracejado, linha do zero, fechamento em destaque. */
-export function LinhaDoMes({ serie, titulo, href }: { serie: SerieMes; titulo: string; href: string }) {
+export function LinhaDoMes({ serie, titulo, href, faixa = null }: {
+  serie: SerieMes; titulo: string; href: string;
+  /** faixa 8 em 10 do fechamento (F2a); null = sem calibração */
+  faixa?: { piorCaso: number; melhorCaso: number } | null;
+}) {
   const ps = serie.pontos;
   const dias = ps.length ? ps.at(-1)!.dia : 1;
   const vals = [...ps.map((p) => p.saldo), 0];
@@ -24,6 +28,11 @@ export function LinhaDoMes({ serie, titulo, href }: { serie: SerieMes; titulo: s
         <span className="text-xs text-muted">{titulo}</span>
         <span className={`text-xl font-semibold tnum money ${cor}`}>{brl(serie.fechamento)}</span>
       </div>
+      {faixa && (
+        <div className="text-right text-[11px] text-muted">
+          entre <span className="money">{brl(faixa.piorCaso)}</span> e <span className="money">{brl(faixa.melhorCaso)}</span>
+        </div>
+      )}
       <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" role="img" aria-label={`${titulo} ${brl(serie.fechamento)}`}>
         <line x1={PAD} x2={W - PAD} y1={y(0)} y2={y(0)} className="stroke-border" strokeDasharray="3 3" />
         <polyline points={linha(passado)} fill="none" className="stroke-accent" strokeWidth={2.5} />

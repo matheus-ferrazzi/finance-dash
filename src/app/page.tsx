@@ -1,10 +1,11 @@
 import Link from 'next/link';
-import { getContasDoMes, getDespesas, getFaturas, getMovimentosDiarios, getProjecaoBase, computeProjecao, computeRitmo, resolvePeriodo, Resp } from '@/lib/queries';
+import { getContasDoMes, getDespesas, getFaturas, getMovimentosDiarios, getProjecaoBase, getCalibracaoPara, diasNoMes, computeProjecao, computeRitmo, resolvePeriodo, Resp } from '@/lib/queries';
 import { brl, currentDateSP, currentMonthSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
 import { linkPara, mesValido } from '@/lib/links';
 import { serieDoMes } from '@/lib/linhaDoMes';
 import { cartaoDestaque, contasResumo, topGrupos } from '@/lib/home';
+import { faixaMesCorrente } from '@/lib/faixa';
 import { LinhaDoMes } from './components/LinhaDoMes';
 import { BlocoHome } from './components/BlocoHome';
 
@@ -24,9 +25,9 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   const corrente = mes === atual;
   const hoje = currentDateSP();
 
-  const [base, contas, despesas, faturas, movimentos] = await Promise.all([
+  const [base, contas, despesas, faturas, movimentos, { calib }] = await Promise.all([
     getProjecaoBase(resp), getContasDoMes(resp, mes), getDespesas(resp, resolvePeriodo(undefined, mes)),
-    getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje),
+    getFaturas(resp), getMovimentosDiarios(resp, `${mes}-01`, hoje), corrente ? getCalibracaoPara(resp) : Promise.resolve({ calib: null }),
   ]);
   const mesProj = computeProjecao(base, 1)[0];
   const ritmo = corrente && mesProj ? computeRitmo(base, mesProj) : null;
@@ -46,7 +47,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
 
   return (
     <div>
-      <LinhaDoMes serie={serie} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
+      <LinhaDoMes serie={serie} faixa={calib && ritmo ? faixaMesCorrente(serie.fechamento, ritmo.diasRestantes, diasNoMes(mes), calib) : null} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
       <div className="grid grid-cols-2 gap-3">
         <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre' }, atual)}
           valor={ritmo ? `${brl(ritmo.ritmoSeguroDia)}/dia` : '—'}

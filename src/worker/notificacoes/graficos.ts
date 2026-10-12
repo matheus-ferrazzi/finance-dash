@@ -56,19 +56,24 @@ export function graficoSemanal(r: ResumoSemanal): string | null {
     .filter((g) => g.semana > 0 || g.media > 0)
     .sort((a, b) => Math.max(b.semana, b.media) - Math.max(a.semana, a.media))
     .slice(0, 6);
+  return graficoBarras('semana × média (traço)', gs.map((g) => ({ nome: g.nome, valor: g.semana, ref: g.media })));
+}
+
+/** Barras horizontais (até 6): valor = barra; ref (opcional) = traço; cor pela ref (vermelho acima, verde abaixo) ou cinza sem ref. */
+export function graficoBarras(titulo: string, itens: { nome: string; valor: number; ref?: number }[]): string | null {
+  const gs = itens.filter((g) => g.valor > 0 || (g.ref ?? 0) > 0).slice(0, 6);
   if (!gs.length) return null;
-  const max = Math.max(...gs.map((g) => Math.max(g.semana, g.media)), 1) * 1.15;
+  const max = Math.max(...gs.map((g) => Math.max(g.valor, g.ref ?? 0)), 1) * 1.15;
   const xb = 250, xf = W - 150, topo = 100, alt = (H - topo - 30) / 6;
   const L = (v: number) => ((xf - xb) * v) / max;
-  const corpo = [texto(40, 56, 'semana × média (traço)', 24, SUAVE)];
+  const corpo = [texto(40, 56, titulo, 24, SUAVE)];
   gs.forEach((g, i) => {
-    const y = topo + i * alt, cor = g.semana > g.media ? VERM : VERDE;
+    const y = topo + i * alt, cor = g.ref === undefined ? CINZA : g.valor > g.ref ? VERM : VERDE;
     corpo.push(
       texto(40, y + alt / 2 + 8, g.nome, 22, TEXTO),
-      `<rect class="barra" x="${xb}" y="${f(y + 10)}" width="${f(Math.max(4, L(g.semana)))}" height="${f(alt - 20)}" rx="8" fill="${cor}"/>`,
-      `<line class="media" x1="${f(xb + L(g.media))}" y1="${f(y + 2)}" x2="${f(xb + L(g.media))}" y2="${f(y + alt - 2)}" stroke="${TEXTO}" stroke-width="4"/>`,
-      // valor da semana numa coluna fixa à direita: não encosta no traço nem parece ser a média
-      texto(W - 30, y + alt / 2 + 8, brlCurto(g.semana), 20, SUAVE, ' text-anchor="end"'),
+      `<rect class="barra" x="${xb}" y="${f(y + 10)}" width="${f(Math.max(4, L(g.valor)))}" height="${f(alt - 20)}" rx="8" fill="${cor}"/>`,
+      g.ref === undefined ? '' : `<line class="media" x1="${f(xb + L(g.ref))}" y1="${f(y + 2)}" x2="${f(xb + L(g.ref))}" y2="${f(y + alt - 2)}" stroke="${TEXTO}" stroke-width="4"/>`,
+      texto(W - 30, y + alt / 2 + 8, brlCurto(g.valor), 20, SUAVE, ' text-anchor="end"'),
     );
   });
   return svg(corpo);

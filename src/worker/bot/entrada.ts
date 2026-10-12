@@ -1,7 +1,8 @@
 // E1: filtro do webhook. Nada aqui loga ou grava: o que não é do grupo, de membro e chamando o bot some.
+import { lerResposta } from './acoesTextos';
 export interface ConfigEntrada { grupo: string; membros: Record<string, string[]>; botJids: string[] }
 export interface Pergunta { id: string; pessoa: string; texto: string }
-export type Entrada = { tipo: 'pergunta'; p: Pergunta } | { tipo: 'nao_texto'; pessoa: string } | { tipo: 'ignorar' };
+export type Entrada = { tipo: 'pergunta'; p: Pergunta } | { tipo: 'resposta'; p: Pergunta } | { tipo: 'nao_texto'; pessoa: string } | { tipo: 'ignorar' };
 
 const IGNORAR: Entrada = { tipo: 'ignorar' };
 const usuario = (jid: string) => jid.split('@')[0].split(':')[0];
@@ -37,7 +38,11 @@ export function lerWebhook(corpo: unknown, cfg: ConfigEntrada, enviados: Readonl
   if (texto === null) return mencionou ? { tipo: 'nao_texto', pessoa } : IGNORAR;
   // sem \b: com acento ("botão") o \b do JS acha fronteira; aqui só não pode vir letra ou número depois
   const prefixo = /^\s*bot(?![\p{L}\p{N}])[\s,:;.!-]*/iu;
-  if (!prefixo.test(texto) && !mencionou) return IGNORAR;
+  // E2: "sim/não/número" sem "bot" — o bot decide se há proposta/lista pendente; frase comum segue ignorada
+  if (!prefixo.test(texto) && !mencionou) {
+    const r = lerResposta(texto);
+    return r !== null && r !== 'desfaz' ? { tipo: 'resposta', p: { id: String(key.id ?? ''), pessoa, texto: texto.trim() } } : IGNORAR;
+  }
   const limpo = texto.replace(prefixo, '').replace(/@\d+\s*/g, '').trim();
   return { tipo: 'pergunta', p: { id: String(key.id ?? ''), pessoa, texto: limpo || 'oi' } };
 }

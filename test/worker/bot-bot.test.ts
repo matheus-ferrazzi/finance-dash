@@ -9,7 +9,8 @@ const espera = () => new Promise((r) => setTimeout(r, 20));
 function montar(groqResp: any[] = [{ content: 'Fase 1.', toolCalls: [], modelo: 'm' }]) {
   const enviados: string[] = []; const gravados: any[] = []; const logs: string[] = []; let chamadasGroq = 0;
   const bot = criarBot({
-    cfg, painel: async () => ({ ok: true, dados: {} }),
+    cfg, painel: async () => ({ ok: true, dados: {} }), painelPost: async () => ({ ok: true, dados: {} }),
+    acoes: { criar: async () => 1, pendente: async () => null, confirmar: async () => false, cancelar: async () => {}, ultimaFeita: async () => null },
     groq: { chat: async () => { chamadasGroq++; return groqResp.shift() ?? { content: 'x', toolCalls: [], modelo: 'm' }; } },
     registro: { gravar: async (l: any) => { gravados.push(l); }, contexto: async () => [] },
     wa: { enviarComId: async (t: string) => { enviados.push(t); return `R${enviados.length}`; }, enviarImagemComId: async (_p: Buffer, l: string) => { enviados.push(`[img] ${l}`); return 'I1'; } },

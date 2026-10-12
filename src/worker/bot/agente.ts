@@ -30,17 +30,23 @@ const SISTEMA = (quem: string, hoje: string) => [
   'Se nenhuma ferramenta serve, diga que ainda não sabe responder. Não chute.',
   'Responda em português, tom contido, até 8 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
+  'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa.',
+  'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
 ].join('\n');
 
 export async function responder(p: Pergunta, d: {
   groq: Pick<ClienteGroq, 'chat'>; painel: (caminho: string) => Promise<{ ok: boolean; dados: any }>;
   contexto: { pergunta: string; resposta: string }[]; hoje: string; painelUrl: string;
+  /** E2: ferramentas que rodam no worker (busca com refs, propostas) */
+  locais?: Record<string, (args: any) => Promise<{ ok: boolean; dados: any }>>;
 }): Promise<RespostaBot> {
   const t0 = Date.now();
   const ferramentas: RespostaBot['ferramentas'] = [];
   const resultados: unknown[] = [];
   let ultima: { nome: string; dados: any } | null = null;
+  // E2: a proposta criada nesta conversa sempre é mostrada (uma proposta escondida seria confirmada às cegas)
+  let proposta: string | null = null;
   const msgs: MsgChat[] = [
     { role: 'system', content: SISTEMA(p.pessoa, d.hoje) },
     ...d.contexto.flatMap((c): MsgChat[] => [{ role: 'user', content: c.pergunta }, { role: 'assistant', content: c.resposta }]),
@@ -58,6 +64,9 @@ export async function responder(p: Pergunta, d: {
       if (!r.toolCalls.length) {
         const texto = (r.content ?? '').trim();
         if (!ferramentas.length) return fimCom(SEM_FERRAMENTA, { modelo, semFerramenta: true });
+        // E2: proposta e lista são textos do sistema — o modelo não reescreve
+        if (proposta) return fimCom(proposta, { modelo, svg: null });
+        if (ultima?.dados?.lista) return fimCom(ultima.dados.lista, { modelo, svg: null });
         // decisão (simular) e listas que o modelo resumia mal (faturas, contas): sempre o texto montado
         if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
@@ -75,14 +84,22 @@ export async function responder(p: Pergunta, d: {
         let args: Record<string, unknown> = {};
         let res: { ok: boolean; dados: any };
         try { args = JSON.parse(t.args || '{}'); } catch { args = {}; }
-        const caminho = /^\s*\{[\s\S]*\}\s*$/.test(t.args || '{}') ? caminhoDa(t.nome, args, p.pessoa) : null;
-        res = caminho ? await d.painel(caminho).catch((e) => ({ ok: false, dados: { erro: String(e) } })) : { ok: false, dados: { erro: 'ferramenta ou argumentos inválidos' } };
+        const jsonOk = /^\s*\{[\s\S]*\}\s*$/.test(t.args || '{}');
+        const local = d.locais?.[t.nome];
+        if (local) {
+          res = jsonOk ? await local(args).catch((e) => ({ ok: false, dados: { erro: String(e) } })) : { ok: false, dados: { erro: 'argumentos inválidos' } };
+        } else {
+          const caminho = jsonOk ? caminhoDa(t.nome, args, p.pessoa) : null;
+          res = caminho ? await d.painel(caminho).catch((e) => ({ ok: false, dados: { erro: String(e) } })) : { ok: false, dados: { erro: 'ferramenta ou argumentos inválidos' } };
+        }
         ferramentas.push({ nome: t.nome, args, ok: res.ok });
         if (res.ok) { resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados }; }
+        if (res.ok && res.dados?.proposta) proposta = res.dados.proposta;
         msgs.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(res.dados) });
       }
     }
-    // rodadas esgotadas: responde com o que já tem
+    // rodadas esgotadas: responde com o que já tem (proposta primeiro)
+    if (proposta) return fimCom(proposta, { modelo, svg: null });
     return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: true }) : fimCom(FALHA, { modelo, erro: 'rodadas esgotadas sem dados' });
   } catch (e) {
     return fimCom(FALHA, { modelo, erro: e instanceof Error ? e.message : String(e), svg: null });

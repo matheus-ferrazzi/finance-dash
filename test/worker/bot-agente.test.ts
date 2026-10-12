@@ -146,3 +146,19 @@ describe('proposta nunca escondida (revisão E2)', () => {
     expect(r.texto).toBe('🟡 PROPOSTA');
   });
 });
+
+describe('recusa de ação vira o motivo da ferramenta (E3)', () => {
+  it('propor recusado e o modelo sem texto aproveitável: "⚠️ Não deu para lançar: <motivo>"', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'propor_gasto_dinheiro', args: '{"valor":5,"descricao":"x","categoria":"Groceries","data":"2026-10-13"}' }], modelo: 'm' },
+      { content: '', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, groq: g, locais: { propor_gasto_dinheiro: async () => ({ ok: false, dados: { erro: 'data futura não vale: só de hoje até 30 dias atrás' } }) } });
+    expect(r.texto).toBe('⚠️ Não deu para lançar: data futura não vale: só de hoje até 30 dias atrás.');
+  });
+  it('o prompt manda chamar a ferramenta mesmo com data/valor que pareçam inválidos', async () => {
+    const g = groqRoteiro([{ content: 'x', toolCalls: [], modelo: 'm' }]);
+    await responder(p, { ...base, groq: g });
+    expect(JSON.stringify(g.vistos[0][0])).toContain('mesmo que a data ou o valor');
+  });
+});

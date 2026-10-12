@@ -32,6 +32,7 @@ const SISTEMA = (quem: string, hoje: string) => [
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
   'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',
   'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
+  'Num pedido de lançar ou mudar algo, chame a ferramenta de proposta mesmo que a data ou o valor pareçam fora do permitido: ela responde o motivo, e você repassa esse motivo.',
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
 ].join('\n');
 
@@ -47,6 +48,8 @@ export async function responder(p: Pergunta, d: {
   let ultima: { nome: string; dados: any } | null = null;
   // E2: a proposta criada nesta conversa sempre é mostrada (uma proposta escondida seria confirmada às cegas)
   let proposta: string | null = null;
+  // E3: motivo da última proposta recusada (data futura, valor fora…) — vira a resposta se o modelo não explicar
+  let recusa: string | null = null;
   const msgs: MsgChat[] = [
     { role: 'system', content: SISTEMA(p.pessoa, d.hoje) },
     ...d.contexto.flatMap((c): MsgChat[] => [{ role: 'user', content: c.pergunta }, { role: 'assistant', content: c.resposta }]),
@@ -71,7 +74,9 @@ export async function responder(p: Pergunta, d: {
         if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
-          return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: !!texto }) : fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
+          if (ultima) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: !!texto });
+          if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
+          return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
         // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia
         // WhatsApp usa *um* asterisco para negrito; o modelo às vezes escreve o **Markdown**
@@ -95,6 +100,7 @@ export async function responder(p: Pergunta, d: {
         ferramentas.push({ nome: t.nome, args, ok: res.ok });
         if (res.ok) { resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados }; }
         if (res.ok && res.dados?.proposta) proposta = res.dados.proposta;
+        if (!res.ok && t.nome.startsWith('propor_') && typeof res.dados?.erro === 'string') recusa = res.dados.erro;
         msgs.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(res.dados) });
       }
     }

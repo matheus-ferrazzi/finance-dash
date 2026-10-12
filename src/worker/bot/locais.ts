@@ -57,9 +57,9 @@ export function criarLocais(d: {
       if (!descricao || descricao.length > 80) return { ok: false, dados: { erro: 'descrição de 1 a 80 letras' } };
       // só categoria de gasto: fatura/salário/investimento em dinheiro contariam o mesmo dinheiro duas vezes
       if (!CATEGORIAS_GASTO.includes(a.categoria)) return { ok: false, dados: { erro: 'categoria de gasto da lista' } };
-      if (!dataReal(data) || data > d.hoje || data < somaDias(d.hoje, -30)) {
-        return { ok: false, dados: { erro: 'data de hoje até 30 dias atrás (AAAA-MM-DD)' } };
-      }
+      if (!dataReal(data)) return { ok: false, dados: { erro: 'essa data não existe (use AAAA-MM-DD)' } };
+      if (data > d.hoje) return { ok: false, dados: { erro: 'data futura não vale: só de hoje até 30 dias atrás' } };
+      if (data < somaDias(d.hoje, -30)) return { ok: false, dados: { erro: 'mais de 30 dias atrás não vale: só de hoje até 30 dias atrás' } };
       if (pessoa !== 'Matheus' && pessoa !== 'Ariane') return { ok: false, dados: { erro: 'pessoa: Matheus ou Ariane' } };
       const categoria = traduzCategoria(a.categoria);
       await d.acoes.criar(d.pessoa, 'dinheiro', { data, valor, descricao, categoria: a.categoria, responsavel: pessoa }, `💵 ${descricao} ${brl(valor)}`);

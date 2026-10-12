@@ -23,6 +23,8 @@ export interface ResumoMensal {
 }
 export interface DadosTecnico {
   saude: SaudeDados; backup: BackupDados; consentimentos: { banco: string; responsavel: string; dias: number }[];
+  /** E1: saúde do bot de perguntas */
+  bot?: { falhas24h: number; modelosSumidos: string[] };
 }
 
 const brl = (v: unknown) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -100,6 +102,8 @@ export function montarTecnico(d: DadosTecnico): string | null {
       ? `🔴 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy venceu`
       : `🟡 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy vence em ${c.dias} dias`)),
   ];
+  if (d.bot?.falhas24h) linhas.push(`🔴 Bot: ${d.bot.falhas24h} pergunta(s) com falha nas últimas 24h`);
+  for (const m of d.bot?.modelosSumidos ?? []) linhas.push(`🔴 Bot: modelo ${m} não existe mais na Groq`);
   if (!linhas.length) return null;
   return ['🛠️ *Aviso técnico*', '', ...linhas].join('\n');
 }

@@ -19,7 +19,7 @@ export class CanalWhatsApp implements Canal {
     return this.apiKey ? s.split(this.apiKey).join('***') : s;
   }
 
-  private async post(rota: string, corpo: object, ms: number): Promise<void> {
+  private async post(rota: string, corpo: object, ms: number): Promise<any> {
     let r;
     try {
       r = await this.fetcher(`${this.baseUrl}/message/${rota}/${this.instancia}`, {
@@ -37,6 +37,7 @@ export class CanalWhatsApp implements Canal {
       const txt = (Array.isArray(m) ? m : [m]).map((x: unknown) => (typeof x === 'string' ? x : JSON.stringify(x))).join('; ');
       throw new Error(this.semChave(`WhatsApp HTTP ${r.status}: ${txt}`));
     }
+    return r.json().catch(() => ({}));
   }
 
   async enviar(texto: string): Promise<void> {
@@ -47,5 +48,15 @@ export class CanalWhatsApp implements Canal {
     await this.post('sendMedia', {
       number: this.destino, mediatype: 'image', mimetype: 'image/png', fileName: 'grafico.png', caption: legenda, media: png.toString('base64'),
     }, 30000);
+  }
+
+  async enviarComId(texto: string): Promise<string | null> {
+    return (await this.post('sendText', { number: this.destino, text: texto }, 15000))?.key?.id ?? null;
+  }
+
+  async enviarImagemComId(png: Buffer, legenda: string): Promise<string | null> {
+    return (await this.post('sendMedia', {
+      number: this.destino, mediatype: 'image', mimetype: 'image/png', fileName: 'grafico.png', caption: legenda, media: png.toString('base64'),
+    }, 30000))?.key?.id ?? null;
   }
 }

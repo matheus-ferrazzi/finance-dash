@@ -1,5 +1,6 @@
 import { q, qw } from './db';
 import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
+import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, type GrupoGasto } from './grupos';
 import {
   addMonths, chaveParte, computeProjecao, computeRitmo, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
@@ -324,7 +325,7 @@ export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
   return mapLanc(rows);
 }
 
-export interface Assinatura { nome: string; valorMedio: number; meses: number; categoria: string; banco: string; ultima: string; }
+export type { Assinatura } from './assinaturas';
 
 /**
  * Gastos recorrentes que você ainda NÃO está acompanhando.
@@ -346,30 +347,25 @@ export async function getAssinaturas(resp: Resp): Promise<Assinatura[]> {
      ),
      base AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
-              valor, categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco,
-              date_trunc('month', data_lancamento) AS mes, data_lancamento
+              valor::float8 AS valor, categoria_efetiva(descricao, categoria) AS categoria, COALESCE(banco,'—') AS banco,
+              to_char(data_lancamento,'YYYY-MM-DD') AS data, responsavel,
+              (COALESCE(parcela_total,0) > 1 OR descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$') AS parcelado
        FROM financas_lancamentos
        WHERE classe='despesa'
          AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - interval '6 months'
          AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
      )
-     SELECT chave AS nome, ROUND(AVG(valor),2) AS valor_medio, COUNT(DISTINCT mes) AS meses,
-            mode() WITHIN GROUP (ORDER BY categoria) AS categoria,
-            mode() WITHIN GROUP (ORDER BY banco) AS banco,
-            to_char(MAX(data_lancamento),'YYYY-MM-DD') AS ultima
+     SELECT chave, valor, categoria, banco, data, parcelado, responsavel
      FROM base
      WHERE length(chave) >= 4
        AND categoria NOT IN (SELECT categoria FROM ja_acompanhado)
-       AND chave NOT IN (SELECT ch FROM chaves_parceladas)
-     GROUP BY chave
-     HAVING COUNT(DISTINCT mes) >= 3 AND ROUND(AVG(valor),2) >= 5
-     ORDER BY valor_medio DESC LIMIT 30`,
+       AND chave NOT IN (SELECT ch FROM chaves_parceladas)`,
     r.p,
   );
-  return rows.map((x) => ({
-    nome: x.nome, valorMedio: Number(x.valor_medio), meses: Number(x.meses),
-    categoria: x.categoria, banco: x.banco, ultima: x.ultima,
-  }));
+  return detectarAssinaturas(rows.map((x) => ({
+    chave: x.chave, valor: Number(x.valor), categoria: x.categoria, banco: x.banco, data: x.data, parcelado: Boolean(x.parcelado),
+    responsavel: x.responsavel,
+  })), currentDateSP());
 }
 
 export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {

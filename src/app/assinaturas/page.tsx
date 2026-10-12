@@ -22,7 +22,7 @@ export default async function Assinaturas({ searchParams }: { searchParams: { re
     <div>
       <PageTitle
         title="Assinaturas & recorrentes"
-        subtitle="Cobranças que se repetem em 3+ meses e que você ainda NÃO acompanha — o que já está em Previsibilidade não aparece aqui."
+        subtitle="Cobranças mensais de valor estável que você ainda NÃO acompanha — o que já está em Previsibilidade não aparece aqui."
       />
 
       <div className="card mb-4">
@@ -64,8 +64,9 @@ export default async function Assinaturas({ searchParams }: { searchParams: { re
       )}
 
       <p className="mt-3 px-1 text-xs text-faint">
-        Heurística: agrupa lançamentos por descrição (ignorando números/parcelas) que aparecem em pelo menos 3 meses.
-        Pode incluir contas fixas como aluguel e energia.
+        Como é detectado: o mesmo comerciante cobrando o mesmo valor (variação de até 15%) perto do mesmo dia, uma vez por mês,
+        em 3+ meses e com cobrança nos últimos 45 dias. Parcela, lugar de compra frequente (mercado) e assinatura cancelada não entram;
+        um comerciante pode ter mais de uma assinatura (ex.: PlayStation).
       </p>
     </div>
   );

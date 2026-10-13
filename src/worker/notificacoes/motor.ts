@@ -14,6 +14,8 @@ export interface LinhaNotif {
 export interface RegistroNotif {
   ultimoEstado(bot: Bot): Promise<unknown | null>;
   gravar(l: LinhaNotif): Promise<void>;
+  /** C2: houve envio real com sucesso deste bot nos últimos `minutos` (trava entre comando manual e agendado) */
+  enviadoRecente?(bot: Bot, minutos: number): Promise<boolean>;
 }
 export type Fontes = { [b in Bot]: () => Promise<unknown> };
 export interface ResultadoNotif {
@@ -121,6 +123,12 @@ export async function rodarNotificacao(
   }
   let enviado = false;
   let erro: string | null = null;
+  // C2: o comando manual e o agendado no mesmo intervalo mandariam duas vezes
+  if (modo === 'real' && (await d.registro.enviadoRecente?.(bot, 10))) {
+    erro = 'já enviado nos últimos 10 min (comando manual e agendado juntos): não reenviado';
+    await d.registro.gravar({ bot, modo, texto: m.texto, enviado: false, erro, estado: null });
+    return { bot, modo, texto: m.texto, enviado: false, erro };
+  }
   if (modo === 'real') {
     try {
       erro = await entregar(canal!, m.texto, m.svg, d.renderizar ?? ((s) => paraPng(s)));

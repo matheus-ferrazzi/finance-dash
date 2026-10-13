@@ -14,6 +14,13 @@ export class PgRegistroNotif implements RegistroNotif {
     return r.rows[0]?.estado ?? null;
   }
 
+  async enviadoRecente(bot: Bot, minutos: number): Promise<boolean> {
+    const r = await this.pool.query(
+      `SELECT 1 FROM financas_notificacoes WHERE bot = $1 AND modo = 'real' AND enviado
+         AND criado_em > now() - make_interval(mins => $2) LIMIT 1`, [bot, minutos]);
+    return r.rowCount! > 0;
+  }
+
   async gravar(l: LinhaNotif): Promise<void> {
     await this.pool.query(
       `INSERT INTO financas_notificacoes (bot, modo, texto, enviado, erro, estado) VALUES ($1, $2, $3, $4, $5, $6)`,

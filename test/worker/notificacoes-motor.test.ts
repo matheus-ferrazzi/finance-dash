@@ -161,6 +161,19 @@ describe('canal Telegram', () => {
   });
 });
 
+describe('trava entre manual e agendado (C2)', () => {
+  it('já saiu de verdade há pouco: não envia de novo e registra o motivo', async () => {
+    const { reg, linhas } = registroFake();
+    (reg as any).enviadoRecente = async () => true;
+    const textos: string[] = [];
+    const r = await rodarNotificacao('ritmo', { fontes: fontes({}), registro: reg, canais: { grupo: null, matheus: null, telegram: { enviar: async (t: string) => { textos.push(t); } } }, modo: 'real' });
+    expect(textos).toEqual([]);
+    expect(r.enviado).toBe(false);
+    expect(r.erro).toMatch(/já enviado/);
+    expect(linhas.at(-1)).toMatchObject({ enviado: false, erro: r.erro, estado: null });
+  });
+});
+
 function canalComImagem(falhaImagem = false) {
   const textos: string[] = []; const imagens: [Buffer, string][] = [];
   const canal = {

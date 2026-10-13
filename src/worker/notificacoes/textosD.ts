@@ -19,6 +19,8 @@ export interface ResumoSemanal {
   /** E3: quanto do total da semana foi em dinheiro vivo */
   totalDinheiro?: number;
   todosGrupos?: { nome: string; emoji: string; semana: number; media: number }[];
+  /** E3-M4: total na mesma base da média (sem dinheiro se ainda não há 4 semanas dele); ausente = total */
+  totalComparado?: number;
   /** S7: faturas fechadas a pagar (a vencer + em atraso) e o próximo vencimento (dd/mm) */
   faturas?: { aPagar: number; proximoVencimento: string | null };
 }
@@ -88,10 +90,12 @@ function seta(semana: number, media: number): string {
 
 export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha: string }): string {
   const l = [`📊 *Semana de ${ddmm(r.semana.inicio)} a ${ddmm(r.semana.fim)}*`];
+  // E3-M4: o % usa a base comparável com a média (sem o dinheiro enquanto não há 4 semanas dele)
+  const base = r.totalComparado ?? r.total;
   if (r.total <= 0) l.push('💤 Nenhum gasto registrado na semana.');
-  else if (r.mediaTotal > 0 && r.total !== r.mediaTotal) {
-    const pct = Math.round((Math.abs(r.total - r.mediaTotal) / r.mediaTotal) * 100);
-    l.push(`💰 No dia a dia gastaram ${brl(r.total)}, ${r.total > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
+  else if (r.mediaTotal > 0 && base !== r.mediaTotal) {
+    const pct = Math.round((Math.abs(base - r.mediaTotal) / r.mediaTotal) * 100);
+    l.push(`💰 No dia a dia gastaram ${brl(r.total)}, ${base > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
   } else l.push(`💰 No dia a dia gastaram ${brl(r.total)}.`);
   if ((r.totalDinheiro ?? 0) > 0) l.push(`💵 dos quais ${brl(r.totalDinheiro)} em dinheiro vivo`);
   if (r.grupos.length) l.push('', ...r.grupos.map((g) => `${g.emoji} ${g.nome}: ${brl(g.semana)} ${seta(g.semana, g.media)} (média ${brl(g.media)})`));

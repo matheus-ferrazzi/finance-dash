@@ -89,6 +89,12 @@ describe('semanal', () => {
     expect(t.indexOf('💳')).toBeLessThan(t.indexOf('🧭'));
     expect(montarSemanal({ ...sem, faturas: { aPagar: 0, proximoVencimento: null } }, { gastos: 'G', trilha: 'T' })).not.toContain('💳');
   });
+  // E3-M4: sem 4 semanas de histórico do dinheiro, o % compara só o banco (a média não tem dinheiro)
+  it('E3-M4: % pela base comparável quando o painel manda (total mostrado continua com o dinheiro)', () => {
+    const t = montarSemanal({ ...sem, total: 1100, totalComparado: 1000, mediaTotal: 1000, totalDinheiro: 100 }, { gastos: 'G', trilha: 'T' });
+    expect(t).toContain(`💰 No dia a dia gastaram ${brl(1100)}.`);
+    expect(t).not.toContain('acima');
+  });
   it('igual à média: ➖', () => {
     expect(montarSemanal({ ...sem, grupos: [{ nome: 'Lazer', emoji: '🎮', semana: 250, media: 250 }] }, { gastos: 'G', trilha: 'T' })).toContain('➖');
   });

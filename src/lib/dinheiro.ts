@@ -49,3 +49,9 @@ export async function apagarDinheiro(id: number): Promise<boolean> {
 
 // mora em ./bot (puro); reexportado aqui para quem já soma o dinheiro
 export { somarMapas } from './bot';
+
+/** E3-M4: data do primeiro gasto em dinheiro registrado (AAAA-MM-DD), ou null. */
+export async function primeiroDinheiro(): Promise<string | null> {
+  const [r] = await q<any>(`SELECT to_char(min(data), 'YYYY-MM-DD') AS d FROM financas_gastos_dinheiro`);
+  return r?.d ?? null;
+}

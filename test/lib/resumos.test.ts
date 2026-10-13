@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acumular, contasDoDia, faturasDoDia, totaisLivres, gruposDaSemana, historicoDe, semanaAnterior } from '../../src/lib/resumos';
+import { acumular, contasDoDia, dinheiroCobreMedia, faturasDoDia, totaisLivres, gruposDaSemana, historicoDe, semanaAnterior } from '../../src/lib/resumos';
 
 // conta não paga não tem `dia` (é o dia do pagamento no banco): o vencimento vem de `vence`
 const item = (nome: string, vence: number | null, status: 'pago' | 'a_confirmar' | 'falta', previsto = 100) =>
@@ -99,5 +99,15 @@ describe('totais livres da semana (N7)', () => {
   it('total e média (÷4) só dos grupos livres, como a lista de grupos', () => {
     expect(totaisLivres([g('Mercado', 300, false), g('Moradia', 1300, true)], [g('Mercado', 1200, false), g('Moradia', 0, true)]))
       .toEqual({ total: 300, mediaTotal: 300 });
+  });
+});
+
+// E3-M4: o dinheiro só entra na comparação com a média quando já cobre as 4 semanas da média
+describe('dinheiro na comparação semanal (E3-M4)', () => {
+  it('cobre as 4 semanas antes da semana: entra; mais novo ou sem dinheiro: fica fora', () => {
+    expect(dinheiroCobreMedia('2026-09-01', '2026-10-05')).toBe(true);
+    expect(dinheiroCobreMedia('2026-09-07', '2026-10-05')).toBe(true);  // exatamente 28 dias antes
+    expect(dinheiroCobreMedia('2026-09-20', '2026-10-05')).toBe(false);
+    expect(dinheiroCobreMedia(null, '2026-10-05')).toBe(false);
   });
 });

@@ -6,7 +6,7 @@ import { brl, currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths, avisosDeCadastro, diasNoMes } from '@/lib/previsao';
 import { saiDoVermelho } from '@/lib/decisoes';
 import { debitoParaSairAte, niveisMeta, tabelaMeta, textoMetaAlvo } from '@/lib/meta';
-import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, semPassadosSeFalhar } from '@/lib/mesAMes';
+import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, notaVisaoIndividual, semPassadosSeFalhar } from '@/lib/mesAMes';
 import { ListaMeses } from '../components/ListaMeses';
 import { DetalheMes } from '../components/DetalheMes';
 import { MetaDebito } from '../components/MetaDebito';
@@ -64,6 +64,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
           {calib && sai.piorCaso !== sai.provavel && <span className="text-muted"> (pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai nos próximos ${HORIZONTE_MAX} meses`})</span>}
         </p>
         <p className="mt-1 text-xs text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v), meta.ultimoMes)}</p>
+        {notaVisaoIndividual(resp) && <p className="mt-1 text-[11px] text-faint">{notaVisaoIndividual(resp)}</p>}
         {!calib && (
           <p className="mt-1 text-[11px] text-faint">
             {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza ainda: a fase atual tem menos de 6 meses de histórico.'}

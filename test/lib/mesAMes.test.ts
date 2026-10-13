@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, semPassadosSeFalhar } from '../../src/lib/mesAMes';
+import { detalheMesAtual, notaVisaoIndividual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, semPassadosSeFalhar } from '../../src/lib/mesAMes';
 import type { ProjecaoBase, ProjecaoMes } from '../../src/lib/previsao';
 
 const mes = (p: Partial<ProjecaoMes>): ProjecaoMes => ({ mes: '2027-01', mesLabel: 'jan/27', receita: 5000, despesaFixa: 0, despesaManual: 1000, despesaCasa: 500, despesaVariavel: 2000, fatura: 1200, parcelas: 300, saldo: 300, saldoProjetado: 800, ...p });
@@ -134,5 +134,13 @@ describe('meses passados opcionais', () => {
     expect(await semPassadosSeFalhar(Promise.reject(new Error('banco fora')))).toEqual([]);
     const ok = [{ mes: '2026-09' }] as any;
     expect(await semPassadosSeFalhar(Promise.resolve(ok))).toBe(ok);
+  });
+});
+
+// F2b+ (pendência): o "fecha em" de cada pessoa não soma o do casal — e a tela não dizia
+describe('nota da visão individual', () => {
+  it('só na visão de uma pessoa, dizendo por que não soma', () => {
+    expect(notaVisaoIndividual('casal')).toBeNull();
+    expect(notaVisaoIndividual('Ariane')).toContain('não soma');
   });
 });

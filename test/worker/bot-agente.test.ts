@@ -162,3 +162,33 @@ describe('recusa de ação vira o motivo da ferramenta (E3)', () => {
     expect(JSON.stringify(g.vistos[0][0])).toContain('mesmo que a data ou o valor');
   });
 });
+
+describe('pendências do E1 (auditoria 13/10)', () => {
+  // M3: no contexto o modelo não sabia quem tinha perguntado antes ("e eu?" de outra pessoa)
+  it('M3: cada pergunta do contexto vai com o nome de quem perguntou', async () => {
+    const g = groqRoteiro([{ content: 'x', toolCalls: [], modelo: 'm' }]);
+    await responder(p, { ...base, groq: g, contexto: [{ pessoa: 'Matheus', pergunta: 'quanto gastei?', resposta: 'R$ 10' }] });
+    expect(g.vistos[0][1]).toEqual({ role: 'user', content: 'Matheus: quanto gastei?' });
+  });
+  // M5: rodadas esgotadas não é "trava" (o modelo nem escreveu texto)
+  it('M5: rodadas esgotadas responde com o dado montado sem marcar trava', async () => {
+    const chamada = { content: null, toolCalls: [{ id: 'c', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' };
+    const r = await responder(p, { ...base, groq: groqRoteiro([chamada, chamada, chamada, chamada]) });
+    expect(r.texto).toContain('💰 Gasto em out/26');
+    expect(r.trava).toBe(false);
+  });
+  // M6: com duas ferramentas e texto recusado, o fallback mostrava só a última
+  it('M6: texto recusado com duas ferramentas: as duas montadas, um link só (o da última)', async () => {
+    const fat = { itens: [{ banco: 'B', pessoa: 'Ariane', total: 100, vencimento: '15/10', situacao: 'a_vencer', falta: 100 }], total: 100, link: '/faturas' };
+    const painel2 = async (c: string) => (c.startsWith('/api/bot/gasto') ? { ok: true, dados: gasto } : { ok: true, dados: fat });
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'a', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }, { id: 'b', nome: 'faturas', args: '{}' }], modelo: 'm' },
+      { content: 'Deu R$ 999,99.', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder(p, { ...base, painel: painel2, groq: g });
+    expect(r.texto).toContain('💰 Gasto em out/26');
+    expect(r.texto).toContain('💳 Faturas a pagar');
+    expect(r.texto.match(/👉/g)).toHaveLength(1);
+    expect(r.texto.endsWith('👉 https://p/faturas')).toBe(true);
+  });
+});

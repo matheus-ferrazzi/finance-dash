@@ -18,12 +18,12 @@ export class PgRegistroBot {
   }
 
   /** Últimas `n` trocas respondidas dos últimos `minutos`, da mais antiga para a mais nova. */
-  async contexto(minutos: number, n: number): Promise<{ pergunta: string; resposta: string }[]> {
+  async contexto(minutos: number, n: number): Promise<{ pessoa: string; pergunta: string; resposta: string }[]> {
     const r = await this.pool.query(
-      `SELECT pergunta, resposta FROM financas_bot_conversas
+      `SELECT pessoa, pergunta, resposta FROM financas_bot_conversas
        WHERE resposta IS NOT NULL AND erro IS NULL AND criado_em > now() - make_interval(mins => $1)
        ORDER BY id DESC LIMIT $2`, [minutos, n]);
-    return r.rows.reverse().map((x) => ({ pergunta: x.pergunta, resposta: x.resposta }));
+    return r.rows.reverse().map((x) => ({ pessoa: x.pessoa, pergunta: x.pergunta, resposta: x.resposta }));
   }
 
   async falhas24h(): Promise<number> {

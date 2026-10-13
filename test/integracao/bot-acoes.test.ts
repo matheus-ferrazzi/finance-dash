@@ -50,4 +50,17 @@ describe.skipIf(!url)('ações do bot (integração)', () => {
     await pool.query(`UPDATE financas_bot_acoes SET atualizado_em = now() - interval '25 hours' WHERE id = $1`, [p2]);
     expect(await a.ultimaFeita('Matheus')).toBeNull();
   });
+
+  // E2-M4: pendente parada ficava "pendente" para sempre; sem retenção de 1 ano
+  it('E2-M4: limpeza diária expira pendente velha e apaga registro com mais de 1 ano', async () => {
+    const a = new PgAcoes(pool);
+    const velha = await a.criar('Matheus', 'avulsa', {}, 'velha');
+    await pool.query(`UPDATE financas_bot_acoes SET criado_em = now() - interval '2 hours' WHERE id = $1`, [velha]);
+    const antiga = await a.criar('Ariane', 'avulsa', {}, 'antiga');
+    await pool.query(`UPDATE financas_bot_acoes SET estado = 'feita', criado_em = now() - interval '400 days' WHERE id = $1`, [antiga]);
+    const nova = await a.criar('Ariane', 'categoria', {}, 'nova');
+    expect(await a.limpar()).toEqual({ expiradas: 1, apagadas: 1 });
+    const est = async (id: number) => (await pool.query('SELECT estado FROM financas_bot_acoes WHERE id = $1', [id])).rows[0]?.estado ?? null;
+    expect([await est(velha), await est(antiga), await est(nova)]).toEqual(['expirada', null, 'pendente']);
+  });
 });

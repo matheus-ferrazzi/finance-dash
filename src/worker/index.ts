@@ -96,6 +96,9 @@ async function main() {
     new Cron('20 4 * * *', { timezone: TZ, protect: true }, async () => {
       const n = await registroBot.limpar(90).catch(() => 0);
       if (n) log(`bot: ${n} conversa(s) com mais de 90 dias apagada(s)`);
+      // E2-M4: propostas paradas expiram; registro de ação com mais de 1 ano sai
+      const l = await new PgAcoes(pool).limpar().catch(() => ({ expiradas: 0, apagadas: 0 }));
+      if (l.expiradas || l.apagadas) log(`bot: ${l.expiradas} proposta(s) expirada(s), ${l.apagadas} ação(ões) com mais de 1 ano apagada(s)`);
     });
     // S1 (auditoria 13/10): sessão do WhatsApp caiu → aviso pelo Telegram (o técnico sai pelo próprio WhatsApp)
     if (waKey && process.env.WA_GRUPO) {

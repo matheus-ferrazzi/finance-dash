@@ -19,17 +19,20 @@ fi
 CHAVE=$(openssl rand -hex 32)
 SENHA=$(openssl rand -hex 24)
 
-# usuário e banco da Evolution (senha só pelo stdin do psql, nunca na linha de comando)
-docker exec -i -e PGPASSWORD="$PG_SENHA" "$PG" psql -U mferrazzi -d personal_hub_db -v ON_ERROR_STOP=1 -q >/dev/null <<SQL
+# senha do Postgres só no ambiente do docker (-e NOME sem valor), nunca na linha de comando (visível no ps)
+export PGPASSWORD="$PG_SENHA"
+# usuário e banco da Evolution (a senha nova só pelo stdin do psql; log do comando desligado nesta sessão)
+docker exec -i -e PGPASSWORD "$PG" psql -U mferrazzi -d personal_hub_db -v ON_ERROR_STOP=1 -q >/dev/null <<SQL
+SET log_statement = 'none';
 DO \$\$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'evolution') THEN CREATE ROLE evolution LOGIN; END IF;
 END \$\$;
 ALTER ROLE evolution PASSWORD '$SENHA';
 SQL
 # banco próprio (o evolution_db antigo, de outra instalação, é de outro dono e fica intocado)
-DONO=$(docker exec -e PGPASSWORD="$PG_SENHA" "$PG" psql -U mferrazzi -d personal_hub_db -Atc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='evolution_wa'")
+DONO=$(docker exec -e PGPASSWORD "$PG" psql -U mferrazzi -d personal_hub_db -Atc "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='evolution_wa'")
 if [[ -z "$DONO" ]]; then
-  docker exec -e PGPASSWORD="$PG_SENHA" "$PG" psql -U mferrazzi -d personal_hub_db -q -c "CREATE DATABASE evolution_wa OWNER evolution" >/dev/null
+  docker exec -e PGPASSWORD "$PG" psql -U mferrazzi -d personal_hub_db -q -c "CREATE DATABASE evolution_wa OWNER evolution" >/dev/null
 elif [[ "$DONO" != "evolution" ]]; then
   echo "O banco evolution_wa existe e é de outro dono ($DONO); nada gravado."; exit 1
 fi
@@ -45,5 +48,9 @@ grep -v '^WA_API_KEY=' "$WORKER" > "$WORKER.tmp" || true
 echo "WA_API_KEY=$CHAVE" >> "$WORKER.tmp"
 mv "$WORKER.tmp" "$WORKER"
 chmod 600 "$EVO" "$WORKER"
-unset CHAVE SENHA
+unset CHAVE SENHA PGPASSWORD
 echo "Pronto: $EVO e WA_API_KEY em $WORKER (permissão 600). Os valores não foram exibidos."
+if [[ "${1:-}" == "--refazer" ]]; then
+  # D-M6: chave e senha novas só valem depois de recriar a Evolution e o worker (eles leem os .env na subida)
+  echo "Agora recrie a Evolution e o worker: cd $DIR && docker compose up -d --no-deps --force-recreate evolution finance-worker"
+fi

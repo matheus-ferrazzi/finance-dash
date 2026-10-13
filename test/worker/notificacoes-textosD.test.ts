@@ -145,6 +145,11 @@ describe('técnico', () => {
       '🔴 Consentimento do B2 (R) na Pluggy venceu',
     ].join('\n'));
   });
+  it('D-M3: consentimento que vence hoje ou amanhã diz isso (não "em 0 dias")', () => {
+    const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [{ banco: 'B1', responsavel: 'R', dias: 0 }, { banco: 'B2', responsavel: 'R', dias: 1 }] })!;
+    expect(t).toContain('🟡 Consentimento do B1 (R) na Pluggy vence hoje');
+    expect(t).toContain('🟡 Consentimento do B2 (R) na Pluggy vence amanhã');
+  });
   it('S2: conexão da Pluggy parada há mais de 30 h vira linha 🔴 com o que fazer', () => {
     const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], conexoes: [{ banco: 'B1', responsavel: 'R', horas: 94.5 }, { banco: 'B2', responsavel: 'R', horas: 37 }] })!;
     expect(t).toContain('🔴 Conexão B1 (R) sem atualizar há 3 dias: reconectar no Meu Pluggy');

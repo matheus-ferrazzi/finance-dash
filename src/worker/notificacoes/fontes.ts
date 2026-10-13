@@ -48,7 +48,8 @@ const SQL_BACKUP = `SELECT json_build_object(
 ) AS st`;
 
 const SQL_CONSENT = `SELECT banco, responsavel,
-         (consent_expires_at::date - (now() AT TIME ZONE 'America/Sao_Paulo')::date)::int AS dias
+         -- D-M3: as duas datas em SP (consent_expires_at::date usava o fuso da sessão, UTC: um dia de erro à noite)
+         ((consent_expires_at AT TIME ZONE 'America/Sao_Paulo')::date - (now() AT TIME ZONE 'America/Sao_Paulo')::date)::int AS dias
   FROM pluggy_itens
   WHERE consent_expires_at IS NOT NULL AND consent_expires_at < now() + interval '30 days'
   ORDER BY consent_expires_at`;

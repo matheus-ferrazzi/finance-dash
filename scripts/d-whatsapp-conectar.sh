@@ -11,8 +11,14 @@ cd "$(dirname "$0")"
 INST=financas
 
 if [[ "${1:-}" == "--trocar" ]]; then
-  evo DELETE "/instance/logout/$INST" >/dev/null 2>&1 || true
-  echo "Número anterior desconectado."
+  # D-M5: diz o que de fato aconteceu (antes dizia "desconectado" mesmo com o logout falhando)
+  if evo DELETE "/instance/logout/$INST" >/dev/null 2>&1; then
+    echo "Número anterior desconectado."
+  else
+    EST=$(evo GET "/instance/connectionState/$INST" 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin).get("instance",{}).get("state",""))' 2>/dev/null || true)
+    if [[ "$EST" == "open" ]]; then echo "Não consegui desconectar o número atual (estado: open). Nada feito."; exit 1; fi
+    echo "Nenhum número conectado (estado: ${EST:-desconhecido}); seguindo."
+  fi
 fi
 
 EXISTE=$(evo GET "/instance/fetchInstances?instanceName=$INST" 2>/dev/null || true)

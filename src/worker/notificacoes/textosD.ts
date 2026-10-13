@@ -133,7 +133,7 @@ export function montarTecnico(d: DadosTecnico): string | null {
     ...[...linhasSaude(d.saude), ...linhasBackup(d.backup)].map((x) => `🔴 ${x.replace(/^• /, '')}`),
     ...d.consentimentos.map((c) => (c.dias < 0
       ? `🔴 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy venceu`
-      : `🟡 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy vence em ${c.dias} dias`)),
+      : `🟡 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy vence ${c.dias === 0 ? 'hoje' : c.dias === 1 ? 'amanhã' : `em ${c.dias} dias`}`)),
   ];
   for (const c of d.conexoes ?? []) {
     const quanto = c.horas >= 48 ? `${Math.floor(c.horas / 24)} dias` : `${Math.round(c.horas)} h`;

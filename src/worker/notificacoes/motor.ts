@@ -67,14 +67,19 @@ type Renderizar = (svg: string) => Buffer | Promise<Buffer>;
 /** Imagem + legenda quando dá; qualquer falha da imagem cai para o texto (a mensagem não se perde pelo gráfico). */
 async function entregar(canal: Canal, texto: string, svg: string | null | undefined, renderizar: Renderizar): Promise<string | null> {
   if (svg && canal.enviarImagem) {
-    try {
-      const png = await renderizar(svg);
-      if (texto.length <= LIMITE_LEGENDA) { await canal.enviarImagem(png, texto); return null; }
-      await canal.enviarImagem(png, '');
-    } catch (e) {
-      await canal.enviar(texto);
-      return `imagem: ${msg(e)}`;
+    if (texto.length <= LIMITE_LEGENDA) {
+      try {
+        await canal.enviarImagem(await renderizar(svg), texto);
+        return null;
+      } catch (e) {
+        // inclusive tempo esgotado depois de entregar (D2-M1): uma duplicata rara é melhor que perder a mensagem
+        await canal.enviar(texto);
+        return `imagem: ${msg(e)}`;
+      }
     }
+    // D2-M2: legenda longa demais — o texto primeiro (o que importa), a imagem depois e opcional (sem imagem órfã)
+    await canal.enviar(texto);
+    try { await canal.enviarImagem(await renderizar(svg), ''); return null; } catch (e) { return `imagem: ${msg(e)}`; }
   }
   await canal.enviar(texto);
   return null;

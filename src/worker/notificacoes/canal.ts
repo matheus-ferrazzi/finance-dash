@@ -18,12 +18,12 @@ export class CanalTelegram implements Canal {
     return this.token ? s.split(this.token).join('***') : s;
   }
 
-  async enviar(texto: string): Promise<void> {
+  async enviar(texto: string, markdown = true): Promise<void> {
     let r;
     try {
       r = await this.fetcher(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: this.chatId, text: texto, parse_mode: 'Markdown' }),
+        body: JSON.stringify({ chat_id: this.chatId, text: texto, ...(markdown ? { parse_mode: 'Markdown' } : {}) }),
         signal: AbortSignal.timeout(15000), // Telegram que não responde não segura a tarefa por minutos
       });
     } catch (e) {
@@ -31,7 +31,10 @@ export class CanalTelegram implements Canal {
     }
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
-      throw new Error(this.semToken(`Telegram HTTP ${r.status}: ${j?.description ?? 'erro'}`));
+      const desc = String(j?.description ?? 'erro');
+      // D-M8: um _ ou * num nome quebra o Markdown e o Telegram recusa tudo: vai de novo como texto puro
+      if (markdown && r.status === 400 && /can't parse entities/i.test(desc)) return this.enviar(texto, false);
+      throw new Error(this.semToken(`Telegram HTTP ${r.status}: ${desc}`));
     }
   }
 }

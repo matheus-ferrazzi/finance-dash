@@ -111,6 +111,7 @@ export default async function Diagnostico({ searchParams }: { searchParams: { re
         grupos={d.grupos.filter((g) => !g.travado).map((g) => ({ nome: g.nome, emoji: g.emoji, total: g.total }))}
         sobraMensal={d.sobraMensalProjetada}
         saldoProjetado={d.saldoProjetadoFim}
+        mesGastoLabel={d.mesRefLabel} mesSobraLabel={d.sobraMensalLabel}
       />
 
       {/* o que não dá pra explicar */}

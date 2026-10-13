@@ -6,6 +6,10 @@ export type Tela = 'inicio' | 'previsao' | 'contas' | 'gastos' | 'faturas' | 'di
 
 export interface Filtros {
   resp?: 'casal' | 'Matheus' | 'Ariane'; mes?: string; grupo?: string; cartao?: string; tipo?: 'livre';
+  /** N19: só o que saiu da conta (o ritmo do dia a dia é do débito) */
+  forma?: 'debito';
+  /** N19: segunda-feira da semana (AAAA-MM-DD): a tela mostra só aquela semana */
+  semana?: string;
 }
 
 const CAMINHO: Record<Tela, string> = {
@@ -26,6 +30,8 @@ export function linkPara(tela: Tela, f: Filtros = {}, mesAtual: string = current
   if (f.grupo) p.set('grupo', f.grupo);
   if (f.cartao) p.set('cartao', f.cartao);
   if (f.tipo === 'livre') p.set('tipo', 'livre');
+  if (f.forma === 'debito') p.set('forma', 'debito');
+  if (f.semana && /^\d{4}-\d{2}-\d{2}$/.test(f.semana)) p.set('p', `sem-${f.semana}`);
   const qs = p.toString();
   return CAMINHO[tela] + (qs ? `?${qs}` : '');
 }

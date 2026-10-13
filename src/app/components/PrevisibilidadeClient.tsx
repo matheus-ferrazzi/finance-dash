@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Pencil, Trash2, X, Infinity as InfinityIcon } from 'lucide-react';
-import { brl, currentMonthSP, traduzCategoria, parseValorBR } from '@/lib/format';
+import { brl, currentMonthSP, faltamMeses, traduzCategoria, parseValorBR } from '@/lib/format';
 import { SectionTitle, Progress, respBadge, catIcon } from './ui';
 import { CATEGORIAS_COMPROMISSO } from '@/lib/validation';
 import type { CompromissoParcelado, CompromissoManual } from '@/lib/queries';
@@ -55,9 +55,10 @@ const FORM_VAZIO: FormState = {
 };
 
 /** Compromissos ativos (parcelas do cartão + cadastro manual) e o cadastro de gastos fixos. */
-export function PrevisibilidadeClient({ parcelados, manuais }: {
+export function PrevisibilidadeClient({ parcelados, manuais, avisos }: {
   parcelados: CompromissoParcelado[];
   manuais: CompromissoManual[];
+  avisos?: { categoria: string; nomes: string[]; cadastro: number; realizado: number }[];
 }) {
   const router = useRouter();
   const [form, setForm] = useState<FormState | null>(null);
@@ -67,7 +68,8 @@ export function PrevisibilidadeClient({ parcelados, manuais }: {
   const itens: ItemLista[] = useMemo(() => {
     const hojeYM = currentMonthSP();
     const doParcelados: ItemLista[] = parcelados.map((p) => ({
-      key: `p-${p.chave}`,
+      // N9: dois planos da mesma dívida têm a mesma chave de descrição
+      key: `p-${p.chave}|${p.banco}|${p.parcelaTotal ?? ''}`,
       nome: formatChave(p.chave),
       categoria: p.categoria,
       valor: p.valorParcela,
@@ -77,7 +79,7 @@ export function PrevisibilidadeClient({ parcelados, manuais }: {
       progresso: p.parcelaAtual && p.parcelaTotal ? { atual: p.parcelaAtual, total: p.parcelaTotal } : null,
       restanteLabel: p.parcelaTotal
         ? `parcela ${p.parcelaAtual}/${p.parcelaTotal}`
-        : `faltam ${p.restantes} mês${p.restantes > 1 ? 'es' : ''}`,
+        : faltamMeses(p.restantes),
     }));
     const doManuais: ItemLista[] = manuais.map((m) => {
       const progresso = m.mesesTotais
@@ -169,6 +171,13 @@ export function PrevisibilidadeClient({ parcelados, manuais }: {
             </button>
           </div>
 
+          {/* N13: o cadastro manda na previsão — se saiu bem mais que o cadastrado, avisa */}
+          {(avisos ?? []).map((a) => (
+            <p key={a.categoria} className="mb-2 rounded-lg bg-warn/10 px-2.5 py-2 text-xs text-warn">
+              ⚠️ {a.nomes.join(', ')}: este mês saíram <span className="tnum money">{brl(a.realizado)}</span>, o cadastro
+              diz <span className="tnum money">{brl(a.cadastro)}</span>. A previsão usa o cadastro: se o valor mudou, edite.
+            </p>
+          ))}
           {itens.length === 0 && <p className="text-sm text-muted">Nenhum compromisso ativo — nem parcelamento nem cadastro manual.</p>}
 
           <div className="divide-y divide-border/60">

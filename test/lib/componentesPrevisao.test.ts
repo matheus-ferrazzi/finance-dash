@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ListaMeses } from '../../src/app/components/ListaMeses';
 import { DetalheMes } from '../../src/app/components/DetalheMes';
+import { SimuladorCorte } from '../../src/app/components/SimuladorCorte';
 import type { LinhaLista } from '../../src/lib/mesAMes';
 
 const linhas: LinhaLista[] = [
@@ -79,5 +80,17 @@ describe('simulador em tela própria', () => {
     const sim = { valorParcela: 100, parcelas: 1, meses: [{ mes: '2026-10', mesLabel: 'out/26', saldo: -1 }], mesesVermelho: 1, ultimaParcela: 'out/26', saldoComCompra: [-1] } as any;
     const h = renderToStaticMarkup(createElement(SimuladorCompra, { valorStr: '100', setValorStr: () => {}, parcelasStr: '1', setParcelasStr: () => {}, resultado: sim, veredito: 'Atenção: x' }));
     expect(h).not.toContain('gráfico');
+  });
+});
+
+// auditoria 13/10 (N17): o simulador misturava o gasto do mês passado com a sobra prevista do próximo mês sem dizer
+describe('simulador de corte (N17)', () => {
+  it('cada número diz de que mês é', () => {
+    const h = renderToStaticMarkup(createElement(SimuladorCorte, {
+      grupos: [{ nome: 'Delivery', emoji: '🛵', total: 400 }], sobraMensal: -3000, saldoProjetado: -400,
+      mesGastoLabel: 'set/26', mesSobraLabel: 'nov/26',
+    }));
+    expect(h).toContain('gasto de set/26');
+    expect(h).toContain('Sobra prevista de nov/26 passa a ser');
   });
 });

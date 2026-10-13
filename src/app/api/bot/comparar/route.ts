@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { montarComparar } from '@/lib/bot';
-import { alinharPeriodos, lerParams } from '@/lib/botRotas';
+import { alinharPeriodos, lerParams, linkDoPeriodo } from '@/lib/botRotas';
 import { currentDateSP } from '@/lib/format';
 import { getDinheiroPorCategoriaEntre } from '@/lib/dinheiro';
 import { getGastoPorCategoriaEntre } from '@/lib/queries';
@@ -19,5 +19,5 @@ export async function GET(req: Request) {
     getDinheiroPorCategoriaEntre(periodo.inicio, periodo.fimExcl, pessoa),
     getDinheiroPorCategoriaEntre(periodo_b.inicio, periodo_b.fimExcl, pessoa),
   ]);
-  return NextResponse.json({ a: periodo.label, b: periodo_b.label, pessoa, ...montarComparar(a, b, dinA, dinB), link: '/gastos' });
+  return NextResponse.json({ a: periodo.label, b: periodo_b.label, pessoa, ...montarComparar(a, b, dinA, dinB), link: linkDoPeriodo(periodo, pessoa, null, currentDateSP().slice(0, 7)) });
 }

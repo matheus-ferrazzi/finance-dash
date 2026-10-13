@@ -1,5 +1,5 @@
 import { q, qw, writerPool } from './db';
-import { currentMonthSP, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
+import { currentMonthSP, escaparLike, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import {
   agruparDividas, chaveDivida, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, METAS_PADRAO,
   type ChaveMeta, type DadosTrilha, type MarcasDivida, type MetasTrilha,
@@ -13,6 +13,9 @@ import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from '.
 import { componentesPrevistos, type Componentes } from './backtest';
 import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
+import { situacaoFatura, type UltimaFatura } from './faturas';
+import { periodoDaSemana } from './periodos';
+import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
 import {
   addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
@@ -40,7 +43,7 @@ function monthStartShift(mes: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-export type PeriodKind = '7d' | '15d' | '30d' | 'mes';
+export type PeriodKind = '7d' | '15d' | '30d' | 'mes' | 'semana';
 export interface Periodo {
   kind: PeriodKind;
   start: string; endExcl: string;
@@ -49,6 +52,14 @@ export interface Periodo {
 }
 
 export function resolvePeriodo(p?: string, mes?: string): Periodo {
+  // N19: semana do resumo semanal (p=sem-AAAA-MM-DD)
+  const sem = periodoDaSemana(p);
+  if (sem) {
+    return {
+      kind: 'semana', start: sem.inicio, endExcl: sem.fimExcl,
+      prevStart: addDays(sem.inicio, -7), prevEndExcl: sem.inicio, label: sem.label, mesAnchor: sem.inicio.slice(0, 7),
+    };
+  }
   if (p === '7d' || p === '15d' || p === '30d') {
     const days = p === '7d' ? 7 : p === '15d' ? 15 : 30;
     const hoje = currentDateSP();
@@ -82,8 +93,15 @@ const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
  * corrente ("MORA CARTAO", "PROVISAO"). Não é dinheiro saindo — se entrar na
  * conta de caixa, inventa saídas de R$ 13 mil que nunca existiram.
  */
-const SEM_ESPELHO = `descricao NOT ILIKE '%MORA CARTAO%'
-  AND descricao NOT ILIKE '%PROVISAO%' AND descricao NOT ILIKE '%GASTOS CART%'`;
+const SO_ESPELHO_REAL = `descricao NOT ILIKE '%MORA CARTAO%' AND descricao NOT ILIKE '%PROVISAO%'`;
+/**
+ * "GASTOS CARTAO" NÃO é espelho (auditoria 13/10): é o débito que paga a fatura do cartão Bradesco,
+ * que não tem histórico de fatura na Pluggy — o cartão registra o mesmo valor como "PAGTO. POR DEB EM C/C".
+ * Fica fora só onde se paga fatura de cartão COM histórico (o "já pago" que abate a fatura real);
+ * entra no saldo reconstruído, no realizado e vira a fatura mensal prevista desse cartão.
+ */
+const CARTAO_SEM_FATURA = `descricao ILIKE '%GASTOS CART%'`;
+const SEM_ESPELHO = `${SO_ESPELHO_REAL} AND NOT (${CARTAO_SEM_FATURA})`;
 const RANGE = `data_lancamento >= $1::date AND data_lancamento < $2::date AND data_lancamento <= ${HOJE}`;
 
 export interface Kpis {
@@ -163,27 +181,17 @@ export async function getOrcamento(resp: Resp, per: Periodo): Promise<OrcItem[]>
   }));
 }
 
-export interface BancoRow { banco: string; total: number; }
-
-export async function getPorBanco(resp: Resp, per: Periodo): Promise<BancoRow[]> {
-  const r = rf(resp, 3);
-  const rows = await q<any>(
-    `SELECT COALESCE(banco,'Outros') AS banco, SUM(valor) AS total
-     FROM financas_lancamentos WHERE classe='despesa' AND ${RANGE}${r.sql}
-     GROUP BY 1 ORDER BY total DESC`,
-    [per.start, per.endExcl, ...r.p],
-  );
-  return rows.map((x) => ({ banco: x.banco, total: Number(x.total) }));
-}
-
 export interface Lanc {
   id: string; data: string; valor: number; descricao: string;
   categoria: string; banco: string; responsavel: string; classe: string;
+  /** N19: 'Débito' | 'Crédito' (quando a consulta traz) */
+  forma?: string;
 }
 function mapLanc(rows: any[]): Lanc[] {
   return rows.map((r) => ({
     id: r.id, data: r.data, valor: Number(r.valor), descricao: r.descricao,
     categoria: r.categoria, banco: r.banco, responsavel: r.responsavel, classe: r.classe,
+    ...(r.forma ? { forma: r.forma } : {}),
   }));
 }
 
@@ -191,7 +199,8 @@ export async function getDespesas(resp: Resp, per: Periodo): Promise<Lanc[]> {
   const r = rf(resp, 3);
   const rows = await q<any>(
     `SELECT id_transacao AS id, data_lancamento AS data, valor, descricao,
-            categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
+            categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe,
+            forma_pagamento AS forma
      FROM financas_lancamentos WHERE classe='despesa' AND ${RANGE}${r.sql}
      ORDER BY valor DESC`,
     [per.start, per.endExcl, ...r.p],
@@ -212,25 +221,51 @@ export async function getRecentes(resp: Resp, per: Periodo, limit = 10): Promise
   return mapLanc(rows);
 }
 
+export type { UltimaFatura };
 export interface Fatura {
-  id: string; banco: string; responsavel: string; valor: number;
-  limite: number; disponivel: number; vencimento: string | null; fechamento: string | null;
+  id: string; banco: string; responsavel: string;
+  /** saldo devedor do cartão (fatura fechada + compras do ciclo novo) — "limite usado", não fatura */
+  usado: number;
+  limite: number; disponivel: number;
+  /** dia de fechamento do ciclo aberto (para listar as compras do ciclo) */
+  fechamento: string | null;
+  /** a última fatura que fechou (histórico da Pluggy), com situação; null = cartão sem fatura no histórico */
+  ultima: UltimaFatura | null;
 }
-export async function getFaturas(resp: Resp): Promise<Fatura[]> {
-  const r = rf(resp, 1);
+/**
+ * Cartões com a última fatura fechada (N4, auditoria 13/10). Uma função para tela, home, bot e lembrete:
+ * pago = pagamentos que o próprio cartão registrou desde 10 dias antes do vencimento (data+valor sem repetir:
+ * o Nubank grava o mesmo pagamento 2×); parcelado = "Crédito de parcelamento" na mesma janela.
+ */
+export async function getFaturas(resp: Resp, hoje: string = currentDateSP()): Promise<Fatura[]> {
+  const r = rf(resp, 2);
   const rows = await q<any>(
-    `SELECT id_conta AS id, COALESCE(banco,'—') AS banco, responsavel,
-            COALESCE(valor_fatura_atual,0) AS valor, COALESCE(limite_total,0) AS limite,
-            COALESCE(limite_disponivel,0) AS disponivel,
-            to_char(data_vencimento,'YYYY-MM-DD') AS vencimento, to_char(data_fechamento,'YYYY-MM-DD') AS fechamento
-     FROM financas_faturas WHERE 1=1${r.sql} ORDER BY data_vencimento NULLS LAST`,
-    r.p,
+    `SELECT f.id_conta AS id, COALESCE(f.banco,'—') AS banco, f.responsavel,
+            COALESCE(f.valor_fatura_atual,0)::float8 AS usado, COALESCE(f.limite_total,0)::float8 AS limite,
+            COALESCE(f.limite_disponivel,0)::float8 AS disponivel, to_char(f.data_fechamento,'YYYY-MM-DD') AS fechamento,
+            to_char(h.vencimento,'YYYY-MM-DD') AS venc, h.total::float8 AS total,
+            (SELECT COALESCE(SUM(p.valor),0)::float8 FROM (SELECT DISTINCT l.data_lancamento, l.valor FROM financas_lancamentos l
+               WHERE l.account_id = f.id_conta AND l.forma_pagamento = 'Crédito' AND l.classe = 'pagamento_fatura'
+                 AND l.tipo_movimento = 'Entrada' AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) p) AS pago,
+            (SELECT COALESCE(SUM(l.valor),0)::float8 FROM financas_lancamentos l
+               WHERE l.account_id = f.id_conta AND l.forma_pagamento = 'Crédito' AND l.tipo_movimento = 'Entrada'
+                 AND l.descricao ILIKE '%parcelamento%' AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) AS parcelado
+       FROM financas_faturas f
+       LEFT JOIN LATERAL (SELECT vencimento, total FROM financas_faturas_historico x
+                           WHERE x.account_id = f.id_conta AND x.vencimento IS NOT NULL
+                           ORDER BY x.vencimento DESC LIMIT 1) h ON true
+      WHERE 1=1${r.sql.replace('responsavel', 'f.responsavel')}
+      ORDER BY h.vencimento NULLS LAST, f.banco`,
+    [hoje, ...r.p],
   );
-  return rows.map((x) => ({
-    id: x.id, banco: x.banco, responsavel: x.responsavel,
-    valor: Number(x.valor), limite: Number(x.limite), disponivel: Number(x.disponivel),
-    vencimento: x.vencimento, fechamento: x.fechamento,
-  }));
+  return rows.map((x) => {
+    const base = { total: Math.round(Number(x.total) * 100) / 100, pago: Number(x.pago), parcelado: Number(x.parcelado), vencimento: x.venc };
+    return {
+      id: x.id, banco: x.banco, responsavel: x.responsavel,
+      usado: Number(x.usado), limite: Number(x.limite), disponivel: Number(x.disponivel), fechamento: x.fechamento,
+      ultima: x.venc && x.total !== null ? { ...base, ...situacaoFatura(base, hoje) } : null,
+    };
+  });
 }
 
 export interface Investimento {
@@ -487,7 +522,7 @@ export async function getMovimentosDiarios(resp: Resp, desde: string, hoje: stri
             SUM(CASE WHEN tipo_movimento='Entrada' THEN valor ELSE -valor END)::float8 AS liquido
      FROM financas_lancamentos
      WHERE forma_pagamento='Débito' AND data_lancamento >= $1::date AND data_lancamento <= $2::date
-       AND ${SEM_ESPELHO}${r.sql}
+       AND ${SO_ESPELHO_REAL}${r.sql}
      GROUP BY 1`,
     [desde, hoje, ...r.p],
   );
@@ -503,7 +538,7 @@ export async function getBusca(resp: Resp, termo: string): Promise<Lanc[]> {
      WHERE descricao ILIKE '%' || $1 || '%'
        AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
      ORDER BY data_lancamento DESC LIMIT 80`,
-    [termo, ...r.p],
+    [escaparLike(termo), ...r.p],
   );
   return mapLanc(rows);
 }
@@ -536,28 +571,31 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
     `WITH fut AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
               descricao, valor, data_lancamento, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
-              COALESCE(banco,'—') AS banco, responsavel
+              COALESCE(banco,'—') AS banco, responsavel, parcela_numero, parcela_total
        FROM financas_lancamentos
        WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
      )
+     -- N9: o plano (parcela_total) separa dois parcelamentos com a mesma descrição (renegociação 3× e 8×)
      SELECT chave, COUNT(*) AS restantes, ROUND(AVG(valor),2) AS valor_parcela,
             to_char(MAX(data_lancamento),'YYYY-MM-DD') AS data_fim,
             mode() WITHIN GROUP (ORDER BY categoria) AS categoria,
             mode() WITHIN GROUP (ORDER BY banco) AS banco,
             mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel,
-            (array_agg(descricao ORDER BY data_lancamento ASC))[1] AS proxima_desc
+            (array_agg(descricao ORDER BY data_lancamento ASC))[1] AS proxima_desc,
+            (array_agg(parcela_numero ORDER BY data_lancamento ASC))[1] AS proxima_num,
+            MAX(parcela_total) AS plano
      FROM fut
      WHERE length(chave) >= 4
-     GROUP BY chave
+     GROUP BY chave, banco, COALESCE(parcela_total, 0)
      ORDER BY data_fim DESC`,
     r.p,
   );
   return rows.map((x) => {
-    // "3/4" = parcela 3 de 4. Exige atual <= total pra não ler data como parcela
-    // ("05/09" viraria "parcela 5 de 9"), e o total tem que ser > 1.
+    // parcela pelo campo do banco (Nubank); senão "3/4" no fim da descrição. Exige atual <= total pra
+    // não ler data como parcela ("05/09" viraria "parcela 5 de 9"), e o total tem que ser > 1.
     const m = String(x.proxima_desc ?? '').match(/(?:^|\s)(\d{1,2})\s*\/\s*(\d{1,2})(?:\s|$)/);
-    const pAtual = m ? Number(m[1]) : null;
-    const pTotal = m ? Number(m[2]) : null;
+    const pAtual = x.plano ? Number(x.proxima_num) : m ? Number(m[1]) : null;
+    const pTotal = x.plano ? Number(x.plano) : m ? Number(m[2]) : null;
     const parcelaValida = pAtual != null && pTotal != null && pTotal > 1 && pAtual <= pTotal;
     return {
       chave: x.chave, categoria: x.categoria, banco: x.banco, responsavel: x.responsavel,
@@ -752,8 +790,8 @@ export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<C
     `SELECT
        COALESCE(SUM(valor) FILTER (WHERE classe='receita'),0) AS receita,
        COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}),0) AS debito,
-       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND categoria = ANY($2::text[])),0) AS casa,
-       COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SEM_ESPELHO}),0) AS fatura
+       COALESCE(SUM(valor) FILTER (WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($2::text[])),0) AS casa,
+       COALESCE(SUM(valor) FILTER (WHERE classe='pagamento_fatura' AND forma_pagamento='Débito' AND ${SO_ESPELHO_REAL}),0) AS fatura
      FROM financas_lancamentos WHERE date_trunc('month', data_lancamento) = $1::date${rr.sql}`,
     [`${mes}-01`, CASA_CATS, ...rr.p],
   );
@@ -773,14 +811,37 @@ function previstoNaVespera(resp: Resp, mes: string, mesRef: string): Promise<Com
   const ja = cachePrevisto.get(chave);
   if (ja) return ja;
   for (const k of Array.from(cachePrevisto.keys())) if (k.split('|')[1] !== mesRef) cachePrevisto.delete(k);
-  const ant = addMonths(mes, -1);
-  const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
-  // mesma régua da calibração: véspera do mês e a regra do débito em uso
-  const p = getProjecaoBase(resp, vesp, { regraDebito: REGRA_DEBITO })
-    .then((base) => componentesPrevistos(computeProjecao(base, 1, vesp)[1]));
+  // N15: a foto tirada no começo do mês manda (sem ela, recalcula com o que se sabe hoje)
+  const p = lerFotoPrevisto(resp, mes).then((foto) => foto ?? calcularPrevisto(resp, mes));
   cachePrevisto.set(chave, p);
   p.catch(() => cachePrevisto.delete(chave));
   return p;
+}
+
+function calcularPrevisto(resp: Resp, mes: string): Promise<Componentes> {
+  const ant = addMonths(mes, -1);
+  const vesp = `${ant}-${String(diasNoMes(ant)).padStart(2, '0')}`;
+  // mesma régua da calibração: véspera do mês e a regra do débito em uso
+  return getProjecaoBase(resp, vesp, { regraDebito: REGRA_DEBITO })
+    .then((base) => componentesPrevistos(computeProjecao(base, 1, vesp)[1]));
+}
+
+async function lerFotoPrevisto(resp: Resp, mes: string): Promise<Componentes | null> {
+  const [r] = await q<any>(`SELECT componentes FROM financas_previsto_foto WHERE resp = $1 AND mes = $2`, [resp, mes]);
+  return r ? (r.componentes as Componentes) : null;
+}
+
+/**
+ * N15: grava a previsão do mês (feita na véspera) uma vez; chamada no dia 1 pelo resumo mensal e na primeira
+ * abertura da previsão no mês. Já existindo, devolve a foto sem recalcular nem sobrescrever.
+ */
+export async function fotografarPrevisto(resp: Resp, mes: string): Promise<Componentes> {
+  const ja = await lerFotoPrevisto(resp, mes);
+  if (ja) return ja;
+  const c = await calcularPrevisto(resp, mes);
+  await qw(`INSERT INTO financas_previsto_foto (resp, mes, componentes) VALUES ($1, $2, $3) ON CONFLICT (resp, mes) DO NOTHING`,
+    [resp, mes, JSON.stringify(c)]);
+  return (await lerFotoPrevisto(resp, mes)) ?? c;
 }
 
 /** Os `n` meses fechados antes do atual: previsto na véspera × real × saldo em conta no fim (reconstruído). */
@@ -903,7 +964,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
        SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
               date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
        FROM financas_lancamentos
-       WHERE classe='despesa' AND categoria = ANY($1::text[])
+       WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($1::text[])
          AND date_trunc('month',data_lancamento) = ANY($2::date[])${rc.sql}
        GROUP BY 1,2
      ) m GROUP BY categoria`,
@@ -935,7 +996,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
      FROM financas_lancamentos l
      LEFT JOIN financas_faturas_historico h ON h.id = l.fatura_id
      LEFT JOIN desloc d ON d.account_id = l.account_id
-     WHERE l.classe = 'despesa' AND l.forma_pagamento = 'Crédito'
+     -- parcela de parcelamento de fatura (pagamento_fatura que SAI no cartão) também vence na fatura
+     WHERE (l.classe = 'despesa' OR (l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Saída'))
+       AND l.forma_pagamento = 'Crédito'
        AND (l.data_lancamento <= $1::date OR l.criado_em::date <= $1::date)${r3.sql}
      GROUP BY 1`,
     [hoje, ...r3.p],
@@ -954,6 +1017,42 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   );
   const faturaReal: Record<string, number> = {};
   faturaRows.forEach((x) => { faturaReal[x.venc] = Number(x.total); });
+
+  // N3: fatura do mês em andamento, por cartão. Vencida = já não sai (o que faltou virou parcelamento
+  // ou rotativo e aparece nas próximas faturas); a vencer = total − o que o próprio cartão registrou
+  // como pagamento desde ~10 dias antes do vencimento (o Nubank grava o mesmo pagamento 2×: data+valor conta 1×).
+  const restRows = await q<any>(
+    `SELECT h.account_id, to_char(h.vencimento, 'YYYY-MM-DD') AS venc, h.total::float8 AS total,
+            (SELECT COALESCE(SUM(p.valor), 0)::float8 FROM (
+               SELECT DISTINCT l.data_lancamento, l.valor FROM financas_lancamentos l
+                WHERE l.account_id = h.account_id AND l.forma_pagamento = 'Crédito'
+                  AND l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Entrada'
+                  AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) p) AS pago
+       FROM financas_faturas_historico h LEFT JOIN pluggy_contas c ON c.account_id = h.account_id
+      WHERE date_trunc('month', h.vencimento) = date_trunc('month', $1::date)${filtroResp}`,
+    resp === 'casal' ? [hoje] : [hoje, resp],
+  );
+  const faturaRestante = restRows.length
+    ? Math.round(restRows.reduce((s, x) => s + (x.venc < hoje ? 0 : Math.max(0, Number(x.total) - Number(x.pago))), 0) * 100) / 100
+    : undefined;
+
+  // N1: cartão sem histórico de fatura (Bradesco, pago por "GASTOS CARTAO" no débito). Se os 3 meses
+  // fechados tiveram o MESMO pagamento (fatura parcelada), ele se repete; valor variando = imprevisível (0).
+  const rcs = rf(resp, 2);
+  const semFatRows = await q<any>(
+    `SELECT to_char(data_lancamento, 'YYYY-MM') AS mes, SUM(valor)::float8 AS total
+       FROM financas_lancamentos
+      WHERE classe = 'pagamento_fatura' AND forma_pagamento = 'Débito' AND ${CARTAO_SEM_FATURA}
+        AND data_lancamento >= date_trunc('month', $1::date) - interval '3 months' AND data_lancamento <= $1::date${rcs.sql}
+      GROUP BY 1`,
+    [hoje, ...rcs.p],
+  );
+  const semFat: Record<string, number> = Object.fromEntries(semFatRows.map((x) => [x.mes, Math.round(Number(x.total) * 100) / 100]));
+  const tres = [-3, -2, -1].map((k) => semFat[addMonths(hoje.slice(0, 7), k)]);
+  const cartaoSemFatura = {
+    mensal: tres.every((v) => v !== undefined && Math.abs(v - tres[0]!) <= 0.01) ? tres[0]! : 0,
+    pagoNoMes: semFat[hoje.slice(0, 7)] ?? 0,
+  };
 
   const compromissosCadastrados = await getCompromissosManuais(resp);
   const compromissosManuais = resp === 'casal'
@@ -998,6 +1097,30 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     [...rmc.p, CASA_CATS, hoje, FIXO_DEBITO_CATS],
   );
 
+  // N12: contas travadas por categoria — média nos meses-base (mês sem a conta conta como 0, igual ao total)
+  // e o que já saiu no mês de hoje
+  const rfx = rf(resp, 4);
+  const fixoRows = await q<any>(
+    `SELECT categoria, to_char(data_lancamento, 'YYYY-MM') AS mes, SUM(valor)::float8 AS total
+       FROM financas_lancamentos
+      WHERE classe = 'despesa' AND forma_pagamento = 'Débito' AND categoria = ANY($1::text[])
+        AND NOT (categoria = ANY($2::text[])) AND ${SEM_ESPELHO}
+        AND (to_char(data_lancamento, 'YYYY-MM') = ANY($3::text[])
+             OR (date_trunc('month', data_lancamento) = date_trunc('month', $${rfx.p.length + 4}::date) AND data_lancamento <= $${rfx.p.length + 4}::date))${rfx.sql}
+      GROUP BY 1, 2`,
+    [FIXO_DEBITO_CATS, CASA_CATS, [...meses.map((d) => d.slice(0, 7)), addMonths(hoje.slice(0, 7), -1)], ...rfx.p, hoje],
+  );
+  // ativa = apareceu no mês passado (empréstimo que acabou não é mais esperado)
+  const fixoPorCategoria: Record<string, { media: number; pago: number; ativa: boolean }> = {};
+  const mesesBase = new Set(meses.map((d) => d.slice(0, 7)));
+  const nMeses = Math.max(1, meses.length);
+  for (const x of fixoRows) {
+    const c = (fixoPorCategoria[x.categoria] ??= { media: 0, pago: 0, ativa: false });
+    if (x.mes === hoje.slice(0, 7)) c.pago = Math.round((c.pago + Number(x.total)) * 100) / 100;
+    if (mesesBase.has(x.mes)) c.media = Math.round((c.media + Number(x.total) / nMeses) * 100) / 100;
+    if (x.mes === addMonths(hoje.slice(0, 7), -1)) c.ativa = true;
+  }
+
   const casaNoMesPorCategoria = await getCasaNoMes(resp, hoje);
   // visão individual: o que o casal já pagou da casa, para abater os compromissos do casal
   const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : await getCasaNoMes('casal', hoje);
@@ -1014,6 +1137,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       fixoJaGasto: Number(mesRows[0]?.fixo_gasto ?? 0),
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),
+      ...(faturaRestante !== undefined ? { faturaRestante } : {}),
+      fixoPorCategoria,
       casaNoMesPorCategoria,
       ...(casaNoMesCasalPorCategoria ? { casaNoMesCasalPorCategoria } : {}),
     },
@@ -1025,6 +1150,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     despesaCasaPorCategoria,
     creditoPorVencimento,
     faturaReal,
+    cartaoSemFatura,
     compromissosManuais,
     compromissosCadastrados,
   };
@@ -1037,7 +1163,8 @@ async function getCasaNoMes(resp: Resp, hoje: string): Promise<Record<string, nu
   const rows = await q<any>(
     `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
      FROM financas_lancamentos
-     WHERE classe='despesa' AND categoria = ANY($1::text[])
+     -- N10: casa paga no crédito sai do caixa pela fatura; aqui só o que saiu da conta
+     WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($1::text[])
        AND data_lancamento >= date_trunc('month',${hcm})
        AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
        AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
@@ -1097,6 +1224,8 @@ export interface Diagnostico {
   semClassificacao: { total: number; itens: { descricao: string; valor: number; data: string }[] };
   /** sobra mensal projetada num mês cheio — base pro simulador de corte */
   sobraMensalProjetada: number;
+  /** N17: de que mês é a sobra projetada (o diagnóstico é do mês passado; a sobra, do próximo mês cheio) */
+  sobraMensalLabel: string;
   saldoProjetadoFim: number;
 }
 
@@ -1184,6 +1313,7 @@ export async function getDiagnostico(resp: Resp): Promise<Diagnostico> {
     diaComparacao, variacoes,
     semClassificacao: { total: itens.reduce((s, i) => s + i.valor, 0), itens },
     sobraMensalProjetada: mesCheio?.saldo ?? 0,
+    sobraMensalLabel: mesCheio?.mesLabel ?? '',
     saldoProjetadoFim: proj[0]?.saldoProjetado ?? 0,
   };
 }
@@ -1203,7 +1333,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     // lançamentos da janela e parcelas futuras já conhecidas em hoje: dívidas e juros saem daqui
     q<any>(
       `SELECT descricao, categoria, COALESCE(banco,'—') AS banco, forma_pagamento AS forma,
-              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor
+              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, parcela_total AS "parcelaTotal"
        FROM financas_lancamentos
        WHERE ${SEM_ESPELHO}
          -- parcelamento de fatura e encargos do cartão o classificador grava como pagamento_fatura:
@@ -1573,7 +1703,47 @@ export async function getBuscaBot(resp: Resp, inicio: string, fimExcl: string, t
        AND ($3::text IS NULL OR descricao ILIKE '%' || $3 || '%')
        AND ($4::float8 IS NULL OR abs(valor - $4) < 0.005)${r.sql}
      ORDER BY data_lancamento DESC, id_transacao LIMIT 5`,
-    [inicio, fimExcl, texto, valor, ...r.p],
+    [inicio, fimExcl, texto === null ? null : escaparLike(texto), valor, ...r.p],
   );
   return rows.map((x) => ({ id: x.id, data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: nomeSemDocumento(x.descricao) ?? '(sem descrição)', pessoa: x.pessoa, categoria: x.categoria }));
+}
+
+// ==================== AVISOS DO DIÁRIO (Onda 2, auditoria 13/10) ====================
+
+/**
+ * Dados dos avisos por exceção do diário (o texto sai de avisosDoDia + worker). `hoje` = dia da mensagem;
+ * o dia resumido é ontem. Juros: últimos 3 dias. Fora do padrão: compra de ontem acima de R$ 100 e de 3× a
+ * mediana da categoria nos 90 dias anteriores (com pelo menos 5 compras para comparar). Do casal.
+ */
+export async function getDadosAvisos(hoje: string = currentDateSP()): Promise<DadosAvisos> {
+  const ontem = addDays(hoje, -1), anteontem = addDays(hoje, -2);
+  const iniMes = `${ontem.slice(0, 7)}-01`;
+  const [saldos, cand, orc, fora] = await Promise.all([
+    q<any>(`SELECT banco, responsavel, saldo::float8 AS saldo FROM financas_saldos WHERE COALESCE(tipo, 'CHECKING_ACCOUNT') = 'CHECKING_ACCOUNT'`),
+    q<any>(`SELECT banco, responsavel, descricao, categoria, valor::float8 AS valor FROM financas_lancamentos
+             WHERE tipo_movimento = 'Saída' AND classe IN ('despesa', 'pagamento_fatura')
+               AND data_lancamento > $1::date - 3 AND data_lancamento <= $1::date`, [hoje]),
+    q<any>(`SELECT o.item, COALESCE(o.emoji, '') AS emoji, o.teto::float8 AS teto,
+                   COALESCE(SUM(l.valor) FILTER (WHERE l.data_lancamento <= $3::date), 0)::float8 AS ate_anteontem,
+                   COALESCE(SUM(l.valor), 0)::float8 AS ate_ontem
+              FROM financas_orcamento o
+              LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND l.categoria = ANY(o.categorias)
+                   AND l.data_lancamento >= $1::date AND l.data_lancamento <= $2::date
+             WHERE o.ativo = true GROUP BY 1, 2, 3`, [iniMes, ontem, anteontem]),
+    q<any>(`WITH ref AS (
+              SELECT categoria, percentile_cont(0.5) WITHIN GROUP (ORDER BY valor)::float8 AS mediana, COUNT(*) AS n
+                FROM financas_lancamentos
+               WHERE classe = 'despesa' AND data_lancamento >= $1::date - 90 AND data_lancamento < $1::date
+               GROUP BY 1)
+            SELECT l.descricao, l.valor::float8 AS valor, l.categoria, ref.mediana
+              FROM financas_lancamentos l JOIN ref ON ref.categoria = l.categoria
+             WHERE l.classe = 'despesa' AND l.data_lancamento = $1::date AND l.valor > 100
+               AND ref.n >= 5 AND l.valor > 3 * ref.mediana`, [ontem]),
+  ]);
+  return {
+    saldos: saldos.map((x) => ({ banco: x.banco, responsavel: x.responsavel, saldo: Number(x.saldo) })),
+    encargos: cand.filter((x) => ehAtraso(x.descricao ?? '', x.categoria)).map((x) => ({ banco: x.banco, responsavel: x.responsavel, valor: Number(x.valor) })),
+    orcamento: orc.map((x) => ({ item: x.item, emoji: x.emoji, teto: Number(x.teto), ateAnteontem: Number(x.ate_anteontem), ateOntem: Number(x.ate_ontem) })),
+    foraDoPadrao: fora.map((x) => ({ descricao: nomeSemDocumento(x.descricao) ?? 'compra', valor: Number(x.valor), categoria: x.categoria, mediana: Number(x.mediana) })),
+  };
 }

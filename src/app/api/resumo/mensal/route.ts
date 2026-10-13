@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { diasNoMes, getMesesPassados, getPrevisaoResumo, getTrilhaDados } from '@/lib/queries';
+import { diasNoMes, fotografarPrevisto, getMesesPassados, getPrevisaoResumo, getTrilhaDados } from '@/lib/queries';
 import { currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths } from '@/lib/previsao';
 import { historicoDe } from '@/lib/resumos';
@@ -20,6 +20,9 @@ export async function GET() {
     getTrilhaDados(`${anterior}-${String(diasNoMes(anterior)).padStart(2, '0')}`),
     getPrevisaoResumo('casal'),
   ]);
+  // N15: dia 1 — foto da previsão do mês que começa (o "previsto" dele no fechamento do mês que vem)
+  await Promise.all((['casal', 'Matheus', 'Ariane'] as const).map((r) => fotografarPrevisto(r, hoje.slice(0, 7))))
+    .catch((e) => console.error('foto do previsto falhou', e));
   const m = passados.find((x) => x.mes === fechado) ?? passados[passados.length - 1];
   const tAgora = avaliarTrilha(agora);
   const tAntes = avaliarTrilha(antes);
@@ -30,6 +33,8 @@ export async function GET() {
       fase: tAgora.atual, titulo: tAgora.fases[tAgora.atual - 1].titulo,
       mudou: tAgora.atual !== tAntes.atual, faseAntes: tAntes.atual,
     },
+    // S6: carteira de hoje e aplicação líquida do mês que fechou (resgate negativo) — o Bot 04 trazia
+    investimentos: { total: agora.aplicado, aplicadoNoMes: agora.aplicacaoMensal.find((a) => a.mes === m.mes)?.valor ?? 0 },
     mesNovo: { mesLabel: p.mesLabel, fechaCom: p.fechaCom },
     historico: historicoDe(passados),
   });

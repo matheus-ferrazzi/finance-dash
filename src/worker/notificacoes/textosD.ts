@@ -1,6 +1,7 @@
 // Mensagens do D (WhatsApp): diário, semanal e mensal no grupo do casal; técnico no privado do Matheus.
 // Tom contido, Markdown do WhatsApp (*negrito*), um emoji por linha (D2), link na última linha. Funções puras.
 import { linhasBackup, linhasSaude, type BackupDados, type SaudeDados } from './textos';
+import type { Aviso } from '../../lib/avisos';
 
 // os mesmos JSON das rotas /api/resumo/* do painel (o worker não importa do painel)
 export interface ResumoDiario {
@@ -8,6 +9,8 @@ export interface ResumoDiario {
   contas: { nome: string; valor: number; quando: 'hoje' | 'amanhã' }[];
   /** D2: gráfico (opcional: painel antigo não manda) */
   serie?: { dia: number; acumulado: number }[]; cabeNoMes?: number; diasNoMes?: number;
+  /** Onda 2: avisos por exceção (cheque especial, juros, orçamento, fora do padrão) */
+  avisos?: Aviso[];
 }
 export interface ResumoSemanal {
   semana: { inicio: string; fim: string }; total: number; mediaTotal: number;
@@ -16,10 +19,14 @@ export interface ResumoSemanal {
   /** E3: quanto do total da semana foi em dinheiro vivo */
   totalDinheiro?: number;
   todosGrupos?: { nome: string; emoji: string; semana: number; media: number }[];
+  /** S7: faturas fechadas a pagar (a vencer + em atraso) e o próximo vencimento (dd/mm) */
+  faturas?: { aPagar: number; proximoVencimento: string | null };
 }
 export interface ResumoMensal {
   mes: string; mesLabel: string; sobraReal: number; sobraPrevista: number; saldoFim: number;
   trilha: { fase: number; titulo: string; mudou: boolean; faseAntes: number | null };
+  /** S6: total da carteira hoje e aplicação líquida do mês fechado (resgate negativo) */
+  investimentos?: { total: number; aplicadoNoMes: number };
   mesNovo: { mesLabel: string; fechaCom: number };
   historico?: { mes: string; mesLabel: string; sobra: number }[];
 }
@@ -27,6 +34,8 @@ export interface DadosTecnico {
   saude: SaudeDados; backup: BackupDados; consentimentos: { banco: string; responsavel: string; dias: number }[];
   /** E1: saúde do bot de perguntas */
   bot?: { falhas24h: number; modelosSumidos: string[] };
+  /** S2: conexões da Pluggy sem atualizar há mais de 30 h */
+  conexoes?: { banco: string; responsavel: string; horas: number }[];
 }
 
 const brl = (v: unknown) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -40,19 +49,30 @@ export function barraTrilha(fase: number): string {
   return '▰'.repeat(f) + '▱'.repeat(4 - f);
 }
 
+function linhaAviso(a: Aviso): string {
+  switch (a.tipo) {
+    case 'negativo': return `🔴 Conta ${a.banco} (${a.responsavel}) no negativo: *${brl(a.valor)}* (o cheque especial cobra juros)`;
+    case 'juros': return `🔴 Juros de atraso no ${a.banco} (${a.responsavel}): ${brl(a.valor)}`;
+    case 'orcamento': return `${a.emoji} ${a.item} passou de ${a.pct}% do teto: ${brl(a.gasto)} de ${brl(a.teto)}`;
+    case 'fora_do_padrao': return `🧐 Fora do padrão: ${a.descricao}, ${brl(a.valor)} (costuma ser ${brl(a.mediana)})`;
+  }
+}
+
 export function montarDiario(r: ResumoDiario, link: string): string {
   const l = ['☀️ *Bom dia!*'];
   if (r.diasRestantes > 0) {
     const acima = r.ritmoAtualDia > r.ritmoSeguroDia;
-    l.push(`💸 Hoje dá pra gastar *${brl(r.ritmoSeguroDia)}*`);
+    l.push(`💸 Hoje dá pra gastar *${brl(r.ritmoSeguroDia)}* no débito e PIX`);
     l.push(acima
       ? `🔥 Ritmo: ${brl(r.ritmoAtualDia)} por dia, acima do que cabe 🔴`
       : `🐢 Ritmo: ${brl(r.ritmoAtualDia)} por dia, dentro do que cabe 🟢`);
     l.push(`${r.fechaCom < 0 ? '📉' : '📈'} ${r.mesLabel} fecha em *${brl(r.fechaCom)}* ${sinal(r.fechaCom)}`);
   } else {
-    // último dia do mês: não há o que distribuir por dia
-    l.push(`📅 Último dia do mês: ${r.mesLabel} fecha em *${brl(r.fechaCom)}* ${sinal(r.fechaCom)}`);
+    // último dia do mês: tudo o que sobra é de hoje (N11); ritmo por dia não diz mais nada
+    l.push(`💸 Último dia do mês: dá pra gastar *${brl(r.ritmoSeguroDia)}* hoje`);
+    l.push(`📅 ${r.mesLabel} fecha em *${brl(r.fechaCom)}* ${sinal(r.fechaCom)}`);
   }
+  if (r.avisos?.length) l.push('', '⚠️ *Atenção*', ...r.avisos.map(linhaAviso));
   if (r.contas.length) l.push('', ...r.contas.map((c) => `🧾 ${c.nome} (${brl(c.valor)}) vence ${c.quando}`));
   l.push('', `👉 ${link}`);
   return l.join('\n');
@@ -71,10 +91,13 @@ export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha:
   if (r.total <= 0) l.push('💤 Nenhum gasto registrado na semana.');
   else if (r.mediaTotal > 0 && r.total !== r.mediaTotal) {
     const pct = Math.round((Math.abs(r.total - r.mediaTotal) / r.mediaTotal) * 100);
-    l.push(`💰 Gastaram ${brl(r.total)}, ${r.total > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
-  } else l.push(`💰 Gastaram ${brl(r.total)}.`);
+    l.push(`💰 No dia a dia gastaram ${brl(r.total)}, ${r.total > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
+  } else l.push(`💰 No dia a dia gastaram ${brl(r.total)}.`);
   if ((r.totalDinheiro ?? 0) > 0) l.push(`💵 dos quais ${brl(r.totalDinheiro)} em dinheiro vivo`);
   if (r.grupos.length) l.push('', ...r.grupos.map((g) => `${g.emoji} ${g.nome}: ${brl(g.semana)} ${seta(g.semana, g.media)} (média ${brl(g.media)})`));
+  if ((r.faturas?.aPagar ?? 0) > 0) {
+    l.push('', `💳 Faturas a pagar: ${brl(r.faturas!.aPagar)}${r.faturas!.proximoVencimento ? ` (próximo vencimento ${r.faturas!.proximoVencimento})` : ''}`);
+  }
   l.push('', `🧭 *Trilha* ${barraTrilha(r.trilha.fase)} fase ${r.trilha.fase}: ${r.trilha.titulo}`, `➡️ ${r.trilha.proximoPasso}`,
     '', `👉 ${links.gastos}`, `👉 ${links.trilha}`);
   return l.join('\n');
@@ -87,10 +110,17 @@ export function montarMensal(r: ResumoMensal, link: string): string {
   const trilha = r.trilha.mudou && r.trilha.faseAntes !== null
     ? `🚀 *Trilha* ${barraTrilha(r.trilha.fase)} passaram da fase ${r.trilha.faseAntes} para a ${r.trilha.fase}: ${r.trilha.titulo}`
     : `🧭 *Trilha* ${barraTrilha(r.trilha.fase)} seguem na fase ${r.trilha.fase}: ${r.trilha.titulo}`;
+  // S6: carteira (o Bot 04 do Telegram trazia); aplicação líquida do mês com sinal (resgate ≠ aporte)
+  const inv = r.investimentos;
+  const linhaInv = inv
+    ? [`💼 Investimentos: ${brl(inv.total)}${inv.aplicadoNoMes > 0 ? ` (no mês, aplicaram ${brl(inv.aplicadoNoMes)})`
+      : inv.aplicadoNoMes < 0 ? ` (no mês, resgataram ${brl(-inv.aplicadoNoMes)})` : ''}`]
+    : [];
   return [
     `📅 *${r.mesLabel} fechou*${r.sobraReal >= 0 ? ' 🎉' : ''}`,
     sobra,
     `🏦 Saldo em conta no fim: ${brl(r.saldoFim)} ${sinal(r.saldoFim)}`,
+    ...linhaInv,
     '', trilha,
     '', `🔮 ${r.mesNovo.mesLabel} começa fechando em ${brl(r.mesNovo.fechaCom)}`,
     '', `👉 ${link}`,
@@ -105,6 +135,10 @@ export function montarTecnico(d: DadosTecnico): string | null {
       ? `🔴 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy venceu`
       : `🟡 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy vence em ${c.dias} dias`)),
   ];
+  for (const c of d.conexoes ?? []) {
+    const quanto = c.horas >= 48 ? `${Math.floor(c.horas / 24)} dias` : `${Math.round(c.horas)} h`;
+    linhas.push(`🔴 Conexão ${c.banco} (${c.responsavel}) sem atualizar há ${quanto}: reconectar no Meu Pluggy`);
+  }
   if (d.bot?.falhas24h) linhas.push(`🔴 Bot: ${d.bot.falhas24h} pergunta(s) com falha nas últimas 24h`);
   for (const m of d.bot?.modelosSumidos ?? []) linhas.push(`🔴 Bot: modelo ${m} não existe mais na Groq`);
   if (!linhas.length) return null;

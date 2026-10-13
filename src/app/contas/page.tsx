@@ -1,5 +1,6 @@
-import { getContasDoMes, Resp } from '@/lib/queries';
-import { brl, normalizeMes } from '@/lib/format';
+import { getContasDoMes, getPrevisaoResumo, getRealizado, Resp } from '@/lib/queries';
+import { brl, currentDateSP, normalizeMes } from '@/lib/format';
+import { destaqueDoTopo } from '@/lib/contas';
 import { PageTitle, StatStrip } from '../components/ui';
 import { ContasLista } from '../components/ContasLista';
 
@@ -14,6 +15,12 @@ export default async function Contas({ searchParams }: { searchParams: { resp?: 
   const resp = resolveResp(searchParams.resp);
   const mes = normalizeMes(searchParams.mes);
   const r = await getContasDoMes(resp, mes);
+  // N6: no casal o número do topo vem da previsão (mês atual) ou do realizado (mês passado)
+  const atual = currentDateSP().slice(0, 7);
+  const quando = mes === atual ? 'atual' : mes < atual ? 'passado' : 'futuro';
+  const fecha = resp !== 'casal' || quando === 'futuro' ? null
+    : quando === 'atual' ? (await getPrevisaoResumo('casal')).fechaCom : (await getRealizado(mes)).saldo;
+  const topo = destaqueDoTopo(resp, r, fecha, quando);
 
   return (
     <div>
@@ -25,10 +32,9 @@ export default async function Contas({ searchParams }: { searchParams: { resp?: 
         { label: 'Pago', value: brl(r.pago), hint: 'confirmado no banco' },
         { label: 'Falta pagar', value: brl(r.falta), tone: r.falta > 0 ? 'warn' : 'muted',
           hint: r.aConfirmar > 0 ? `${brl(r.aConfirmar)} marcado, esperando o banco` : undefined },
-        // mês sem entrada ainda (o que vem, ou antes do salário cair): sobra negativa assustaria à toa
-        r.entrou > 0
-          ? { label: 'Sobra', value: brl(r.sobra), tone: r.sobra >= 0 ? 'up' : 'down', hint: 'entrou − contas' }
-          : { label: 'Sobra', value: '—', tone: 'muted', hint: 'quando o salário cair' },
+        topo.valor === null
+          ? { label: topo.label, value: '—', tone: 'muted', hint: topo.hint }
+          : { label: topo.label, value: brl(topo.valor), tone: topo.valor >= 0 ? 'up' : 'down', hint: topo.hint },
       ]} />
 
       <ContasLista mes={mes} resp={resp} itens={r.itens} tiradas={r.tiradas} />

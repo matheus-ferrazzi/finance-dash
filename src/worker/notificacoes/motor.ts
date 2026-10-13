@@ -47,7 +47,8 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
   const url = (tela: Parameters<typeof linkPara>[0], mes?: string) => base + linkPara(tela, mes ? { mes } : {}, '');
   switch (bot) {
     case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: null, svg: seguro(() => graficoDiario(dados)) };
-    case 'semanal': return { texto: montarSemanal(dados, { gastos: url('gastos'), trilha: url('trilha') }), estado: null, svg: seguro(() => graficoSemanal(dados)) };
+    // N19: o link abre a semana da mensagem, não o mês
+    case 'semanal': return { texto: montarSemanal(dados, { gastos: base + linkPara('gastos', { semana: dados?.semana?.inicio }, ''), trilha: url('trilha') }), estado: null, svg: seguro(() => graficoSemanal(dados)) };
     case 'mensal': return { texto: montarMensal(dados, url('previsao', dados?.mes)), estado: null, svg: seguro(() => graficoMensal(dados)) };
     case 'tecnico': return { texto: montarTecnico(dados), estado: null };
     case 'ritmo': return { texto: montarRitmo(dados), estado: null };

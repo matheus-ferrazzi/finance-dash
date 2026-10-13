@@ -1,6 +1,7 @@
 // E3: gasto em dinheiro vivo. Só as visões de gasto por categoria somam isto (de propósito);
 // as contas do saldo do banco (previsão, ritmo, trilha) não leem esta tabela.
 import { q, qw } from './db';
+import { escaparLike } from './format';
 import type { Resp } from './queries';
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
@@ -27,7 +28,7 @@ export async function buscarDinheiro(resp: Resp, termo: string) {
   const f = filtroPessoa(resp, 2);
   const rows = await q<any>(
     `SELECT id, to_char(data,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao, categoria, responsavel AS pessoa
-     FROM financas_gastos_dinheiro WHERE descricao ILIKE '%' || $1 || '%'${f.sql} ORDER BY data DESC, id DESC LIMIT 80`, [termo, ...f.p]);
+     FROM financas_gastos_dinheiro WHERE descricao ILIKE '%' || $1 || '%'${f.sql} ORDER BY data DESC, id DESC LIMIT 80`, [escaparLike(termo), ...f.p]);
   return rows.map((x) => ({ id: Number(x.id), data: x.data, valor: r2(Number(x.valor)), descricao: x.descricao, categoria: x.categoria, pessoa: x.pessoa }));
 }
 

@@ -5,7 +5,7 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 
 describe('ferramentas', () => {
   it('8 ferramentas, schema com nome e parâmetros', () => {
-    expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra',
+    expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra', 'investimentos',
       'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro']);
     expect(TOOLS.every((t: any) => t.type === 'function' && t.function.parameters)).toBe(true);
   });
@@ -25,7 +25,11 @@ describe('formatar (texto montado da trava)', () => {
   });
   it('situacao_mes, simular_compra (cabe e não cabe), trilha', () => {
     expect(formatar('situacao_mes', { mesLabel: 'out/26', dapraGastarHoje: 50, ritmoAtualDia: 80, diasRestantes: 10, fechaCom: -500, saiDoVermelho: null, link: '/' }, 'https://p'))
-      .toContain(`💸 Hoje dá pra gastar *${brl(50)}*`);
+      .toContain(`💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`);
+    // N11: no último dia também (era sempre 0 e sumia); sem a linha do ritmo
+    const ult = formatar('situacao_mes', { mesLabel: 'out/26', dapraGastarHoje: 70, ritmoAtualDia: 80, diasRestantes: 0, fechaCom: 100, saiDoVermelho: null, link: '/' }, 'https://p');
+    expect(ult).toContain(`💸 Hoje dá pra gastar *${brl(70)}* no débito e PIX`);
+    expect(ult).not.toContain('Ritmo');
     expect(formatar('simular_compra', { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: true, mesQueFura: null, aprofunda: 0, link: '/simulador' }, 'https://p'))
       .toContain('✅ Cabe');
     expect(formatar('simular_compra', { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: false, mesQueFura: 'jan/27', aprofunda: 900, link: '/simulador' }, 'https://p'))
@@ -37,7 +41,7 @@ describe('formatar (texto montado da trava)', () => {
     const exemplos: Record<string, any> = {
       maiores_gastos: { periodo: 'hoje', pessoa: 'casal', grupo: null, itens: [{ data: '11/10', valor: 10, descricao: 'X', pessoa: 'Ariane' }], link: '/buscar' },
       comparar: { a: 'out/26', b: 'set/26', pessoa: 'casal', totalA: 10, totalB: 20, diferenca: -10, pct: -50, grupos: [{ nome: 'Mercado', a: 10, b: 20, diferenca: -10 }], link: '/gastos' },
-      faturas: { itens: [{ banco: 'B', pessoa: 'Ariane', valor: 100, vencimento: '15/10', paga: false }], total: 100, link: '/faturas' },
+      faturas: { itens: [{ banco: 'B', pessoa: 'Ariane', total: 100, vencimento: '15/10', situacao: 'a_vencer', falta: 100 }], total: 100, link: '/faturas' },
       contas_do_mes: { mesLabel: 'out/26', pagas: [{ nome: 'Luz', valor: 100 }], falta: [{ nome: 'Água', valor: 80, vence: 20 }], aConfirmar: [], totalFalta: 80, link: '/contas' },
     };
     for (const [n, d] of Object.entries(exemplos)) {
@@ -56,17 +60,23 @@ describe('gráfico da ferramenta', () => {
   });
 });
 
-describe('faturas vencidas (E1)', () => {
-  it('em aberto soma só as que ainda vão vencer; as vencidas aparecem à parte como última fatura fechada', () => {
+describe('faturas (N4: a última fechada de cada cartão, com situação)', () => {
+  it('a pagar = o que falta das a vencer e em atraso; parcelada e paga aparecem com o rótulo', () => {
     const t = formatar('faturas', { itens: [
-      { banco: 'A', pessoa: 'Ariane', valor: 100, vencimento: '02/10', paga: false, vencida: true },
-      { banco: 'B', pessoa: 'Matheus', valor: 50, vencimento: '20/10', paga: false, vencida: false },
-      { banco: 'C', pessoa: 'Matheus', valor: 0, vencimento: '10/11', paga: true, vencida: false },
-    ], total: 50, link: '/faturas' }, 'https://p');
-    expect(t).toContain(`💳 Faturas a vencer: *${brl(50)}*`);
-    expect(t).toContain(`🔸 B (Matheus): ${brl(50)}, vence 20/10`);
-    expect(t).toContain(`🗓️ A (Ariane): ${brl(100)}, venceu 02/10 (última fechada; confira se foi paga)`);
-    expect(t).toContain('✅ C (Matheus): sem valor em aberto');
+      { banco: 'A', pessoa: 'Ariane', total: 480, vencimento: '02/10', situacao: 'parcelada', falta: 0 },
+      { banco: 'B', pessoa: 'Matheus', total: 800, vencimento: '20/10', situacao: 'a_vencer', falta: 500 },
+      { banco: 'C', pessoa: 'Matheus', total: 300, vencimento: '04/10', situacao: 'atrasada', falta: 200 },
+      { banco: 'D', pessoa: 'Ariane', total: 170, vencimento: '05/10', situacao: 'paga', falta: 0 },
+    ], total: 700, link: '/faturas' }, 'https://p');
+    expect(t).toContain(`💳 Faturas a pagar: *${brl(700)}*`);
+    expect(t).toContain(`🔸 B (Matheus): falta ${brl(500)} de ${brl(800)}, vence 20/10`);
+    expect(t).toContain(`🔴 C (Matheus): falta ${brl(200)} de ${brl(300)}, venceu 04/10 (em atraso)`);
+    expect(t).toContain(`🧩 A (Ariane): ${brl(480)} de 02/10, parcelada`);
+    expect(t).toContain(`✅ D (Ariane): ${brl(170)} de 05/10, paga`);
+  });
+  it('nada a pagar: frase própria', () => {
+    expect(formatar('faturas', { itens: [{ banco: 'D', pessoa: 'Ariane', total: 10, vencimento: '05/10', situacao: 'paga', falta: 0 }], total: 0, link: '/faturas' }, 'https://p'))
+      .toContain('💳 Nenhuma fatura a pagar agora');
   });
 });
 
@@ -109,5 +119,20 @@ describe('revisão E3: categorias do gasto em dinheiro', () => {
     const e: string[] = t.function.parameters.properties.categoria.enum;
     expect(e).toContain('Groceries');
     expect(e.some((c) => ['Credit card payment', 'Salary', 'Investments', 'Income'].includes(c))).toBe(false);
+  });
+});
+
+describe('investimentos (S6: substitui o Bot 04)', () => {
+  it('total, por tipo e maiores, com link', () => {
+    const t = formatar('investimentos', { total: 2216, porTipo: [{ tipo: 'Renda fixa', total: 1500 }, { tipo: 'Ações', total: 716 }],
+      maiores: [{ nome: 'CDB X', valor: 1000 }], link: '/investimentos' }, 'https://p');
+    expect(t).toContain(`💼 Investimentos: *${brl(2216)}*`);
+    expect(t).toContain(`• Renda fixa: ${brl(1500)}`);
+    expect(t).toContain(`🔝 CDB X: ${brl(1000)}`);
+    expect(t.endsWith('👉 https://p/investimentos')).toBe(true);
+  });
+  it('a ferramenta existe e chama a rota', () => {
+    expect(NOMES_FERRAMENTAS).toContain('investimentos');
+    expect(caminhoDa('investimentos', {}, 'Matheus')).toBe('/api/bot/investimentos');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { montarMes, padraoDe, type ContaFixa, type Marca, type Mov } from '../../src/lib/contas';
+import { destaqueDoTopo, montarMes, padraoDe, type ContaFixa, type Marca, type Mov } from '../../src/lib/contas';
 
 const conta = (p: Partial<ContaFixa> & { id: number; nome: string; padrao: string }): ContaFixa =>
   ({ responsavel: 'Ariane', valorPrevisto: 100, banco: null, tolerancia: null, somar: false, inicio: '2026-01', ate: null, valorDefinidoEm: null, parcelas: null, ordem: p.id, ...p });
@@ -207,5 +207,26 @@ describe('alterar valor previsto', () => {
     const c = [conta({ id: 1, nome: 'Aluguel', padrao: 'Fulano', valorPrevisto: 1500, valorDefinidoEm: '2026-10', tolerancia: 0.1 })];
     const r = montarMes('2026-10', c, [], [...pagos, mov('2026-10-02', 1071.5, 'PIX ENVIADO Fulano')]);
     expect(r.itens[0].status).toBe('falta');
+  });
+});
+
+// auditoria 13/10 (N6): no casal, "entrou − contas do caderno" dava uma "sobra" de milhares de reais num mês que fecha
+// no vermelho (o caderno é da Ariane: aluguel do Matheus, cartão e dia a dia ficam fora)
+describe('número do topo da tela de contas (N6)', () => {
+  it('casal: o mês fecha em (previsão), nunca a sobra do caderno', () => {
+    expect(destaqueDoTopo('casal', { entrou: 10000, total: 3000, sobra: 7000 }, -1000))
+      .toEqual({ label: 'O mês fecha em', valor: -1000, hint: 'pela previsão' });
+  });
+  it('casal num mês passado: o que de fato sobrou; mês futuro: sem número aqui', () => {
+    expect(destaqueDoTopo('casal', { entrou: 1, total: 1, sobra: 0 }, -90, 'passado')).toEqual({ label: 'O mês fechou com', valor: -90, hint: 'real: entrou − saiu' });
+    expect(destaqueDoTopo('casal', { entrou: 0, total: 1, sobra: 0 }, null, 'futuro').valor).toBeNull();
+  });
+  it('pessoa com contas no caderno: sobra do caderno, dizendo o que fica fora', () => {
+    expect(destaqueDoTopo('Ariane', { entrou: 4000, total: 3500, sobra: 500 }, -1000))
+      .toEqual({ label: 'Sobra do caderno', valor: 500, hint: 'entrou − contas do caderno (cartão e dia a dia fora)' });
+  });
+  it('sem salário ainda ou sem caderno: sem número', () => {
+    expect(destaqueDoTopo('Ariane', { entrou: 0, total: 100, sobra: -100 }, 0).valor).toBeNull();
+    expect(destaqueDoTopo('Matheus', { entrou: 7000, total: 0, sobra: 7000 }, 0)).toEqual({ label: 'Sobra do caderno', valor: null, hint: 'sem contas no caderno' });
   });
 });

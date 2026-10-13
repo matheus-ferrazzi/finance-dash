@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerPessoa, resolverPeriodo } from '../../src/lib/periodos';
+import { lerPessoa, periodoDaSemana, resolverPeriodo } from '../../src/lib/periodos';
 
 describe('resolverPeriodo (SP)', () => {
   it('hoje, esta semana (segunda até hoje), semana passada (seg a dom)', () => {
@@ -24,5 +24,14 @@ describe('resolverPeriodo (SP)', () => {
 describe('lerPessoa', () => {
   it('casal (padrão), Matheus, Ariane; resto null', () => {
     expect([lerPessoa(null), lerPessoa('casal'), lerPessoa('Matheus'), lerPessoa('Ariane'), lerPessoa('fulano')]).toEqual(['casal', 'casal', 'Matheus', 'Ariane', null]);
+  });
+});
+
+// auditoria 13/10 (N19): o link do semanal abria o mês inteiro e não a semana da mensagem
+describe('período de uma semana pela URL (N19)', () => {
+  it('p=sem-AAAA-MM-DD: 7 dias a partir do dia, com rótulo; formato inválido = null', () => {
+    expect(periodoDaSemana('sem-2026-10-05')).toEqual({ inicio: '2026-10-05', fimExcl: '2026-10-12', label: 'Semana de 05/10 a 11/10' });
+    expect(periodoDaSemana('sem-2026-13-05')).toBeNull();
+    expect(periodoDaSemana('7d')).toBeNull();
   });
 });

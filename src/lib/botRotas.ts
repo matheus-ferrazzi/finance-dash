@@ -1,6 +1,7 @@
 // E1: validação dos parâmetros das rotas /api/bot/* (erro em texto que o modelo entende e corrige).
 import { GRUPOS_VALIDOS } from './grupos';
 import { lerPessoa, resolverPeriodo } from './periodos';
+import { linkPara } from './links';
 import type { Resp } from './queries';
 
 type Campo = 'periodo' | 'periodo_b' | 'pessoa' | 'grupo';
@@ -45,4 +46,14 @@ export function lerParams(sp: URLSearchParams, hoje: string, campos: Campo[]): {
     }
   }
   return { ok: true, v };
+}
+
+/** N19: o link da resposta abre o mesmo recorte (semana inteira ou mês; pessoa e grupo juntos). */
+export function linkDoPeriodo(p: { inicio: string; fimExcl: string }, pessoa: Resp, grupo: string | null | undefined, mesAtual: string): string {
+  const resp = pessoa === 'casal' ? undefined : pessoa;
+  const g = grupo ?? undefined;
+  const n = dias({ ...p, label: '' });
+  if (n === 7) return linkPara('gastos', { resp, grupo: g, semana: p.inicio }, mesAtual);
+  if (p.inicio.endsWith('-01') && n >= 28 && n <= 31) return linkPara('gastos', { resp, grupo: g, mes: p.inicio.slice(0, 7) }, mesAtual);
+  return linkPara('gastos', { resp, grupo: g }, mesAtual);
 }

@@ -119,7 +119,8 @@ describe('destinos (D)', () => {
     const { reg } = registroFake(); const grupo = canalFake();
     const f = fontes({ semanal: async () => ({ semana: { inicio: '2026-10-05', fim: '2026-10-11' }, total: 0, mediaTotal: 0, grupos: [], trilha: { fase: 1, titulo: 'T', proximoPasso: 'P' } }) });
     await rodarNotificacao('semanal', { fontes: f, registro: reg, canais: { grupo: grupo.canal, matheus: null, telegram: null }, modo: 'real', painelUrl: 'https://painel.exemplo/' });
-    expect(grupo.enviados[0]).toContain('https://painel.exemplo/gastos');
+    // N19: o link do semanal abre a semana da mensagem
+    expect(grupo.enviados[0]).toContain('https://painel.exemplo/gastos?p=sem-2026-10-05');
     expect(grupo.enviados[0]).not.toContain('exemplo//');
   });
   it('bots do C2 seguem no Telegram mesmo com o grupo do WhatsApp configurado (até o desligamento)', async () => {

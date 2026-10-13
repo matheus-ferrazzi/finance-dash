@@ -67,6 +67,9 @@ export interface ProjecaoBase {
   creditoPorVencimento: Record<string, number>;
   /** 'AAAA-MM' do vencimento -> total real da fatura (histórico da Pluggy), só as que vencem até o mês de hoje */
   faturaReal: Record<string, number>;
+  /** cartão sem histórico de fatura (Bradesco, "GASTOS CARTAO" no débito): pagamento mensal repetido
+   *  nos 3 meses fechados (0 se variou) e o que já saiu neste mês */
+  cartaoSemFatura?: { mensal: number; pagoNoMes: number };
   compromissosManuais: CompromissoManual[];
   /** o cadastro como está (valor cheio), para a tela de cadastro; compromissosManuais já vem com a parte da pessoa */
   compromissosCadastrados: CompromissoManual[];
@@ -79,8 +82,12 @@ export interface ProjecaoBase {
     receitasAReceber: ReceitaPrevista[];
     variavelJaGasto: number;               // gasto livre no débito (fora casa e fora contas travadas)
     fixoJaGasto?: number;                  // contas travadas já pagas no débito neste mês
+    /** N12: por categoria travada, a média mensal (meses-base) e o que já saiu neste mês */
+    fixoPorCategoria?: Record<string, { media: number; pago: number; ativa?: boolean }>;
     agendadoRestante: number;              // débito já datado no resto do mês (fora casa)
     faturaJaPaga: number;                  // fatura de cartão já paga neste mês
+    /** fatura do mês que ainda sai, vista por cartão (vencida = 0); ausente = sem fatura no histórico */
+    faturaRestante?: number;
     casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
     /** visão individual: o mesmo, somando as duas pessoas (abate os compromissos do casal) */
     casaNoMesCasalPorCategoria?: Record<string, number>;
@@ -249,10 +256,31 @@ export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes, hoje: strin
     diaHoje,
     diasRestantes,
     sobraParaODiaADia,
-    ritmoSeguroDia: diasRestantes > 0 ? Math.max(0, sobraParaODiaADia / diasRestantes) : 0,
+    // N11: hoje também é dia de gastar — divide entre hoje e os que faltam (no último dia, tudo hoje)
+    ritmoSeguroDia: Math.max(0, sobraParaODiaADia / (diasRestantes + 1)),
     ritmoAtualDia: diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
     fechaCom: atual.saldoProjetado,
   };
+}
+
+/**
+ * N13 (auditoria 13/10): o cadastro manda na previsão (a média real da categoria sai). Se no mês saiu mais
+ * de 10% acima do que está cadastrado na categoria, o cadastro provavelmente ficou velho — avisar.
+ */
+export function avisosDeCadastro(
+  compromissos: readonly CompromissoManual[], realizadoPorCategoria: Record<string, number>, mes: string,
+): { categoria: string; nomes: string[]; cadastro: number; realizado: number }[] {
+  const porCat = new Map<string, { nomes: string[]; soma: number }>();
+  for (const c of compromissos.filter((x) => compromissoAtivoNoMes(x, mes))) {
+    const g = porCat.get(c.categoria) ?? { nomes: [], soma: 0 };
+    porCat.set(c.categoria, { nomes: [...g.nomes, c.nome], soma: g.soma + c.valor });
+  }
+  const out = [];
+  for (const [categoria, g] of Array.from(porCat)) {
+    const realizado = realizadoPorCategoria[categoria] ?? 0;
+    if (g.soma > 0 && realizado > g.soma * 1.1) out.push({ categoria, nomes: g.nomes, cadastro: Math.round(g.soma * 100) / 100, realizado });
+  }
+  return out;
 }
 
 export function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolean {
@@ -331,12 +359,21 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
     const despesaVariavel = diaHoje >= 7
       ? (pelaMedia + mc.variavelJaGasto * fr / Math.max(0.05, 1 - fr)) / 2
       : pelaMedia;
-    const fixoQueFalta = Math.max(0, (base.despesaFixaDebitoMedia ?? 0) - (mc.fixoJaGasto ?? 0));
+    // N12: por categoria quando há o detalhe — conta travada é uma cobrança por mês: a categoria que já
+    // saiu está paga (mesmo abaixo da média); a que não saiu espera a média dela, se ainda está ativa
+    // (apareceu no mês passado: empréstimo que acabou não volta). Sem detalhe: total − pago.
+    const fixoQueFalta = mc.fixoPorCategoria
+      ? Object.values(mc.fixoPorCategoria).reduce((s, c) => s + (c.pago > 0 || c.ativa === false ? 0 : c.media), 0)
+      : Math.max(0, (base.despesaFixaDebitoMedia ?? 0) - (mc.fixoJaGasto ?? 0));
     const despesaFixa = mc.agendadoRestante + fixoQueFalta;
     // o que ainda falta entrar de cada fonte recorrente (a 2ª parte do salário, etc) + o já agendado
     const receita = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0) + mc.receitaAgendada;
-    // fatura que vence neste mês (real, se já fechou) menos o que já foi pago
-    const fatura = Math.max(0, (base.faturaReal[anchor] ?? base.creditoPorVencimento[anchor] ?? 0) - mc.faturaJaPaga);
+    // fatura que vence neste mês: vista por cartão quando há fatura no histórico (vencida não sai de novo);
+    // senão, a real/estimada menos o que já foi pago. + o cartão sem histórico, se ainda não saiu.
+    const semFat = base.cartaoSemFatura ? Math.max(0, base.cartaoSemFatura.mensal - base.cartaoSemFatura.pagoNoMes) : 0;
+    const fatura = (mc.faturaRestante !== undefined
+      ? mc.faturaRestante
+      : Math.max(0, (base.faturaReal[anchor] ?? base.creditoPorVencimento[anchor] ?? 0) - mc.faturaJaPaga)) + semFat;
     const parcelas = Math.min(fatura, base.creditoPorVencimento[anchor] ?? 0);
 
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
@@ -364,7 +401,7 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
 
     const despesaVariavel = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
     const receita = receitaMensal;
-    const fatura = faturaFutura(base, mes, i === 1 ? (diasAnchor - diaHojeNum) / diasAnchor : 1);
+    const fatura = faturaFutura(base, mes, i === 1 ? (diasAnchor - diaHojeNum) / diasAnchor : 1) + (base.cartaoSemFatura?.mensal ?? 0);
     const parcelas = Math.min(fatura, base.creditoPorVencimento[mes] ?? 0);
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;

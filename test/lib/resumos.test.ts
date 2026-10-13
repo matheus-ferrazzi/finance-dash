@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { acumular, contasDoDia, gruposDaSemana, historicoDe, semanaAnterior } from '../../src/lib/resumos';
+import { acumular, contasDoDia, faturasDoDia, totaisLivres, gruposDaSemana, historicoDe, semanaAnterior } from '../../src/lib/resumos';
 
 // conta não paga não tem `dia` (é o dia do pagamento no banco): o vencimento vem de `vence`
 const item = (nome: string, vence: number | null, status: 'pago' | 'a_confirmar' | 'falta', previsto = 100) =>
@@ -62,5 +62,42 @@ describe('histórico do mensal', () => {
       { mes: '2026-09', previsto: c(1, 1, 0), real: c(500, 200, 300), saldoInicio: 0, saldoFim: 0 },
     ]);
     expect(r).toEqual([{ mes: '2026-08', mesLabel: 'ago/26', sobra: -300 }, { mes: '2026-09', mesLabel: 'set/26', sobra: 300 }]);
+  });
+});
+
+// auditoria 13/10 (N5): o lembrete de fatura vale para os cartões dos dois, não só os do caderno da Ariane
+describe('faturas do dia (N5)', () => {
+  const fat = (banco: string, responsavel: string, vencimento: string, situacao: string, falta: number) =>
+    ({ id: banco + responsavel, banco, responsavel, usado: 0, limite: 0, disponivel: 0, fechamento: null,
+       ultima: { total: falta, pago: 0, parcelado: 0, vencimento, situacao, falta } }) as any;
+  it('fatura fechada a vencer hoje ou amanhã, de qualquer um; paga/parcelada/outro dia não', () => {
+    expect(faturasDoDia([
+      fat('Nubank', 'Matheus', '2026-11-06', 'a_vencer', 2900), fat('Santander', 'Matheus', '2026-11-05', 'a_vencer', 140),
+      fat('Neon', 'Ariane', '2026-11-05', 'paga', 0), fat('Inter', 'Matheus', '2026-11-10', 'a_vencer', 50),
+    ], '2026-11-05', [])).toEqual([
+      { nome: 'Fatura Santander (Matheus)', valor: 140, quando: 'hoje' },
+      { nome: 'Fatura Nubank (Matheus)', valor: 2900, quando: 'amanhã' },
+    ]);
+  });
+  it('cartão que já está no caderno como conta não é lembrado duas vezes', () => {
+    const caderno = [item('Nubank', 2, 'falta'), item('Crédito Neon', 5, 'falta')].map((i: any) => ({ ...i, responsavel: 'Ariane' }));
+    expect(faturasDoDia([fat('Nubank', 'Ariane', '2026-11-02', 'a_vencer', 400), fat('Nubank', 'Matheus', '2026-11-02', 'a_vencer', 900)], '2026-11-02', caderno))
+      .toEqual([{ nome: 'Fatura Nubank (Matheus)', valor: 900, quando: 'hoje' }]);
+  });
+  it('acento não atrapalha o casamento com o caderno (Itaú × "cartao itau")', () => {
+    const caderno = [{ ...item('Cartão Itau', 2, 'falta'), responsavel: 'Matheus' }];
+    expect(faturasDoDia([fat('Itaú', 'Matheus', '2026-11-02', 'a_vencer', 10)], '2026-11-02', caderno)).toEqual([]);
+  });
+  it('virada de mês: amanhã é dia 1 do mês seguinte', () => {
+    expect(faturasDoDia([fat('Nubank', 'Matheus', '2026-12-01', 'a_vencer', 10)], '2026-11-30', [])).toEqual([{ nome: 'Fatura Nubank (Matheus)', valor: 10, quando: 'amanhã' }]);
+  });
+});
+
+// auditoria 13/10 (N7): o título do semanal somava aluguel e renegociação ("🔺 310% acima") e o corpo não
+describe('totais livres da semana (N7)', () => {
+  const g = (nome: string, total: number, travado: boolean) => ({ nome, emoji: '', total, travado, pctRenda: 0 }) as any;
+  it('total e média (÷4) só dos grupos livres, como a lista de grupos', () => {
+    expect(totaisLivres([g('Mercado', 300, false), g('Moradia', 1300, true)], [g('Mercado', 1200, false), g('Moradia', 0, true)]))
+      .toEqual({ total: 300, mediaTotal: 300 });
   });
 });

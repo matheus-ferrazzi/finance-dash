@@ -56,7 +56,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
       {trilhaDados && <FaixaTrilha trilha={avaliarTrilha(trilhaDados)} />}
       <LinhaDoMes serie={serie} faixa={calib && ritmo ? faixaMesCorrente(serie.fechamento, ritmo.diasRestantes, diasNoMes(mes), calib) : null} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
       <div className="grid grid-cols-2 gap-3">
-        <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre' }, atual)}
+        <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre', forma: 'debito' }, atual)}
           valor={ritmo ? `${brl(ritmo.ritmoSeguroDia)}/dia` : '—'}
           detalhe={ritmo ? <>gastando <span className="money">{brl(ritmo.ritmoAtualDia)}</span>/dia</> : 'mês fechado'}
           tom={ritmo ? (ritmo.ritmoAtualDia > ritmo.ritmoSeguroDia ? 'atencao' : 'bom') : 'neutro'} />
@@ -84,8 +84,8 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
           )}
         </BlocoHome>
         <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao?.banco }, atual)}
-          valor={cartao ? brl(cartao.totalAberto) : '—'}
-          detalhe={cartao ? `${cartao.banco} ${cartao.usoPct}% do limite` : 'sem cartão'}
+          valor={cartao ? brl(cartao.aPagar) : '—'}
+          detalhe={cartao ? `a pagar · ${cartao.banco} ${cartao.usoPct}% do limite` : 'sem cartão'}
           tom={cartao && cartao.usoPct >= 80 ? 'ruim' : 'neutro'} />
       </div>
     </div>

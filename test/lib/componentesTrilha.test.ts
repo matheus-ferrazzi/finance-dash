@@ -41,7 +41,7 @@ describe('cartão de fase', () => {
   it('dívidas: cada dívida com parcela, quantas faltam e até quando; sem fim conhecido; atraso com o mês', () => {
     const h = renderToStaticMarkup(createElement(CartaoFase, {
       ...vazio, fase: trilha.fases[0], trilha,
-      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }, { chave: 'empréstimo|B2', nome: 'empréstimo', banco: 'B2', valorParcela: 5, restantes: null, fim: null }],
+      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', plano: 3, valorParcela: 10, restantes: 3, fim: '2027-03' }, { chave: 'empréstimo|B2', nome: 'empréstimo', banco: 'B2', plano: null, valorParcela: 5, restantes: null, fim: null }],
       atrasos: [{ mes: '2026-09', motivo: 'juros' }],
     }));
     expect(h).toContain('faltam 3');
@@ -58,7 +58,7 @@ describe('cartão de fase', () => {
 describe('ajustes da trilha nos cartões (F4b)', () => {
   it('dívidas com "não é dívida"; reserva e patrimônio com "ajustar meta" e o valor em uso', () => {
     const h1 = renderToStaticMarkup(createElement(CartaoFase, { ...vazio, fase: trilha.fases[0], trilha,
-      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
+      dividas: [{ chave: 'renegociação|B1', nome: 'renegociação', banco: 'B1', plano: null, valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
     expect(h1).toContain('não é dívida');
     const h3 = renderToStaticMarkup(createElement(CartaoFase, { ...vazio, metasPadrao: { meses: false, patrimonio: true }, fase: trilha.fases[2], trilha }));
     expect(h3).toContain('ajustar meta');

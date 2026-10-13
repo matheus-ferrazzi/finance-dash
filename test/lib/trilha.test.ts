@@ -22,6 +22,9 @@ describe('o que é dívida', () => {
     expect(ehAtraso('ENC ATRASO PARC FATURA', 'Automotive')).toBe(true);
     expect(ehAtraso('juros', 'Interests charged')).toBe(true);
     expect(ehAtraso('TARIFA PACOTE', 'Bank fees')).toBe(false);
+    // Onda 2: IOF do rotativo é encargo de atraso
+    expect(ehAtraso('IOF ADIC ROTATIVO/ATRASO', 'Tax on financial operations')).toBe(true);
+    expect(ehAtraso('JUROS ROTATIVO', null)).toBe(true);
   });
 });
 
@@ -35,8 +38,21 @@ describe('dívidas ativas', () => {
       l('LOJA X 3/10', '2026-12-01', 40),
     ], '2026-10-15');
     expect(r).toEqual([
-      { chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2026-12' },
-      { chave: 'prest de emprest financiamento parc|B2', nome: 'prest de emprest financiamento parc', banco: 'B2', valorParcela: 50, restantes: null, fim: null },
+      { chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', plano: null, valorParcela: 100, restantes: 2, fim: '2026-12' },
+      { chave: 'prest de emprest financiamento parc|B2', nome: 'prest de emprest financiamento parc', banco: 'B2', plano: null, valorParcela: 50, restantes: null, fim: null },
+    ]);
+  });
+  // auditoria 13/10 (N9): dois planos com a mesma descrição no mesmo banco (um de 3 e outro de 8 parcelas) viravam um só
+  // (só a última parcela e "faltam 7"), escondendo os meses em que os dois se somam
+  it('planos diferentes da mesma dívida (parcela_total) ficam separados; a chave da marcação é a mesma', () => {
+    const p = (data: string, valor: number, parcelaTotal: number) => ({ ...l('Renegociação de pendências', data, valor, 'Crédito', 'Nubank', 'Loans and financing'), parcelaTotal });
+    const r = agruparDividas([
+      p('2026-11-07', 800.5, 3), p('2026-12-06', 800.5, 3),
+      p('2026-11-07', 350.5, 8), p('2026-12-06', 350.5, 8), p('2027-01-10', 350.5, 8), p('2027-02-08', 350.5, 8), p('2027-03-06', 350.5, 8),
+    ], '2026-10-13');
+    expect(r.map((d) => [d.chave, d.plano, d.valorParcela, d.restantes, d.fim])).toEqual([
+      ['renegociação de pendências|Nubank', 3, 800.5, 2, '2026-12'],
+      ['renegociação de pendências|Nubank', 8, 350.5, 5, '2027-03'],
     ]);
   });
   it('sem lançamento de dívida: lista vazia', () => {
@@ -66,14 +82,14 @@ const dados = (p: Partial<DadosTrilha> = {}): DadosTrilha => ({
 
 describe('avaliar a trilha', () => {
   it('com dívida: fase 1 atual, quando = última parcela, próximo passo cita o mês', () => {
-    const t = avaliarTrilha(dados({ dividas: [{ chave: 'reneg|B', nome: 'reneg', banco: 'B', valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
+    const t = avaliarTrilha(dados({ dividas: [{ chave: 'reneg|B', nome: 'reneg', banco: 'B', plano: null, valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases[0]).toMatchObject({ status: 'atual', quando: 'mar/27' });
     expect(t.fases[0].proximoPasso).toContain('mar/27');
     expect(t.fases[1].status).toBe('cumprida'); // sobra já cumprida aparece como cumprida mesmo depois da atual
   });
   it('dívida sem fim conhecido e atraso: quando sem data; atraso conta até 2 meses depois', () => {
-    expect(avaliarTrilha(dados({ dividas: [{ chave: 'emp|B', nome: 'emp', banco: 'B', valorParcela: 10, restantes: null, fim: null }] })).fases[0].quando).toBe('sem data de fim conhecida');
+    expect(avaliarTrilha(dados({ dividas: [{ chave: 'emp|B', nome: 'emp', banco: 'B', plano: null, valorParcela: 10, restantes: null, fim: null }] })).fases[0].quando).toBe('sem data de fim conhecida');
     const t = avaliarTrilha(dados({ atrasos: [{ mes: '2026-09', motivo: 'juros' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases[0].quando).toBe('nov/26');
@@ -101,6 +117,14 @@ describe('avaliar a trilha', () => {
     const resgate = avaliarTrilha(dados({ aplicacaoMensal: [{ mes: '2026-09', valor: -50 }] }));
     expect(resgate.fases[2].quando).toBe('sem previsão');
   });
+  // N18 (auditoria 13/10): o card dizia "Quando: ago/28" (ritmo de hoje) e "completa em out/27" (aplicando X/mês)
+  // sem dizer que eram bases diferentes
+  it('N18: quando o ritmo de hoje e o "aplicando X/mês" dão datas diferentes, o passo diz as duas bases', () => {
+    const t = avaliarTrilha(dados({ aplicacaoMensal: [{ mes: '2026-09', valor: 40 }] })); // 1200 / 40 = 30 meses
+    expect(t.fases[2].quando).toBe('abr/29');
+    expect(t.fases[2].proximoPasso).toContain('No ritmo de hoje, abr/29.');
+    expect(t.fases[2].proximoPasso).toContain('completa a reserva em out/27');
+  });
   it('reserva completa: fase 4 é a atual; % da renda aplicada; receita zero não quebra', () => {
     const t = avaliarTrilha(dados({ aplicado: 5000 }));
     expect(t.atual).toBe(4);
@@ -111,7 +135,7 @@ describe('avaliar a trilha', () => {
     expect(semRenda.fases[3].proximoPasso).not.toContain('NaN');
   });
   it('fase cumprida que volta a falhar reabre (dívida nova com sobra e reserva em dia)', () => {
-    const t = avaliarTrilha(dados({ aplicado: 5000, dividas: [{ chave: 'nova|B', nome: 'nova', banco: 'B', valorParcela: 1, restantes: 1, fim: '2026-11' }] }));
+    const t = avaliarTrilha(dados({ aplicado: 5000, dividas: [{ chave: 'nova|B', nome: 'nova', banco: 'B', plano: null, valorParcela: 1, restantes: 1, fim: '2026-11' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases.map((f) => f.status)).toEqual(['atual', 'cumprida', 'cumprida', 'depois']);
   });

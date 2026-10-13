@@ -11,6 +11,8 @@ const clean = (s: unknown) => String(s ?? '').replace(/[*_`\[\]]/g, '');
 // ---------- Bot 12 — Ritmo do dia (lê /api/previsao do painel) ----------
 export interface PrevisaoApi {
   mesLabel: string; fechaCom: number; diasRestantes: number; ritmoSeguroDia: number; ritmoAtualDia: number;
+  /** o que sobra para o dia a dia no resto do mês (base do "no ritmo atual") */
+  sobraParaODiaADia?: number;
   receitasAReceber: { valor: number }[];
 }
 export function montarRitmo(p: PrevisaoApi): string | null {
@@ -27,7 +29,10 @@ export function montarRitmo(p: PrevisaoApi): string | null {
     `Da pra gastar *${brl(seguro)}* hoje.`,
     `Voce vem gastando ${brl(atual)}/dia` + (acima ? ` — *${pct}% acima*.` : ` — dentro do que cabe.`),
     ``,
-    `Nesse ritmo ${p.mesLabel} fecha em *${brl(p.fechaCom)}*.`,
+    // N8 (auditoria 13/10): o fecha-com é pela média; no ritmo atual o mês fecharia em outro valor
+    `Pela media dos ultimos meses, ${p.mesLabel} fecha em *${brl(p.fechaCom)}*.`,
+    ...(acima && typeof p.sobraParaODiaADia === 'number'
+      ? [`No ritmo atual, fecharia perto de *${brl(p.sobraParaODiaADia - atual * p.diasRestantes)}*.`] : []),
     `Faltam ${p.diasRestantes} dias` + (entra > 0 ? ` e ainda entram ${brl(entra)}.` : `.`),
   ];
   return linhas.join('\n');

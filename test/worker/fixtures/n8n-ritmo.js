@@ -1,4 +1,6 @@
 // jsCode do nó "Monta Mensagem" do n8n (exportado em 11/10/2026), para o teste de equivalência do C2.
+// 13/10/2026 (auditoria N8): "Nesse ritmo fecha em" → "Pela media … fecha em" + "No ritmo atual, fecharia
+// perto de"; o mesmo código foi aplicado no nó do Bot 12 (mexer-n8n).
 const p = $json;
 const brl = v => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -20,7 +22,9 @@ const linhas = [
   `Da pra gastar *${brl(seguro)}* hoje.`,
   `Voce vem gastando ${brl(atual)}/dia` + (acima ? ` — *${pct}% acima*.` : ` — dentro do que cabe.`),
   ``,
-  `Nesse ritmo ${p.mesLabel} fecha em *${brl(p.fechaCom)}*.`,
+  `Pela media dos ultimos meses, ${p.mesLabel} fecha em *${brl(p.fechaCom)}*.`,
+  ...(acima && typeof p.sobraParaODiaADia === 'number'
+    ? [`No ritmo atual, fecharia perto de *${brl(p.sobraParaODiaADia - atual * p.diasRestantes)}*.`] : []),
   `Faltam ${p.diasRestantes} dias` + (entra > 0 ? ` e ainda entram ${brl(entra)}.` : `.`),
 ];
 return [{ json: { text: linhas.join('\n') } }];

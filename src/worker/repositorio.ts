@@ -23,6 +23,8 @@ export interface Repo {
   registrarExecucao(e: Execucao): Promise<void>;
   /** regras de categoria criadas pelo painel (F4): aplicadas antes de gravar */
   regrasPainel(): Promise<RegraPainel[]>;
+  /** N2: entrada "receita" que é a outra ponta de uma transferência interna do casal → transferência. Devolve quantas. */
+  parearTransferencias(desde: string): Promise<number>;
 }
 
 const COLUNAS_LINHA = `id_transacao text, data_lancamento date, valor numeric, tipo_movimento text, classe text,
@@ -70,9 +72,12 @@ export class PgRepo implements Repo {
 
   async lancamentosDaConta(c: Conta, desde: string): Promise<Map<string, LinhaBanco>> {
     // linha antiga (antes do C1) não tem account_id: banco + responsavel + forma identificam a conta
+    // classe pareada (N2) volta "crua" ('receita', como a Pluggy manda): a comparação da sombra é contra o
+    // que montarLinha produz, e o par não é diferença da ingestão
     const r = await this.pool.query<LinhaBanco>(
       `SELECT id_transacao, to_char(data_lancamento, 'YYYY-MM-DD') AS data_lancamento, valor::float8 AS valor,
-              tipo_movimento, classe, descricao, categoria, forma_pagamento, banco, responsavel, status_pluggy
+              tipo_movimento, CASE WHEN par_transferencia IS NOT NULL THEN 'receita' ELSE classe END AS classe,
+              descricao, categoria, forma_pagamento, banco, responsavel, status_pluggy
          FROM financas_lancamentos
         WHERE data_lancamento >= $1::date
           AND (account_id = $2 OR (account_id IS NULL AND banco = $3 AND responsavel = $4 AND forma_pagamento = $5))`,
@@ -97,7 +102,12 @@ export class PgRepo implements Repo {
     try {
       await cli.query('BEGIN');
       if (linhas.length) {
-        const atualiza = NOMES_LINHA.filter((n) => n !== 'id_transacao').map((n) => `${n} = EXCLUDED.${n}`).join(', ');
+        // N2: linha pareada como transferência interna continua transferência quando a Pluggy reenvia "receita"
+        const atualiza = NOMES_LINHA.filter((n) => n !== 'id_transacao')
+          .map((n) => (n === 'classe'
+            ? `classe = CASE WHEN financas_lancamentos.par_transferencia IS NOT NULL AND EXCLUDED.classe = 'receita' THEN financas_lancamentos.classe ELSE EXCLUDED.classe END`
+            : `${n} = EXCLUDED.${n}`))
+          .join(', ');
         await cli.query(
           `INSERT INTO financas_lancamentos (${NOMES_LINHA.join(', ')}, visto_pluggy_em)
            SELECT ${NOMES_LINHA.map((n) => `r.${n}`).join(', ')}, now()
@@ -193,6 +203,32 @@ export class PgRepo implements Repo {
   }
 
   /** Mesma semântica do sync_pluggy.sh: log só quando o lastUpdatedAt muda. */
+  async parearTransferencias(desde: string): Promise<number> {
+    // candidatos: entrada "receita" no débito × saída interna de OUTRA conta do casal, mesmo valor, ±1 dia.
+    // 1:1 — cada entrada fica com a saída mais próxima, e cada saída com a entrada mais próxima; só o par
+    // que é o primeiro dos dois lados é gravado (empate de valor no mesmo dia não casa duas vezes).
+    const r = await this.pool.query(
+      `WITH c AS (
+         SELECT e.id_transacao AS eid, s.id_transacao AS sid, abs(e.data_lancamento - s.data_lancamento) AS d
+           FROM financas_lancamentos e
+           JOIN financas_lancamentos s
+             ON s.classe = 'transferencia_interna' AND s.tipo_movimento = 'Saída' AND s.forma_pagamento = 'Débito'
+            AND abs(s.valor - e.valor) < 0.005 AND abs(e.data_lancamento - s.data_lancamento) <= 1
+            AND COALESCE(s.account_id, s.banco || '/' || s.responsavel) <> COALESCE(e.account_id, e.banco || '/' || e.responsavel)
+            AND NOT EXISTS (SELECT 1 FROM financas_lancamentos u WHERE u.par_transferencia = s.id_transacao)
+          WHERE e.classe = 'receita' AND e.tipo_movimento = 'Entrada' AND e.forma_pagamento = 'Débito'
+            AND e.par_transferencia IS NULL AND e.data_lancamento >= $1::date
+       ), r AS (
+         SELECT eid, sid, row_number() OVER (PARTITION BY eid ORDER BY d, sid) AS re,
+                row_number() OVER (PARTITION BY sid ORDER BY d, eid) AS rs FROM c
+       )
+       UPDATE financas_lancamentos l SET classe = 'transferencia_interna', par_transferencia = r.sid
+         FROM r WHERE r.re = 1 AND r.rs = 1 AND l.id_transacao = r.eid`,
+      [desde],
+    );
+    return r.rowCount ?? 0;
+  }
+
   async registrarSync(banco: string, responsavel: string, lastSync: string) {
     await this.pool.query(
       `INSERT INTO financas_sync_log (banco, responsavel, last_sync)

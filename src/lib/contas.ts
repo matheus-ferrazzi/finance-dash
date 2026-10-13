@@ -147,3 +147,21 @@ export function padraoDe(descricao: string): string {
   return descricao.replace(/[\d/]+/g, ' ').trim().split(/\s+/)
     .map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
 }
+
+/**
+ * Número do topo da tela de contas (N6, auditoria 13/10). O caderno é da Ariane: "entrou − contas" só faz
+ * sentido na visão de quem tem o caderno. No casal, o que responde "vai sobrar?" é a previsão.
+ */
+export function destaqueDoTopo(
+  resp: 'casal' | 'Matheus' | 'Ariane', r: { entrou: number; total: number; sobra: number }, fechaCom: number | null,
+  quando: 'atual' | 'passado' | 'futuro' = 'atual',
+): { label: string; valor: number | null; hint: string } {
+  if (resp === 'casal') {
+    if (quando === 'passado') return { label: 'O mês fechou com', valor: fechaCom, hint: 'real: entrou − saiu' };
+    if (quando === 'futuro') return { label: 'O mês fecha em', valor: null, hint: 'veja a previsão' };
+    return { label: 'O mês fecha em', valor: fechaCom, hint: 'pela previsão' };
+  }
+  if (r.total <= 0) return { label: 'Sobra do caderno', valor: null, hint: 'sem contas no caderno' };
+  if (r.entrou <= 0) return { label: 'Sobra do caderno', valor: null, hint: 'quando o salário cair' };
+  return { label: 'Sobra do caderno', valor: r.sobra, hint: 'entrou − contas do caderno (cartão e dia a dia fora)' };
+}

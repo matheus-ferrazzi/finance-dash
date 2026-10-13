@@ -9,7 +9,7 @@ export const AGENDA: readonly [string, NomeTarefa][] = [
   ['25 16,22 * * *', 'investimentos'],
   ['35 16,22 * * *', 'saldos'],
   ['9 14-22 * * *', 'itens'],
-  ['0 13 * * *', 'atualizar-itens'],
+  ['0 7,13 * * *', 'atualizar-itens'],
 ];
 
 /** Notificações (C2), no horário (SP) dos bots do n8n que substituem. */

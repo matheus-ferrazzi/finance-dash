@@ -4,21 +4,32 @@ import { useState } from 'react';
 import { ChevronDown, Info, CalendarClock } from 'lucide-react';
 import { brl, dataBR, diasAte, traduzCategoria } from '@/lib/format';
 import { respBadge, Progress, catIcon } from './ui';
+import { ROTULO_SITUACAO, type UltimaFatura } from '@/lib/faturas';
+
+// data de hoje em São Paulo (o card é client component: não pode importar queries/db)
+const hojeISO = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
 export interface FaturaItem {
   id: string; data: string; valor: number; descricao: string; categoria: string;
 }
 export interface FaturaView {
-  id: string; banco: string; responsavel: string; valor: number;
-  limite: number; disponivel: number; vencimento: string | null; fechamento: string | null;
+  id: string; banco: string; responsavel: string;
+  /** a última fatura fechada (histórico), com situação — N4 */
+  ultima: UltimaFatura | null;
+  limite: number; disponivel: number; fechamento: string | null;
   cicloLabel: string; soma: number; items: FaturaItem[];
   proxSoma: number; proxLabel: string;
 }
 
+const TOM_SITUACAO: Record<UltimaFatura['situacao'], string> = {
+  paga: 'text-up', a_vencer: 'text-warn', parcelada: 'text-muted', atrasada: 'text-down',
+};
+
 export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; abertoInicial?: boolean }) {
   const [open, setOpen] = useState(abertoInicial);
   const usado = f.limite > 0 ? f.limite - f.disponivel : 0;
-  const d = diasAte(f.vencimento);
+  const u = f.ultima;
+  const d = u ? diasAte(u.vencimento) : null;
 
   return (
     <div className="card">
@@ -27,12 +38,15 @@ export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; aberto
           <span className="font-medium">{f.banco}</span>{respBadge(f.responsavel)}
         </div>
         <span className="text-xs text-muted">
-          {f.vencimento ? `vence ${dataBR(f.vencimento)}` : 'sem venc.'}{d != null && d >= 0 ? ` · ${d}d` : ''}
+          {u ? `${u.vencimento >= hojeISO() ? 'vence' : 'venceu'} ${dataBR(u.vencimento)}` : 'sem fatura fechada'}{d != null && d >= 0 ? ` · ${d}d` : ''}
         </span>
       </div>
 
-      <div className="mt-3 text-2xl font-semibold tnum money">{brl(f.valor)}</div>
-      <div className="text-xs text-muted">fatura atual</div>
+      <div className="mt-3 text-2xl font-semibold tnum money">{u ? brl(u.total) : '—'}</div>
+      <div className="text-xs text-muted">
+        última fatura{u && <> · <span className={TOM_SITUACAO[u.situacao]}>{ROTULO_SITUACAO[u.situacao]}</span></>}
+        {u && u.falta > 0 && <> · falta <span className="tnum">{brl(u.falta)}</span></>}
+      </div>
 
       {f.proxSoma > 0 && (
         <div className="mt-3 flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">

@@ -19,6 +19,7 @@ export const TOOLS = [
   fn('contas_do_mes', 'Contas fixas do mês: pagas, em falta (com vencimento) e a confirmar.'),
   fn('trilha', 'Fase atual da trilha (dívidas → sobrar → reserva → patrimônio), próximo passo e reserva.'),
   fn('simular_compra', 'Se uma compra cabe na previsão: valor total e número de parcelas.', { valor_total: { type: 'number' }, parcelas: { type: 'integer', minimum: 1, maximum: 48 } }, ['valor_total']),
+  fn('investimentos', 'Carteira de investimentos do casal: total, por tipo e os maiores ativos.'),
   fn('buscar_lancamentos', 'Acha até 5 gastos para corrigir (por texto, como o nome de quem recebeu, e/ou valor). Devolve refs L1..L5.',
     { texto: { type: 'string' }, valor: { type: 'number' }, periodo: PERIODO, pessoa: PESSOA }),
   fn('propor_categoria', `Propõe mudar a categoria de um gasto achado por buscar_lancamentos (NÃO grava: o casal confirma). Categorias: ${CATEGORIAS_PAINEL.map((c) => `${c} = ${traduzCategoria(c)}`).join('; ')}.`,
@@ -37,7 +38,7 @@ export const NOMES_FERRAMENTAS = TOOLS.map((t) => t.function.name);
 
 const ROTA: Record<string, string> = {
   situacao_mes: 'situacao', gasto_periodo: 'gasto', maiores_gastos: 'maiores', comparar: 'comparar',
-  faturas: 'faturas', contas_do_mes: 'contas', trilha: 'trilha', simular_compra: 'simular',
+  faturas: 'faturas', contas_do_mes: 'contas', trilha: 'trilha', simular_compra: 'simular', investimentos: 'investimentos',
 };
 
 export function caminhoDa(nome: string, args: Record<string, unknown>, quem: string): string | null {
@@ -64,10 +65,8 @@ export function formatar(nome: string, d: any, painel: string): string {
   const l: string[] = [];
   switch (nome) {
     case 'situacao_mes':
-      if (d.diasRestantes > 0) {
-        l.push(`💸 Hoje dá pra gastar *${brl(d.dapraGastarHoje)}*`);
-        l.push(`${d.ritmoAtualDia > d.dapraGastarHoje ? '🔥' : '🐢'} Ritmo: ${brl(d.ritmoAtualDia)} por dia`);
-      }
+      l.push(`💸 Hoje dá pra gastar *${brl(d.dapraGastarHoje)}* no débito e PIX`);
+      if (d.diasRestantes > 0) l.push(`${d.ritmoAtualDia > d.dapraGastarHoje ? '🔥' : '🐢'} Ritmo: ${brl(d.ritmoAtualDia)} por dia`);
       l.push(`${d.fechaCom < 0 ? '📉' : '📈'} ${d.mesLabel} fecha em *${brl(d.fechaCom)}*`);
       if (d.fechaCom < 0) l.push(d.saiDoVermelho ? `🗓️ Sai do vermelho em ${d.saiDoVermelho}` : '🗓️ Não sai do vermelho nos próximos 24 meses');
       break;
@@ -87,13 +86,16 @@ export function formatar(nome: string, d: any, painel: string): string {
       if (d.totalDinheiroA > 0 || d.totalDinheiroB > 0) l.push(`💵 em dinheiro: ${brl(d.totalDinheiroA ?? 0)} × ${brl(d.totalDinheiroB ?? 0)}`);
       for (const g of d.grupos.slice(0, 5)) l.push(`${g.diferenca > 0 ? '⬆️' : g.diferenca < 0 ? '⬇️' : '➖'} ${g.nome}: ${brl(g.a)} × ${brl(g.b)}`);
       break;
-    case 'faturas':
-      // fatura com vencimento passado é a última fechada (a Pluggy segue mostrando): não entra no "a vencer"
-      l.push(`💳 Faturas a vencer: *${brl(d.total)}*`);
-      for (const f of d.itens.filter((x: any) => !x.vencida && !x.paga)) l.push(`🔸 ${f.banco} (${f.pessoa}): ${brl(f.valor)}${f.vencimento ? `, vence ${f.vencimento}` : ''}`);
-      for (const f of d.itens.filter((x: any) => x.vencida && !x.paga)) l.push(`🗓️ ${f.banco} (${f.pessoa}): ${brl(f.valor)}, venceu ${f.vencimento} (última fechada; confira se foi paga)`);
-      for (const f of d.itens.filter((x: any) => x.paga)) l.push(`✅ ${f.banco} (${f.pessoa}): sem valor em aberto`);
+    case 'faturas': {
+      // N4: a última fatura FECHADA de cada cartão (histórico), com situação — não o limite usado
+      const de = (s: string) => d.itens.filter((x: any) => x.situacao === s);
+      l.push(d.total > 0 ? `💳 Faturas a pagar: *${brl(d.total)}*` : '💳 Nenhuma fatura a pagar agora');
+      for (const f of de('a_vencer')) l.push(`🔸 ${f.banco} (${f.pessoa}): falta ${brl(f.falta)} de ${brl(f.total)}, vence ${f.vencimento}`);
+      for (const f of de('atrasada')) l.push(`🔴 ${f.banco} (${f.pessoa}): falta ${brl(f.falta)} de ${brl(f.total)}, venceu ${f.vencimento} (em atraso)`);
+      for (const f of de('parcelada')) l.push(`🧩 ${f.banco} (${f.pessoa}): ${brl(f.total)} de ${f.vencimento}, parcelada`);
+      for (const f of de('paga')) l.push(`✅ ${f.banco} (${f.pessoa}): ${brl(f.total)} de ${f.vencimento}, paga`);
       break;
+    }
     case 'contas_do_mes':
       l.push(`🧾 Contas de ${d.mesLabel}: falta *${brl(d.totalFalta)}*`);
       for (const c of d.falta) l.push(`🔸 ${c.nome}: ${brl(c.valor)}${c.vence ? `, vence dia ${c.vence}` : ''}`);
@@ -109,6 +111,11 @@ export function formatar(nome: string, d: any, painel: string): string {
       l.push(`🛒 Compra de ${brl(d.valorTotal)} em ${d.parcelas}x de ${brl(d.parcela)}`);
       l.push(d.cabe ? '✅ Cabe: nenhum mês vai para o vermelho por causa dela' : `❌ Não cabe: ${d.mesQueFura} vai para o vermelho`);
       if (d.aprofunda > 0) l.push(`📉 Aprofunda o pior mês em ${brl(d.aprofunda)}`);
+      break;
+    case 'investimentos':
+      l.push(`💼 Investimentos: *${brl(d.total)}*`);
+      for (const t of d.porTipo ?? []) l.push(`• ${t.tipo}: ${brl(t.total)}`);
+      for (const m of (d.maiores ?? []).slice(0, 5)) l.push(`🔝 ${m.nome}: ${brl(m.valor)}`);
       break;
     default:
       return 'Não sei responder isso.';

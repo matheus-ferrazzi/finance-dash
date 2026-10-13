@@ -7,7 +7,8 @@ const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 const CATS_DIVIDA = ['Loans and financing', 'Loans'];
 const PALAVRAS_DIVIDA = ['RENEGOCIA', 'PARCELAMENTO DE FATURA', 'PARC.FATURA', 'EMPREST', 'FINANCIAMENTO'];
 const CATS_ATRASO = ['Interests charged', 'Late payment and overdraft costs'];
-const PALAVRAS_ATRASO = ['JUROS DE MORA', 'ENCARGOS DE ATRASO', 'ENC ATRASO'];
+// ROTATIV (Onda 2): IOF e juros do rotativo do cartão também são sinal de fatura não paga inteira
+const PALAVRAS_ATRASO = ['JUROS DE MORA', 'ENCARGOS DE ATRASO', 'ENC ATRASO', 'ROTATIV'];
 
 /** Dívida de verdade (renegociação, parcelamento de fatura, empréstimo); compra parcelada comum não é. */
 export function ehDivida(descricao: string, categoria: string | null): boolean {
@@ -23,8 +24,9 @@ export function ehAtraso(descricao: string, categoria: string | null): boolean {
   return PALAVRAS_ATRASO.some((p) => d.includes(p));
 }
 
-export interface LancDivida { descricao: string; categoria: string | null; banco: string; forma: string; data: string; valor: number }
-export interface DividaAtiva { chave: string; nome: string; banco: string; valorParcela: number; restantes: number | null; fim: string | null }
+export interface LancDivida { descricao: string; categoria: string | null; banco: string; forma: string; data: string; valor: number; parcelaTotal?: number | null }
+/** `plano` = nº de parcelas do plano (N9): a mesma dívida pode ter dois planos com a mesma descrição */
+export interface DividaAtiva { chave: string; nome: string; banco: string; plano: number | null; valorParcela: number; restantes: number | null; fim: string | null }
 /** Correções do casal (F4b): grupos marcados "não é dívida" saem; "é dívida" entram mesmo sem a regra pegar. */
 export interface MarcasDivida { nao: ReadonlySet<string>; sim: ReadonlySet<string> }
 const SEM_MARCAS: MarcasDivida = { nao: new Set(), sim: new Set() };
@@ -38,22 +40,26 @@ export function chaveDivida(descricao: string, banco: string): string {
 
 /** Dívidas ainda em aberto: parcelas depois de hoje; prestação no débito (sem data futura) fica sem fim. */
 export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: MarcasDivida = SEM_MARCAS): DividaAtiva[] {
+  // agrupa por dívida (chave da marcação) E por plano (parcela_total): dois planos não se fundem
   const grupos = new Map<string, LancDivida[]>();
   for (const l of lancs) {
     const k = chaveDivida(l.descricao, l.banco);
     if (marcas.nao.has(k) || !(ehDivida(l.descricao, l.categoria) || marcas.sim.has(k))) continue;
-    grupos.set(k, [...(grupos.get(k) ?? []), l]);
+    const g = `${k}#${l.parcelaTotal ?? ''}`;
+    grupos.set(g, [...(grupos.get(g) ?? []), l]);
   }
   const out: DividaAtiva[] = [];
-  for (const [k, ls] of Array.from(grupos)) {
+  for (const [g, ls] of Array.from(grupos)) {
+    const [k, p] = g.split('#');
     const [nome, banco] = k.split('|');
+    const plano = p ? Number(p) : null;
     const futuras = ls.filter((l) => l.data > hoje).sort((a, b) => a.data.localeCompare(b.data));
     if (futuras.length > 0) {
       const ult = futuras[futuras.length - 1];
-      out.push({ chave: k, nome, banco, valorParcela: ult.valor, restantes: futuras.length, fim: ult.data.slice(0, 7) });
+      out.push({ chave: k, nome, banco, plano, valorParcela: ult.valor, restantes: futuras.length, fim: ult.data.slice(0, 7) });
     } else if (ls.some((l) => l.forma === 'Débito')) {
       const ult = [...ls].sort((a, b) => a.data.localeCompare(b.data))[ls.length - 1];
-      out.push({ chave: k, nome, banco, valorParcela: ult.valor, restantes: null, fim: null });
+      out.push({ chave: k, nome, banco, plano, valorParcela: ult.valor, restantes: null, fim: null });
     }
   }
   return out.sort((a, b) => (a.fim ?? '9999').localeCompare(b.fim ?? '9999'));
@@ -171,8 +177,10 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
   const ritmo = d.aplicacaoMensal.length ? r2(d.aplicacaoMensal.reduce((s, m) => s + m.valor, 0) / d.aplicacaoMensal.length) : 0;
   const falta = Math.max(0, meta - d.aplicado);
   const q3 = f3ok ? null : ritmo > 0 ? mesLabel(addMonths(mesAtual, Math.ceil(falta / ritmo))) : 'sem previsão';
+  // N18: o "quando" é pelo ritmo de hoje; o passo propõe outro ritmo — quando as datas diferem, dizer as duas bases
+  const em12 = mesLabel(addMonths(mesAtual, 12));
   const p3 = f3ok ? 'Reserva completa: manter.'
-    : `Aplicar ${marcaDinheiro(Math.ceil(falta / 12))}/mês completa a reserva em ${mesLabel(addMonths(mesAtual, 12))}.`;
+    : `${q3 && q3 !== em12 && q3 !== 'sem previsão' ? `No ritmo de hoje, ${q3}. ` : ''}Aplicar ${marcaDinheiro(Math.ceil(falta / 12))}/mês completa a reserva em ${em12}.`;
 
   // 4. patrimônio
   const receita = d.passados.reduce((s, m) => s + m.receita, 0);

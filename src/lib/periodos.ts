@@ -31,3 +31,11 @@ export function lerPessoa(v: string | null): Resp | null {
   if (v === null || v === '' || v === 'casal') return 'casal';
   return v === 'Matheus' || v === 'Ariane' ? v : null;
 }
+
+/** N19: período de uma semana na URL (`p=sem-AAAA-MM-DD`), para o link do resumo semanal abrir a semana. */
+export function periodoDaSemana(p: string | undefined): { inicio: string; fimExcl: string; label: string } | null {
+  const m = /^sem-(\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01]))$/.exec(p ?? '');
+  if (!m) return null;
+  const inicio = m[1];
+  return { inicio, fimExcl: somaDias(inicio, 7), label: `Semana de ${ddmm(inicio)} a ${ddmm(somaDias(inicio, 6))}` };
+}

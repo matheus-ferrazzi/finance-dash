@@ -62,9 +62,11 @@ describe('montarInvestimento (porta do workflow de investimentos)', () => {
 
 describe('precisaPedirAtualizacao', () => {
   const agora = new Date('2026-10-09T16:00:00Z');
-  it('só item sem auto-sync e parado há mais de 26 h', () => {
+  // Onda 2 / S2: com 26 h e uma checagem por dia, o item chegava a ~50 h parado; agora 20 h, duas vezes por dia
+  it('só item sem auto-sync e parado há mais de 20 h', () => {
     expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-09-16T00:11:00Z' }, agora)).toBe(true);
-    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-10-09T00:00:00Z' }, agora)).toBe(false);
+    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-10-08T19:00:00Z' }, agora)).toBe(true); // 21 h
+    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-10-08T21:00:00Z' }, agora)).toBe(false); // 19 h
     expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: '2026-10-10T00:00:00Z', lastUpdatedAt: '2026-09-01T00:00:00Z' }, agora)).toBe(false);
   });
 });

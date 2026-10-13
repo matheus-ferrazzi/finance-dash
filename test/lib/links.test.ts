@@ -70,3 +70,10 @@ describe('seletor de mês do topo', () => {
     expect(temSeletorDeMes('/contas')).toBe(true);
   });
 });
+
+describe('filtros novos (N19)', () => {
+  it('forma=debito e semana viram parâmetros; o resto do link igual', () => {
+    expect(linkPara('gastos', { tipo: 'livre', forma: 'debito' }, '2026-10')).toBe('/gastos?tipo=livre&forma=debito');
+    expect(linkPara('gastos', { semana: '2026-10-05' }, '2026-10')).toBe('/gastos?p=sem-2026-10-05');
+  });
+});

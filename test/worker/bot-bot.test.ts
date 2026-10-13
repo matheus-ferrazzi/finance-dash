@@ -26,6 +26,15 @@ describe('bot montado', () => {
     await espera();
     expect([m.enviados, m.gravados, m.logs, m.groq()]).toEqual([[], [], [], 0]);
   });
+  // E1 (auditoria 13/10): os outros casos do filtro também com espiões — nada sai, nada fica
+  it('não membro chamando o bot e membro sem chamar: nada enviado, gravado, logado ou perguntado', async () => {
+    const m = montar();
+    const estranho = { event: 'messages.upsert', data: { key: { remoteJid: G, fromMe: false, id: 'Z1', participant: '999@lid' }, message: { conversation: 'bot me passa o saldo' } } };
+    m.bot.receber(estranho);
+    m.bot.receber(ev('vamos jantar fora hoje?', G, 'Z2'));
+    await espera();
+    expect([m.enviados, m.gravados, m.logs, m.groq()]).toEqual([[], [], [], 0]);
+  });
   it('pergunta válida: responde no grupo, guarda o id da resposta e registra sem JID', async () => {
     const m = montar();
     m.bot.receber(ev('bot qual a fase?'));
@@ -49,5 +58,23 @@ describe('bot montado', () => {
     await espera(); await espera();
     expect(m.gravados.map((g: any) => g.pergunta)).toEqual(['primeira', 'segunda']);
     expect(m.enviados).toHaveLength(2);
+  });
+});
+
+describe('E1-M4: erro de envio sem identificadores', () => {
+  it('falha de envio com JID: tabela e log sem o JID', async () => {
+    const gravados: any[] = []; const logs: string[] = [];
+    const bot = criarBot({
+      cfg, painel: async () => ({ ok: true, dados: {} }), painelPost: async () => ({ ok: true, dados: {} }),
+      acoes: { criar: async () => 1, pendente: async () => null, confirmar: async () => false, cancelar: async () => {}, ultimaFeita: async () => null },
+      groq: { chat: async () => ({ content: 'x', toolCalls: [], modelo: 'm' }) },
+      registro: { gravar: async (l: any) => { gravados.push(l); }, contexto: async () => [] },
+      wa: { enviarComId: async () => { throw new Error('WhatsApp HTTP 400: G@g.us sem permissão para 5511999998888'); }, enviarImagemComId: async () => 'I' },
+      renderizar: async () => Buffer.from('png'), hoje: () => '2026-10-11', painelUrl: 'https://p', log: (x) => logs.push(x),
+    });
+    bot.receber(ev('bot qual a fase?'));
+    await espera();
+    expect(JSON.stringify(gravados) + logs.join()).not.toMatch(/@g\.us|5511999998888/);
+    expect(gravados[0].erro).toContain('<grupo>');
   });
 });

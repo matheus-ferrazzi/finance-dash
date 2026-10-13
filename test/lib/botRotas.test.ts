@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerParams, linkDoPeriodo } from '../../src/lib/botRotas';
+import { lerParams, lerSimulacao, linkDoPeriodo } from '../../src/lib/botRotas';
 
 const sp = (o: Record<string, string>) => new URLSearchParams(o);
 
@@ -39,5 +39,15 @@ describe('link do período (N19)', () => {
     expect(linkDoPeriodo({ inicio: '2026-10-05', fimExcl: '2026-10-12' }, 'casal', null, '2026-10')).toBe('/gastos?p=sem-2026-10-05');
     expect(linkDoPeriodo({ inicio: '2026-09-01', fimExcl: '2026-10-01' }, 'Ariane', 'Mercado', '2026-10')).toBe('/gastos?resp=Ariane&mes=2026-09&grupo=Mercado');
     expect(linkDoPeriodo({ inicio: '2026-10-13', fimExcl: '2026-10-14' }, 'casal', null, '2026-10')).toBe('/gastos');
+  });
+});
+
+// E1-M8: Infinity passava em "valor_total > 0"
+describe('parâmetros do simular', () => {
+  it('valor finito entre 0 e 1 milhão; parcelas inteiras 1..48', () => {
+    expect(lerSimulacao(sp({ valor_total: '3000', parcelas: '10' }))).toEqual({ ok: true, valorTotal: 3000, parcelas: 10 });
+    expect(lerSimulacao(sp({ valor_total: '500' }))).toEqual({ ok: true, valorTotal: 500, parcelas: 1 });
+    for (const v of ['Infinity', '1e309', '-5', '0', 'abc', '2000000']) expect(lerSimulacao(sp({ valor_total: v })).ok).toBe(false);
+    expect(lerSimulacao(sp({ valor_total: '100', parcelas: '1.5' })).ok).toBe(false);
   });
 });

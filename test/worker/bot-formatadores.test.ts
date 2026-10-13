@@ -136,3 +136,17 @@ describe('investimentos (S6: substitui o Bot 04)', () => {
     expect(caminhoDa('investimentos', {}, 'Matheus')).toBe('/api/bot/investimentos');
   });
 });
+
+// E1-M8: o simular dizia só o pior caso; quando provável e pior caso discordam, a resposta diz os dois
+describe('simular com os dois cenários', () => {
+  it('provável cabe e pior caso não: as duas linhas', () => {
+    const t = formatar('simular_compra', { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: false, mesQueFura: 'jan/27', aprofunda: 0, cabeProvavel: true, link: '/simulador' }, 'https://p');
+    expect(t).toContain('✅ Pelo número provável, cabe');
+    expect(t).toContain('❌ Pelo pior caso, jan/27 vai para o vermelho');
+  });
+  it('os dois concordam: uma linha só, como antes', () => {
+    const t = formatar('simular_compra', { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: true, mesQueFura: null, aprofunda: 0, cabeProvavel: true, link: '/simulador' }, 'https://p');
+    expect(t).toContain('✅ Cabe');
+    expect(t).not.toContain('provável');
+  });
+});

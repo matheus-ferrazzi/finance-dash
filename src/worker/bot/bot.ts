@@ -3,7 +3,7 @@
 import type { PgAcoes } from './acoes';
 import { CANCELADO, EXPIRADO, lerResposta, NADA_DESFAZER, textoDesfeito, textoFeito } from './acoesTextos';
 import { responder, SO_TEXTO, type RespostaBot } from './agente';
-import { lerWebhook, type ConfigEntrada, type Pergunta } from './entrada';
+import { lerWebhook, semIdentificadores, type ConfigEntrada, type Pergunta } from './entrada';
 import { FilaBot } from './fila';
 import type { ClienteGroq } from './groq';
 import { criarLocais } from './locais';
@@ -83,7 +83,8 @@ export function criarBot(d: {
     const r: RespostaBot = await responder(p, { groq: d.groq, painel: d.painel, contexto, hoje: d.hoje(), painelUrl: d.painelUrl, locais });
     if (r.texto.startsWith('🔎')) listas.set(p.pessoa, Date.now());
     let erroEnvio: string | null = null;
-    try { await mandar(r.texto, r.svg); } catch (e) { erroEnvio = `envio: ${e instanceof Error ? e.message : String(e)}`; }
+    // E1-M4: o erro do WhatsApp pode trazer o JID do grupo ou um telefone — nunca vai assim para log/tabela
+    try { await mandar(r.texto, r.svg); } catch (e) { erroEnvio = semIdentificadores(`envio: ${e instanceof Error ? e.message : String(e)}`); }
     await d.registro.gravar({
       pessoa: p.pessoa, pergunta: p.texto, ferramentas: r.ferramentas, resposta: r.texto, modelo: r.modelo, ms: r.ms,
       trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro ?? erroEnvio,
@@ -109,7 +110,7 @@ export function criarBot(d: {
         curtas = curtas.then(async () => {
           const c = await respostaCurta(p);
           if (!c.tratado && c.texto) fila.colocar({ ...p, curta: false, texto: c.texto });
-        }).catch((err) => d.log(`bot: resposta curta falhou (${err instanceof Error ? err.message : String(err)})`));
+        }).catch((err) => d.log(semIdentificadores(`bot: resposta curta falhou (${err instanceof Error ? err.message : String(err)})`)));
       }
       else if (e.tipo === 'nao_texto') void mandar(SO_TEXTO, null).catch(() => {});
     },

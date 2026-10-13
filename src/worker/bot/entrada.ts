@@ -7,6 +7,14 @@ export type Entrada = { tipo: 'pergunta'; p: Pergunta } | { tipo: 'resposta'; p:
 const IGNORAR: Entrada = { tipo: 'ignorar' };
 const usuario = (jid: string) => jid.split('@')[0].split(':')[0];
 
+/** E1-M4: texto de erro sem JID nem telefone (vai para o log e para a tabela de conversas). */
+export function semIdentificadores(s: string): string {
+  return s
+    .replace(/[\w.:-]+@g\.us/g, '<grupo>')
+    .replace(/[\w.:-]+@(s\.whatsapp\.net|lid|c\.us)/g, '<contato>')
+    .replace(/\b\d{10,15}\b/g, '<número>');
+}
+
 export function lerMembros(v: string): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const par of v.split(';').map((s) => s.trim()).filter(Boolean)) {
@@ -35,9 +43,11 @@ export function lerWebhook(corpo: unknown, cfg: ConfigEntrada, enviados: Readonl
   const ctx = (Object.values(m).find((x: any) => x?.contextInfo) as any)?.contextInfo;
   const mencoes: string[] = ctx?.mentionedJid ?? [];
   const mencionou = mencoes.some((j) => cfg.botJids.some((b) => usuario(b) === usuario(j)));
-  if (texto === null) return mencionou ? { tipo: 'nao_texto', pessoa } : IGNORAR;
   // sem \b: com acento ("botão") o \b do JS acha fronteira; aqui só não pode vir letra ou número depois
   const prefixo = /^\s*bot(?![\p{L}\p{N}])[\s,:;.!-]*/iu;
+  // E1-M9: imagem/vídeo com legenda "bot ..." chama o bot (que ainda só lê texto)
+  const legenda: string | null = m.imageMessage?.caption ?? m.videoMessage?.caption ?? null;
+  if (texto === null) return mencionou || (legenda !== null && prefixo.test(legenda)) ? { tipo: 'nao_texto', pessoa } : IGNORAR;
   // E2: "sim/não/número" sem "bot" — o bot decide se há proposta/lista pendente; frase comum segue ignorada
   if (!prefixo.test(texto) && !mencionou) {
     const r = lerResposta(texto);

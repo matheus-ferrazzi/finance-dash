@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerMembros, lerWebhook } from '../../src/worker/bot/entrada';
+import { lerMembros, lerWebhook, semIdentificadores } from '../../src/worker/bot/entrada';
 
 const G = '120363000000000001@g.us';
 const cfg = { grupo: G, membros: { Matheus: ['5500000000001@s.whatsapp.net', '111@lid'], Ariane: ['5500000000002@s.whatsapp.net', '222@lid'] }, botJids: ['5500000000001@s.whatsapp.net', '111@lid'] };
@@ -61,5 +61,19 @@ describe('respostas curtas (E2)', () => {
     expect(lerWebhook(msg({ participant: '222@lid', texto: 'sim, vamos jantar' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
     expect(lerWebhook(msg({ participant: '222@lid', texto: 'desfaz' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
     expect(lerWebhook(msg({ participant: '999@lid', texto: 'sim' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+  });
+});
+
+describe('pendências do E1 (auditoria 13/10)', () => {
+  // M9: imagem com legenda "bot ..." era ignorada em silêncio
+  it('M9: imagem com legenda chamando o bot responde "só leio texto"; legenda comum, ignora', () => {
+    expect(lerWebhook(msg({ participant: '222@lid', tipo: { imageMessage: { caption: 'bot quanto foi isso?' } } }), cfg, new Set()))
+      .toEqual({ tipo: 'nao_texto', pessoa: 'Ariane' });
+    expect(lerWebhook(msg({ participant: '222@lid', tipo: { imageMessage: { caption: 'olha que lindo' } } }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+  });
+  // M4: erro de envio podia levar o JID do grupo ou um telefone para o log/tabela
+  it('M4: tira JID e telefone de um texto de erro', () => {
+    expect(semIdentificadores('WhatsApp HTTP 400: 120363000000000001@g.us não existe; número 5511999998888 inválido; 111@lid'))
+      .toBe('WhatsApp HTTP 400: <grupo> não existe; número <número> inválido; <contato>');
   });
 });

@@ -109,7 +109,13 @@ export function formatar(nome: string, d: any, painel: string): string {
       break;
     case 'simular_compra':
       l.push(`🛒 Compra de ${brl(d.valorTotal)} em ${d.parcelas}x de ${brl(d.parcela)}`);
-      l.push(d.cabe ? '✅ Cabe: nenhum mês vai para o vermelho por causa dela' : `❌ Não cabe: ${d.mesQueFura} vai para o vermelho`);
+      // E1-M8: provável e pior caso discordando, os dois aparecem
+      if (d.cabeProvavel === true && !d.cabe) {
+        l.push('✅ Pelo número provável, cabe');
+        l.push(`❌ Pelo pior caso, ${d.mesQueFura} vai para o vermelho`);
+      } else {
+        l.push(d.cabe ? '✅ Cabe: nenhum mês vai para o vermelho por causa dela' : `❌ Não cabe: ${d.mesQueFura} vai para o vermelho`);
+      }
       if (d.aprofunda > 0) l.push(`📉 Aprofunda o pior mês em ${brl(d.aprofunda)}`);
       break;
     case 'investimentos':

@@ -3,12 +3,30 @@ import { writerPool } from './db';
 import { mesLabel, traduzCategoria } from './format';
 import { apagarDinheiro, inserirDinheiro } from './dinheiro';
 import { alvoDaRegra, apagarRegra, categoriaDaRegra, criarMarca, salvarRegra } from './queries';
+import { validarMarca } from './validation';
 
 type R = { ok: true; resumo: string; afetados?: number } | { ok: false; erro: string };
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-async function marcar(id: number, estado: string, resultado: unknown) {
-  await writerPool.query(`UPDATE financas_bot_acoes SET estado = $2, resultado = $3, atualizado_em = now() WHERE id = $1`, [id, estado, JSON.stringify(resultado)]);
+type Cli = { query: (t: string, p: unknown[]) => Promise<{ rows: any[] }> };
+
+async function marcar(id: number, estado: string, resultado: unknown, cli: Cli = writerPool) {
+  await cli.query(`UPDATE financas_bot_acoes SET estado = $2, resultado = $3, atualizado_em = now() WHERE id = $1`, [id, estado, JSON.stringify(resultado)]);
+}
+
+async function numaTransacao<T>(f: (cli: Cli) => Promise<T>): Promise<T> {
+  const c = await writerPool.connect();
+  try {
+    await c.query('BEGIN');
+    const r = await f(c as unknown as Cli);
+    await c.query('COMMIT');
+    return r;
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    c.release();
+  }
 }
 
 export async function executarAcao(id: number): Promise<R> {
@@ -34,14 +52,22 @@ export async function executarAcao(id: number): Promise<R> {
     }
     if (a.tipo === 'dinheiro') {
       const p = a.params;
-      const dinheiroId = await inserirDinheiro({ data: p.data, valor: p.valor, descricao: p.descricao, categoria: p.categoria, responsavel: p.responsavel });
-      await marcar(id, 'feita', { dinheiroId });
+      // E3-M2: gravar e marcar a ação numa transação só (sem gasto órfão se a marcação falhar)
+      await numaTransacao(async (cli) => {
+        const dinheiroId = await inserirDinheiro({ data: p.data, valor: p.valor, descricao: p.descricao, categoria: p.categoria, responsavel: p.responsavel }, cli);
+        await marcar(id, 'feita', { dinheiroId }, cli);
+      });
       return { ok: true, resumo: `💵 ${p.descricao} ${brl(p.valor)} em ${traduzCategoria(p.categoria)}` };
     }
     const p = a.params;
+    // E2-M7: a mesma validação da tela de Contas (antes só o worker validava)
+    const v = validarMarca({ mes: p.mes, responsavel: p.responsavel, nome: p.nome, valor: p.valor, pago: true });
+    if (!v.ok) { await marcar(id, 'erro', { erro: v.erro }); return { ok: false, erro: v.erro }; }
     // avulsa nasce marcada (pago = true, exigido pela tabela): fica "a confirmar" até o banco achar o pagamento
-    const marcaId = await criarMarca({ mes: p.mes, contaId: null, responsavel: p.responsavel, nome: p.nome, valor: p.valor, pago: true });
-    await marcar(id, 'feita', { marcaId });
+    await numaTransacao(async (cli) => {
+      const marcaId = await criarMarca(v.data, cli);
+      await marcar(id, 'feita', { marcaId }, cli);
+    });
     return { ok: true, resumo: `${p.nome} ${brl(p.valor)} nas contas de ${mesLabel(p.mes)}` };
   } catch (e) {
     await marcar(id, 'erro', { erro: e instanceof Error ? e.message : String(e) });

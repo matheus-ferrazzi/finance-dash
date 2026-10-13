@@ -38,6 +38,15 @@ describe.skipIf(!url)('ações do bot no painel (integração)', () => {
     Number((await pool.query(`INSERT INTO financas_bot_acoes (pessoa, tipo, params, resumo, estado) VALUES ($1,$2,$3,'r',$4) RETURNING id`,
       [pessoa, tipo, JSON.stringify(params), estado])).rows[0].id);
 
+  // E2-M7: a avulsa só era validada no worker; o painel gravava o que chegasse
+  it('E2-M7: avulsa com parâmetros inválidos não grava (validação do painel, a mesma da tela)', async () => {
+    const id = await acao('avulsa', { mes: '2046-13', nome: 'X', valor: 50, responsavel: 'Matheus' });
+    expect(await executarAcao(id)).toMatchObject({ ok: false, erro: 'mês inválido' });
+    expect((await pool.query(`SELECT estado FROM financas_bot_acoes WHERE id = $1`, [id])).rows[0].estado).toBe('erro');
+    const id2 = await acao('avulsa', { mes: '2046-03', nome: 'X', valor: Infinity, responsavel: 'Matheus' });
+    expect(await executarAcao(id2)).toMatchObject({ ok: false });
+  });
+
   // E2-M3: no escopo "este" a prévia devolvia a descrição bruta (com CPF) como nome
   it('E2-M3: prévia não devolve CPF no nome', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, categoria_banco, classe, forma_pagamento, banco, responsavel)

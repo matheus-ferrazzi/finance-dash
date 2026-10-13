@@ -32,10 +32,14 @@ export async function buscarDinheiro(resp: Resp, termo: string) {
   return rows.map((x) => ({ id: Number(x.id), data: x.data, valor: r2(Number(x.valor)), descricao: x.descricao, categoria: x.categoria, pessoa: x.pessoa }));
 }
 
-export async function inserirDinheiro(g: { data: string; valor: number; descricao: string; categoria: string; responsavel: 'Matheus' | 'Ariane' }): Promise<number> {
-  const rows = await qw<any>(
-    `INSERT INTO financas_gastos_dinheiro (data, valor, descricao, categoria, responsavel) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-    [g.data, g.valor, g.descricao, g.categoria, g.responsavel]);
+/** `cli`: cliente de uma transação (E3-M2: o bot grava e marca a ação juntos); sem ele, o pool de escrita. */
+export async function inserirDinheiro(
+  g: { data: string; valor: number; descricao: string; categoria: string; responsavel: 'Matheus' | 'Ariane' },
+  cli?: { query: (t: string, p: unknown[]) => Promise<{ rows: any[] }> },
+): Promise<number> {
+  const sql = `INSERT INTO financas_gastos_dinheiro (data, valor, descricao, categoria, responsavel) VALUES ($1,$2,$3,$4,$5) RETURNING id`;
+  const params = [g.data, g.valor, g.descricao, g.categoria, g.responsavel];
+  const rows = cli ? (await cli.query(sql, params)).rows : await qw<any>(sql, params);
   return Number(rows[0].id);
 }
 

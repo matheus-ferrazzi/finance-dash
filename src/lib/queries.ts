@@ -448,12 +448,14 @@ export async function getContasDoMes(resp: Resp, mes: string): Promise<ResumoMes
 }
 
 /** Grava um ✓, um "tirar do mês" ou uma avulsa. Na conta fixa há uma marcação por mês: a nova troca a anterior. */
-export async function criarMarca(m: MarcaInput): Promise<number> {
+/** `cli`: cliente de uma transação (E3-M2: o bot grava e marca a ação juntos); sem ele, o pool de escrita. */
+export async function criarMarca(m: MarcaInput, cli?: { query: (t: string, p: unknown[]) => Promise<{ rows: any[] }> }): Promise<number> {
+  const run = async (sql: string, p: unknown[]) => (cli ? (await cli.query(sql, p)).rows : await qw<any>(sql, p));
   if (m.contaId !== null) {
-    const ja = await qw<any>(`UPDATE financas_contas_marcas SET pago = $3 WHERE mes = $1 AND conta_id = $2 RETURNING id`, [m.mes, m.contaId, m.pago]);
+    const ja = await run(`UPDATE financas_contas_marcas SET pago = $3 WHERE mes = $1 AND conta_id = $2 RETURNING id`, [m.mes, m.contaId, m.pago]);
     if (ja.length) return Number(ja[0].id);
   }
-  const rows = await qw<any>(
+  const rows = await run(
     `INSERT INTO financas_contas_marcas (mes, conta_id, responsavel, nome, valor, pago) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
     [m.mes, m.contaId, m.responsavel, m.nome, m.valor, m.pago],
   );

@@ -33,3 +33,13 @@ export function totalAPagar(fs: readonly { situacao: Situacao; falta: number }[]
 export const ROTULO_SITUACAO: Record<Situacao, string> = {
   paga: 'paga', a_vencer: 'a vencer', parcelada: 'parcelada', atrasada: 'em atraso',
 };
+
+/**
+ * F1 (pendência): o cartão pedido pelo link vem primeiro e aberto. `pedido` = "Banco:Pessoa" (um cartão) ou
+ * "Banco" (link antigo: todos daquele banco). Pedido que não existe não muda nada.
+ */
+export function ordenarPorPedido<T extends { banco: string; responsavel: string }>(vs: readonly T[], pedido: string | undefined) {
+  const casa = (v: T) => !!pedido && (pedido.includes(':') ? `${v.banco}:${v.responsavel}` === pedido : v.banco === pedido);
+  const marcados = vs.map((v) => ({ v, aberto: casa(v) }));
+  return [...marcados.filter((x) => x.aberto), ...marcados.filter((x) => !x.aberto)];
+}

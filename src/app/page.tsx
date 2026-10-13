@@ -8,6 +8,7 @@ import { cartaoDestaque, contasResumo, topGrupos } from '@/lib/home';
 import { faixaMesCorrente } from '@/lib/faixa';
 import { LinhaDoMes } from './components/LinhaDoMes';
 import { BlocoHome } from './components/BlocoHome';
+import { BarraGrupos, CORES_GRUPOS } from './components/BarraGrupos';
 import { FaixaTrilha } from './components/FaixaTrilha';
 import { avaliarTrilha } from '@/lib/trilha';
 
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
 function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
-const CORES = ['bg-[#7c8cff]', 'bg-accent', 'bg-warn'];
+const CORES = CORES_GRUPOS;
 
 // Home: "como o mês vai fechar" sem rolar. Cada número leva à tela que aprofunda, já filtrada.
 export default async function Home({ searchParams }: { searchParams: { resp?: string; mes?: string } }) {
@@ -74,9 +75,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
           detalhe={grupos.length ? undefined : 'sem gasto no mês'}>
           {grupos.length > 0 && (
             <>
-              <div className="mt-1 flex h-2 overflow-hidden rounded-full bg-surface-3">
-                {grupos.map((g, i) => <div key={g.nome} className={CORES[i]} style={{ width: `${g.pct}%` }} />)}
-              </div>
+              <BarraGrupos grupos={grupos.map((g) => ({ nome: g.nome, pct: g.pct, href: linkPara('gastos', { ...f, grupo: g.nome }, atual) }))} />
               <div className="mt-1 flex flex-col">
                 {grupos.map((g, i) => (
                   <Link key={g.nome} href={linkPara('gastos', { ...f, grupo: g.nome }, atual)}
@@ -88,7 +87,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
             </>
           )}
         </BlocoHome>
-        <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao?.banco }, atual)}
+        <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao ? `${cartao.banco}:${cartao.responsavel}` : undefined }, atual)}
           valor={cartao ? brl(cartao.aPagar) : '—'}
           detalhe={cartao ? `a pagar · ${cartao.banco} ${cartao.usoPct}% do limite` : 'sem cartão'}
           tom={cartao && cartao.usoPct >= 80 ? 'ruim' : 'neutro'} />

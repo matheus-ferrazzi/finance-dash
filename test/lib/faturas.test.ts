@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { situacaoFatura, totalAPagar } from '../../src/lib/faturas';
+import { ordenarPorPedido, situacaoFatura, totalAPagar } from '../../src/lib/faturas';
 
 // auditoria 13/10 (N4): a fatura é a do histórico (a última fechada), não o saldo devedor do cartão
 describe('situação da última fatura fechada', () => {
@@ -25,5 +25,23 @@ describe('total a pagar', () => {
       { situacao: 'a_vencer', falta: 500 }, { situacao: 'atrasada', falta: 200 },
       { situacao: 'parcelada', falta: 0 }, { situacao: 'paga', falta: 0 },
     ])).toBe(700);
+  });
+});
+
+// F1 (pendência): ?cartao=Nubank abria os dois cartões Nubank (do Matheus e da Ariane)
+describe('cartão pedido pelo link', () => {
+  const v = (banco: string, responsavel: string) => ({ banco, responsavel });
+  const lista = [v('Neon', 'Ariane'), v('Nubank', 'Ariane'), v('Nubank', 'Matheus')];
+  it('banco:pessoa abre só aquele cartão, primeiro na lista', () => {
+    const r = ordenarPorPedido(lista, 'Nubank:Matheus');
+    expect(r.map((x) => `${x.v.banco}:${x.v.responsavel}`)).toEqual(['Nubank:Matheus', 'Neon:Ariane', 'Nubank:Ariane']);
+    expect(r.map((x) => x.aberto)).toEqual([true, false, false]);
+  });
+  it('só o banco (link antigo): os cartões desse banco vêm primeiro e abertos', () => {
+    expect(ordenarPorPedido(lista, 'Nubank').filter((x) => x.aberto)).toHaveLength(2);
+  });
+  it('sem pedido ou cartão que não existe: ordem original, nada aberto', () => {
+    expect(ordenarPorPedido(lista, undefined).map((x) => x.aberto)).toEqual([false, false, false]);
+    expect(ordenarPorPedido(lista, 'Inter:Matheus').map((x) => x.v.banco)).toEqual(['Neon', 'Nubank', 'Nubank']);
   });
 });

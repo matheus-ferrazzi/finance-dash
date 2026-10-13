@@ -1,6 +1,6 @@
 import { getFaturas, getCreditoDespesas, currentDateSP, Resp } from '@/lib/queries';
 import { brl } from '@/lib/format';
-import { totalAPagar } from '@/lib/faturas';
+import { ordenarPorPedido, totalAPagar } from '@/lib/faturas';
 import { PageTitle, StatStrip } from '../components/ui';
 import { FaturaCard, FaturaView } from '../components/FaturaCard';
 
@@ -66,11 +66,8 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
     };
   });
 
-  // ?cartao=Nubank (link da home): o cartão vem primeiro e aberto; cartão que a pessoa não tem é ignorado
-  const pedido = searchParams.cartao;
-  const ordenadas = pedido && views.some((v) => v.banco === pedido)
-    ? [...views.filter((v) => v.banco === pedido), ...views.filter((v) => v.banco !== pedido)]
-    : views;
+  // ?cartao=Nubank:Matheus (link da home): só aquele cartão vem primeiro e aberto (F1: antes abria os dois Nubank)
+  const ordenadas = ordenarPorPedido(views, searchParams.cartao);
 
   // N4: "a pagar" = o que falta das faturas FECHADAS (a vencer + em atraso); o saldo devedor do cartão
   // inclui as compras do ciclo novo e fica no "limite usado" de cada cartão
@@ -92,7 +89,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {ordenadas.map((v) => <FaturaCard key={v.id} f={v} abertoInicial={v.banco === pedido} />)}
+        {ordenadas.map(({ v, aberto }) => <FaturaCard key={v.id} f={v} abertoInicial={aberto} />)}
       </div>
       {views.length === 0 && (
         <div className="card"><p className="text-sm text-muted">Nenhuma fatura cadastrada.</p></div>

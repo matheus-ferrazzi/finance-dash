@@ -1349,7 +1349,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     // lançamentos da janela e parcelas futuras já conhecidas em hoje: dívidas e juros saem daqui
     q<any>(
       `SELECT descricao, categoria, COALESCE(banco,'—') AS banco, forma_pagamento AS forma,
-              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, parcela_total AS "parcelaTotal"
+              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, parcela_total AS "parcelaTotal", parcela_numero AS "parcelaNumero"
        FROM financas_lancamentos
        WHERE ${SEM_ESPELHO}
          -- parcelamento de fatura e encargos do cartão o classificador grava como pagamento_fatura:

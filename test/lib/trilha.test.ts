@@ -192,3 +192,27 @@ describe('metas da trilha', () => {
   });
 });
 
+
+describe('pendências do F3 (auditoria 13/10)', () => {
+  // (b) mês sem dado nenhum (receita 0 e sobra 0) contava como "sobrou"
+  it('mês vazio não conta como mês que sobrou', () => {
+    const t = avaliarTrilha(dados({ passados: [{ mes: '2026-07', sobra: 100, receita: 1000 }, { mes: '2026-08', sobra: 0, receita: 0 }, { mes: '2026-09', sobra: 10, receita: 1000 }] }));
+    expect(t.sobra.cumpridos).toBe(2);
+    expect(t.fases[1].status).not.toBe('cumprida');
+  });
+  // (c) o "quando" da fase 2 ignorava os meses fechados que já sobraram (atrasava)
+  it('"quando" da fase 2 continua a sequência dos meses fechados que sobraram', () => {
+    const t = avaliarTrilha(dados({
+      passados: [{ mes: '2026-07', sobra: -5, receita: 1000 }, { mes: '2026-08', sobra: 50, receita: 1000 }, { mes: '2026-09', sobra: 10, receita: 1000 }],
+      sobraPrevista: [{ mes: '2026-10', sobra: 10 }, { mes: '2026-11', sobra: 10 }, { mes: '2026-12', sobra: 10 }],
+    }));
+    // ago e set sobraram; out (previsto) fecha a sequência de 3
+    expect(t.fases[1].quando).toBe('out/26');
+  });
+  // (a) dívida no cartão sem as parcelas futuras lançadas ainda sumia da trilha
+  it('parcela n de m sem as futuras lançadas: continua aberta, com o fim estimado', () => {
+    const l = { descricao: 'Renegociação de pendências', categoria: 'Loans and financing', banco: 'B', forma: 'Crédito', valor: 100, parcelaTotal: 8 };
+    const r = agruparDividas([{ ...l, data: '2026-09-06', parcelaNumero: 2 }, { ...l, data: '2026-10-06', parcelaNumero: 3 }], '2026-10-15');
+    expect(r).toEqual([{ chave: 'renegociação de pendências|B', nome: 'renegociação de pendências', banco: 'B', plano: 8, valorParcela: 100, restantes: 5, fim: '2027-03' }]);
+  });
+});

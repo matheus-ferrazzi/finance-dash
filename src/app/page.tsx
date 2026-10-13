@@ -37,10 +37,15 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   ]);
   const mesProj = computeProjecao(base, 1)[0];
   const ritmo = corrente && mesProj ? computeRitmo(base, mesProj) : null;
-  const aindaEntra = corrente ? base.mesCorrente.receitasAReceber.reduce((s, r) => s + r.valor, 0) : 0;
+  // F1: receitas que ainda entram no dia delas — as recorrentes (dia típico) e as já agendadas (dia marcado)
+  const receitasDoMes = corrente ? [
+    ...base.mesCorrente.receitasAReceber.map((r) => ({ dia: r.diaTipico, valor: r.valor })),
+    ...(base.mesCorrente.receitasAgendadas ?? []),
+  ] : [];
+  const aindaEntra = receitasDoMes.reduce((s, r) => s + r.valor, 0);
   const serie = serieDoMes({
     mes, hoje, saldoHoje: base.saldoContasAtual, movimentos,
-    receitas: corrente ? base.mesCorrente.receitasAReceber.map((r) => ({ dia: r.diaTipico, valor: r.valor })) : [],
+    receitas: receitasDoMes,
     aindaSai: corrente && ritmo ? base.saldoContasAtual + aindaEntra - ritmo.fechaCom : 0,
   });
 

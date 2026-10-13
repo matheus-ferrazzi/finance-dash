@@ -31,7 +31,8 @@ describe('serieDoMes', () => {
 
   it('hoje é o último dia: sem futuro, sem divisão por zero', () => {
     const s = serieDoMes({ ...base, hoje: '2026-10-31', receitas: [{ dia: 31, valor: 50 }], aindaSai: 20 });
-    expect(s.pontos.some((p) => p.futuro)).toBe(false);
+    // só o ponto do fechamento é futuro (F1: antes nenhum; o "fecha em" ficava fora do gráfico)
+    expect(s.pontos.filter((p) => p.futuro)).toHaveLength(1);
     expect(s.fechamento).toBe(1030);
   });
 
@@ -50,5 +51,18 @@ describe('revisão final', () => {
     const s = serieDoMes({ ...base, mes: '2026-11', hoje: '2026-11-10', receitas: [{ dia: 31, valor: 500 }] });
     expect(s.fechamento).toBe(1500);
     expect(s.pontos.at(-1)).toMatchObject({ dia: 30, saldo: 1500 });
+  });
+});
+
+// F1 (pendência): no último dia o "fecha em" ficava fora do gráfico (o último ponto era o saldo de agora)
+describe('último dia do mês (F1)', () => {
+  it('o gráfico termina no fechamento: um ponto final (futuro) no último dia com o "fecha em"', () => {
+    const s = serieDoMes({ ...base, hoje: '2026-10-31', receitas: [{ dia: 31, valor: 50 }], aindaSai: 20 });
+    expect(s.pontos.at(-1)).toEqual({ dia: 31, saldo: 1030, futuro: true });
+    expect(s.pontos.filter((p) => !p.futuro).at(-1)).toEqual({ dia: 31, saldo: 1000, futuro: false });
+  });
+  it('sem nada a entrar nem sair: sem ponto repetido', () => {
+    const s = serieDoMes({ ...base, hoje: '2026-10-31' });
+    expect(s.pontos.filter((p) => p.dia === 31)).toHaveLength(1);
   });
 });

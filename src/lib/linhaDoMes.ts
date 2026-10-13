@@ -31,6 +31,8 @@ export function serieDoMes(e: {
   const entradaNoDia = (d: number) => e.receitas.reduce((s, r) => s + (diaDaReceita(r.dia) === d ? r.valor : 0), 0);
   if (restantes === 0) {
     const fechamento = e.saldoHoje + e.receitas.reduce((s, r) => s + r.valor, 0) - e.aindaSai;
+    // F1: o "fecha em" entra no gráfico como ponto final do último dia (antes ficava fora)
+    if (Math.abs(fechamento - e.saldoHoje) > 0.005) pontos.push({ dia: D, saldo: fechamento, futuro: true });
     return { pontos, fechamento, passado };
   }
   let saldo = e.saldoHoje;

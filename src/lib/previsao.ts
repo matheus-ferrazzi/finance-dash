@@ -78,6 +78,8 @@ export interface ProjecaoBase {
     /** o que cada fonte já pagou no mês */
     recebidoPorFonte: Record<string, number>;
     receitaAgendada: number;
+    /** F1: a mesma receita agendada, por dia do mês (para a linha do mês) */
+    receitasAgendadas?: { dia: number; valor: number }[];
     /** o que ainda falta entrar de cada fonte recorrente (ex.: a 2ª parte do salário) */
     receitasAReceber: ReceitaPrevista[];
     variavelJaGasto: number;               // gasto livre no débito (fora casa e fora contas travadas)

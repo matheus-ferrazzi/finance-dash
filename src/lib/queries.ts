@@ -1123,6 +1123,19 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     if (x.mes === addMonths(hoje.slice(0, 7), -1)) c.ativa = true;
   }
 
+  // F1: receita já agendada no mês (data futura, conhecida em hoje), por dia — a linha do mês da home a põe no dia
+  const rra = rf(resp, 2);
+  const agendRows = await q<any>(
+    `SELECT EXTRACT(day FROM data_lancamento)::int AS dia, SUM(valor)::float8 AS valor
+       FROM financas_lancamentos
+      WHERE classe = 'receita' AND data_lancamento > $1::date
+        AND data_lancamento < date_trunc('month', $1::date) + interval '1 month'
+        AND criado_em::date <= $1::date${rra.sql}
+      GROUP BY 1 ORDER BY 1`,
+    [hoje, ...rra.p],
+  );
+  const receitasAgendadas = agendRows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.valor) * 100) / 100 }));
+
   const casaNoMesPorCategoria = await getCasaNoMes(resp, hoje);
   // visão individual: o que o casal já pagou da casa, para abater os compromissos do casal
   const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : await getCasaNoMes('casal', hoje);
@@ -1134,6 +1147,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     mesCorrente: {
       recebidoPorFonte,
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
+      receitasAgendadas,
       receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
       fixoJaGasto: Number(mesRows[0]?.fixo_gasto ?? 0),

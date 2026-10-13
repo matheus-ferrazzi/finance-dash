@@ -399,6 +399,18 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(soma).toBeCloseTo(b.mesCorrente.variavelJaGasto, 2);
   });
 
+  // F1: a receita já agendada (lançamento com data futura no mês) aparece no dia dela na linha do mês da home,
+  // não espalhada como "menos saída" todo dia
+  it('F1: receitas agendadas do mês por dia (conhecidas em hoje); a soma = receitaAgendada', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('ra1', '2054-03-20', 700, 'PIX RECEBIDO', 'Transfers', 'Débito', 'RA', 'Ariane', 'receita', 'Entrada', '2054-03-05'),
+      ('ra2', '2054-03-25', 300, 'REEMBOLSO', 'Transfers', 'Débito', 'RA', 'Ariane', 'receita', 'Entrada', '2054-03-05'),
+      ('ra3', '2054-03-26', 50, 'NAO SABIDO', 'Transfers', 'Débito', 'RA', 'Ariane', 'receita', 'Entrada', '2054-03-15')`);
+    const b = await queries.getProjecaoBase('casal', '2054-03-10');
+    expect(b.mesCorrente.receitasAgendadas).toEqual([{ dia: 20, valor: 700 }, { dia: 25, valor: 300 }]);
+    expect(b.mesCorrente.receitaAgendada).toBe(1000);
+  });
+
   it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {
     const base = await queries.getProjecaoBase('casal', '2038-04-15');
     expect(await queries.getTrilhaDados('2038-04-15', base)).toEqual(await queries.getTrilhaDados('2038-04-15'));

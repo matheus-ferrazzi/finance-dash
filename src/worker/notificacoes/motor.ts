@@ -128,6 +128,9 @@ export async function rodarNotificacao(
     } catch (e) {
       erro = msg(e);
     }
+  } else if (m.svg) {
+    // D2-M8: sombra também gera o PNG (sem enviar), para um gráfico quebrado aparecer antes do envio real
+    try { await (d.renderizar ?? ((s) => paraPng(s)))(m.svg); } catch (e) { erro = `imagem: ${msg(e)}`; }
   }
   // envio que falhou não avança o estado: a próxima execução tenta o mesmo aviso de novo (um gasto grande
   // ou uma fatura não pode se perder por uma falha passageira do Telegram). Aviso só da imagem ("imagem: …")

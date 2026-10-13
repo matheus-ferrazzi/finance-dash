@@ -211,6 +211,16 @@ describe('imagem (D2)', () => {
     expect(r.enviado).toBe(true);
     expect(r.erro).toBe('imagem: falhou');
   });
+  // D2-M8: em sombra o PNG nunca era gerado — um gráfico quebrado só apareceria no primeiro envio real
+  it('D2-M8: sombra também gera o PNG (sem enviar) e registra a falha como "imagem: …"', async () => {
+    const { reg, linhas } = registroFake(); let gerou = 0;
+    await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: null, matheus: null, telegram: null }, modo: 'sombra', renderizar: () => { gerou++; return Buffer.from('P'); } });
+    expect(gerou).toBe(1);
+    expect(linhas.at(-1)!.erro).toBeNull();
+    const r2 = registroFake();
+    await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: r2.reg, canais: { grupo: null, matheus: null, telegram: null }, modo: 'sombra', renderizar: () => { throw new Error('resvg'); } });
+    expect(r2.linhas.at(-1)).toMatchObject({ modo: 'sombra', enviado: false, erro: 'imagem: resvg' });
+  });
   it('gerar o PNG falhou: vai o texto', async () => {
     const c = canalComImagem(); const { reg } = registroFake();
     const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: c.canal, matheus: null, telegram: null }, modo: 'real', renderizar: () => { throw new Error('resvg'); } });

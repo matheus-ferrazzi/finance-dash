@@ -52,7 +52,7 @@ export function lerArgs(argv: string[]): Args {
       else if (resto[i] === '--png') {
         const v = resto[++i];
         if (!v || v.startsWith('--')) throw new Error('--png precisa de um arquivo');
-        out.png = v;
+        out.png = v.includes('/') ? v : `/tmp/${v}`; // D2-M9: no container só /tmp é gravável (USER node)
       } else throw new Error(`opção desconhecida: ${resto[i]}`);
     }
     if (out.png && !out.dryRun) throw new Error('--png só com --dry-run');

@@ -381,6 +381,24 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(d.foraDoPadrao).toEqual([{ descricao: 'LOJA GRANDE', valor: 900, categoria: 'Shopping', mediana: 60 }]);
   });
 
+  // D2-M10: o gráfico do diário (gasto livre por dia) e o ritmo (variavelJaGasto) têm que somar o mesmo
+  it('D2-M10: soma do gasto livre por dia = variavelJaGasto da previsão', async () => {
+    const ins = (id: string, data: string, valor: number, categoria: string, forma = 'Débito') =>
+      pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
+        VALUES ($1, $2::date, $3, 'x', $4, $5, 'M10', 'Ariane', 'despesa', 'Saída', $2::date)`, [id, data, valor, categoria, forma]);
+    await ins('m10-1', '2053-07-02', 40, 'Groceries');
+    await ins('m10-2', '2053-07-03', 25.5, 'Eating out');
+    await ins('m10-3', '2053-07-03', 900, 'Housing');            // casa: fora do livre
+    await ins('m10-4', '2053-07-04', 300, 'Insurance');          // travada: fora do livre
+    await ins('m10-5', '2053-07-04', 70, 'Shopping', 'Crédito'); // crédito: fora (caixa)
+    await ins('m10-6', '2053-07-05', 12, 'Groceries');
+    const porDia = await queries.getGastoLivrePorDia('casal', '2053-07-05');
+    const soma = porDia.reduce((s, d) => s + d.valor, 0);
+    const b = await queries.getProjecaoBase('casal', '2053-07-05');
+    expect(soma).toBeCloseTo(77.5, 2);
+    expect(soma).toBeCloseTo(b.mesCorrente.variavelJaGasto, 2);
+  });
+
   it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {
     const base = await queries.getProjecaoBase('casal', '2038-04-15');
     expect(await queries.getTrilhaDados('2038-04-15', base)).toEqual(await queries.getTrilhaDados('2038-04-15'));

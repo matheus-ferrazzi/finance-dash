@@ -72,7 +72,8 @@ export function graficoBarras(titulo: string, itens: { nome: string; valor: numb
   gs.forEach((g, i) => {
     const y = topo + i * alt, cor = g.ref === undefined ? CINZA : g.valor > g.ref ? VERM : VERDE;
     corpo.push(
-      texto(40, y + alt / 2 + 8, g.nome, 22, TEXTO),
+      // D2-M6: a área do rótulo cabe ~16 letras; o resto vira "…" (antes saía cortado no meio)
+      texto(40, y + alt / 2 + 8, g.nome.length > 16 ? `${g.nome.slice(0, 15)}…` : g.nome, 22, TEXTO),
       `<rect class="barra" x="${xb}" y="${f(y + 10)}" width="${f(Math.max(4, L(g.valor)))}" height="${f(alt - 20)}" rx="8" fill="${cor}"/>`,
       g.ref === undefined ? '' : `<line class="media" x1="${f(xb + L(g.ref))}" y1="${f(y + 2)}" x2="${f(xb + L(g.ref))}" y2="${f(y + alt - 2)}" stroke="${TEXTO}" stroke-width="4"/>`,
       texto(W - 30, y + alt / 2 + 8, brlCurto(g.valor), 20, SUAVE, ' text-anchor="end"'),

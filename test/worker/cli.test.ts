@@ -52,5 +52,7 @@ describe('--png (D2)', () => {
     expect(lerArgs(['notif-diario', '--dry-run', '--png', '/tmp/d.png'])).toEqual({ tarefa: 'notif-diario', dryRun: true, png: '/tmp/d.png' });
     expect(() => lerArgs(['notif-diario', '--png', '/tmp/d.png'])).toThrow(/--png só com --dry-run/);
     expect(() => lerArgs(['notif-diario', '--dry-run', '--png'])).toThrow(/--png precisa de um arquivo/);
+    // D2-M9: o container roda como "node" e só /tmp é gravável — nome solto vai para /tmp
+    expect(lerArgs(['notif-diario', '--dry-run', '--png', 'd.png']).png).toBe('/tmp/d.png');
   });
 });

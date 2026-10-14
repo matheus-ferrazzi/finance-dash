@@ -64,10 +64,10 @@ describe('texto da meta', () => {
 
 // Onda 5: a linha "com a meta" do gráfico da Previsão é a mesma projeção que decide a tabela da meta
 describe('projecaoComDebito', () => {
-  it('menos débito → saldo maior no fim; 24 meses', () => {
+  it('menos débito → saldo maior no fim; mês atual + 24 (o mesmo tamanho da projeção da tela)', () => {
     const p = projecaoComDebito(base(), 2000, '2026-10-14');
     const atual = projecaoComDebito(base(), 3000, '2026-10-14');
-    expect(p).toHaveLength(24);
+    expect(p).toHaveLength(25);
     expect(p.at(-1)!.saldoProjetado).toBeGreaterThan(atual.at(-1)!.saldoProjetado);
   });
 });

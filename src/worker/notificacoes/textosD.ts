@@ -2,6 +2,8 @@
 // Tom contido, Markdown do WhatsApp (*negrito*), um emoji por linha (D2), link na última linha. Funções puras.
 import { linhasBackup, linhasSaude, type BackupDados, type SaudeDados } from './textos';
 import type { Aviso } from '../../lib/avisos';
+import type { Desafio } from '../../lib/desafio';
+import { mesLabel } from '../../lib/format';
 
 // os mesmos JSON das rotas /api/resumo/* do painel (o worker não importa do painel)
 export interface ResumoDiario {
@@ -23,6 +25,8 @@ export interface ResumoSemanal {
   totalComparado?: number;
   /** S7: faturas fechadas a pagar (a vencer + em atraso) e o próximo vencimento (dd/mm) */
   faturas?: { aPagar: number; proximoVencimento: string | null };
+  /** P7: andamento do desafio do mês (gasto do grupo no mês até agora) */
+  desafio?: Desafio & { gasto: number; pct: number };
 }
 export interface ResumoMensal {
   mes: string; mesLabel: string; sobraReal: number; sobraPrevista: number; saldoFim: number;
@@ -31,6 +35,8 @@ export interface ResumoMensal {
   investimentos?: { total: number; aplicadoNoMes: number };
   mesNovo: { mesLabel: string; fechaCom: number };
   historico?: { mes: string; mesLabel: string; sobra: number }[];
+  /** P7: o desafio do mês que fechou (com o resultado) e o do mês novo */
+  desafio?: { anterior: (Desafio & { gasto: number; cumpriu: boolean }) | null; novo: Desafio | null };
 }
 export interface DadosTecnico {
   saude: SaudeDados; backup: BackupDados; consentimentos: { banco: string; responsavel: string; dias: number }[];
@@ -102,6 +108,10 @@ export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha:
   if ((r.faturas?.aPagar ?? 0) > 0) {
     l.push('', `💳 Faturas a pagar: ${brl(r.faturas!.aPagar)}${r.faturas!.proximoVencimento ? ` (próximo vencimento ${r.faturas!.proximoVencimento})` : ''}`);
   }
+  const d = r.desafio;
+  if (d) {
+    l.push('', `🎯 Desafio de ${mesLabel(d.mes)}: ${d.emoji} ${d.grupo} em ${brl(d.gasto)} de ${brl(d.meta)} (${d.pct}%)${d.gasto > d.meta ? ', passou da meta 🔴' : ''}`);
+  }
   l.push('', `🧭 *Trilha* ${barraTrilha(r.trilha.fase)} fase ${r.trilha.fase}: ${r.trilha.titulo}`, `➡️ ${r.trilha.proximoPasso}`,
     '', `👉 ${links.gastos}`, `👉 ${links.trilha}`);
   return l.join('\n');
@@ -120,6 +130,14 @@ export function montarMensal(r: ResumoMensal, link: string): string {
     ? [`💼 Investimentos: ${brl(inv.total)}${inv.aplicadoNoMes > 0 ? ` (no mês, aplicaram ${brl(inv.aplicadoNoMes)})`
       : inv.aplicadoNoMes < 0 ? ` (no mês, resgataram ${brl(-inv.aplicadoNoMes)})` : ''}`]
     : [];
+  // P7: fecha o desafio do mês que acabou e anuncia o do mês novo
+  const a = r.desafio?.anterior, n = r.desafio?.novo;
+  const linhasDesafio = [
+    ...(a ? [a.cumpriu
+      ? `🏅 Desafio de ${mesLabel(a.mes)} cumprido: ${a.grupo} ficou em ${brl(a.gasto)} (meta ${brl(a.meta)})`
+      : `😬 Desafio de ${mesLabel(a.mes)} não deu: ${a.grupo} ficou em ${brl(a.gasto)} (meta ${brl(a.meta)})`] : []),
+    ...(n ? [`🎯 Desafio de ${mesLabel(n.mes)}: ${n.emoji} ${n.grupo} até ${brl(n.meta)} (a média é ${brl(n.media)})`] : []),
+  ];
   return [
     `📅 *${r.mesLabel} fechou*${r.sobraReal >= 0 ? ' 🎉' : ''}`,
     sobra,
@@ -127,6 +145,7 @@ export function montarMensal(r: ResumoMensal, link: string): string {
     ...linhaInv,
     '', trilha,
     '', `🔮 ${r.mesNovo.mesLabel} começa fechando em ${brl(r.mesNovo.fechaCom)}`,
+    ...(linhasDesafio.length ? ['', ...linhasDesafio] : []),
     '', `👉 ${link}`,
   ].join('\n');
 }

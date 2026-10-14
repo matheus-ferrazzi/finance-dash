@@ -6,6 +6,7 @@ import { brl, currentDateSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
 import { dinheiroCobreMedia, gruposDaSemana, semanaAnterior, somaDias, totaisLivres } from '@/lib/resumos';
 import { avaliarTrilha, partesDoTexto } from '@/lib/trilha';
+import { getDesafioComAndamento } from '@/lib/desafioDados';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,7 +48,10 @@ export async function GET() {
   const ultimas = (await getFaturas('casal', hoje)).flatMap((f) => (f.ultima ? [f.ultima] : []));
   const aVencer = ultimas.filter((u) => u.situacao === 'a_vencer').map((u) => u.vencimento).sort();
   const faturas = { aPagar: totalAPagar(ultimas), proximoVencimento: aVencer[0] ? `${aVencer[0].slice(8, 10)}/${aVencer[0].slice(5, 7)}` : null };
+  // P7: andamento do desafio do mês de hoje (de 1º até ontem); falha não derruba a mensagem
+  const desafio = await getDesafioComAndamento(hoje.slice(0, 7), hoje).catch(() => null);
   return NextResponse.json({
+    ...(desafio ? { desafio } : {}),
     semana: s,
     ...livres,
     ...comparacao,

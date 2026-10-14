@@ -1,5 +1,5 @@
 // Dados das mensagens do D (diário, semanal, mensal): só remonta o que o painel já calcula.
-import type { ItemConta } from './contas';
+import { contaEhFatura, type ItemConta } from './contas';
 import type { GrupoGasto } from './grupos';
 import { mesLabel } from './format';
 import type { Fatura, MesPassado } from './queries';
@@ -23,7 +23,6 @@ export function contasDoDia(itens: ItemConta[], hojeDia: number, diasNoMes: numb
   return out.sort((a, b) => (a.quando === b.quando ? 0 : a.quando === 'hoje' ? -1 : 1));
 }
 
-const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const amanhaDe = (hoje: string) => {
   const d = new Date(`${hoje}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + 1);
@@ -36,7 +35,7 @@ const amanhaDe = (hoje: string) => {
  */
 export function faturasDoDia(faturas: Fatura[], hoje: string, caderno: ItemConta[]): ContaDoDia[] {
   const amanha = amanhaDe(hoje);
-  const noCaderno = (f: Fatura) => caderno.some((c) => c.responsavel === f.responsavel && semAcento(c.nome).includes(semAcento(f.banco)));
+  const noCaderno = (f: Fatura) => caderno.some((c) => contaEhFatura(c, [f]) !== null);
   const out: ContaDoDia[] = [];
   for (const f of faturas) {
     const u = f.ultima;

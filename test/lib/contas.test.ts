@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { destaqueDoTopo, montarMes, padraoDe, type ContaFixa, type Marca, type Mov } from '../../src/lib/contas';
+import { contaEhFatura, destaqueDoTopo, separarContas, montarMes, padraoDe, type ContaFixa, type Marca, type Mov } from '../../src/lib/contas';
 
 const conta = (p: Partial<ContaFixa> & { id: number; nome: string; padrao: string }): ContaFixa =>
   ({ responsavel: 'Ariane', valorPrevisto: 100, banco: null, tolerancia: null, somar: false, inicio: '2026-01', ate: null, valorDefinidoEm: null, parcelas: null, ordem: p.id, ...p });
@@ -228,5 +228,26 @@ describe('número do topo da tela de contas (N6)', () => {
   it('sem salário ainda ou sem caderno: sem número', () => {
     expect(destaqueDoTopo('Ariane', { entrou: 0, total: 100, sobra: -100 }, 0).valor).toBeNull();
     expect(destaqueDoTopo('Matheus', { entrou: 7000, total: 0, sobra: 7000 }, 0)).toEqual({ label: 'Sobra do caderno', valor: null, hint: 'sem contas no caderno' });
+  });
+});
+
+// Onda 5 (Contas): a tela abre com o que falta; a lista começa por ele e as pagas ficam recolhidas
+describe('Contas (Onda 5)', () => {
+  const it_ = (nome: string, status: any, vence: number | null = null, dia: number | null = null) =>
+    ({ contaId: 1, marcaId: null, nome, responsavel: 'Ariane', previsto: 10, pago: status === 'pago' ? 10 : null, status, dia, vence, parcela: null, avulsa: false, origem: null });
+  it('falta (por vencimento, sem vencimento no fim) e pagas (por dia)', () => {
+    const r = separarContas([it_('A', 'pago', 5, 9), it_('B', 'falta', 20), it_('C', 'a_confirmar', 3), it_('D', 'falta', null), it_('E', 'pago', 2, 2)]);
+    expect(r.falta.map((i) => i.nome)).toEqual(['C', 'B', 'D']);
+    expect(r.pagas.map((i) => i.nome)).toEqual(['E', 'A']);
+  });
+  it('mês futuro: tudo em falta', () => {
+    expect(separarContas([it_('A', 'falta', 5), it_('B', 'falta', 9)]).pagas).toEqual([]);
+  });
+  it('conta que é fatura: mesma pessoa e nome contém o banco (sem acento)', () => {
+    const cartoes = [{ banco: 'Neon', responsavel: 'Ariane' }, { banco: 'Itaú', responsavel: 'Matheus' }];
+    expect(contaEhFatura({ nome: 'Crédito Neon', responsavel: 'Ariane' }, cartoes)).toEqual({ banco: 'Neon', responsavel: 'Ariane' });
+    expect(contaEhFatura({ nome: 'Fatura itau', responsavel: 'Matheus' }, cartoes)).toEqual({ banco: 'Itaú', responsavel: 'Matheus' });
+    expect(contaEhFatura({ nome: 'Crédito Neon', responsavel: 'Matheus' }, cartoes)).toBeNull();
+    expect(contaEhFatura({ nome: 'Sabesp', responsavel: 'Ariane' }, cartoes)).toBeNull();
   });
 });

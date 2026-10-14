@@ -43,9 +43,10 @@ export function lerWebhook(corpo: unknown, cfg: ConfigEntrada, enviados: Readonl
   const ctx = (Object.values(m).find((x: any) => x?.contextInfo) as any)?.contextInfo;
   const mencoes: string[] = ctx?.mentionedJid ?? [];
   const mencionou = mencoes.some((j) => cfg.botJids.some((b) => usuario(b) === usuario(j)));
-  // sem \b: com acento ("botão") o \b do JS acha fronteira; aqui só não pode vir letra ou número depois
-  const prefixo = /^\s*bot(?![\p{L}\p{N}])[\s,:;.!-]*/iu;
-  // E1-M9: imagem/vídeo com legenda "bot ..." chama o bot (que ainda só lê texto)
+  // sem \b: com acento ("botão") o \b do JS acha fronteira; aqui só não pode vir letra ou número depois.
+  // O bot se chama Zeca (14/10/2026); "bot" continua valendo
+  const prefixo = /^\s*(?:bot|zeca)(?![\p{L}\p{N}])[\s,:;.!-]*/iu;
+  // E1-M9: imagem/vídeo com legenda "bot ..."/"zeca ..." chama o bot (que ainda só lê texto)
   const legenda: string | null = m.imageMessage?.caption ?? m.videoMessage?.caption ?? null;
   if (texto === null) return mencionou || (legenda !== null && prefixo.test(legenda)) ? { tipo: 'nao_texto', pessoa } : IGNORAR;
   // E2: "sim/não/número" sem "bot" — o bot decide se há proposta/lista pendente; frase comum segue ignorada

@@ -77,3 +77,18 @@ describe('pendências do E1 (auditoria 13/10)', () => {
       .toBe('WhatsApp HTTP 400: <grupo> não existe; número <número> inválido; <contato>');
   });
 });
+
+// 14/10/2026: o bot se chama Zeca (escolha do Matheus); "bot ..." continua valendo
+describe('nome do bot', () => {
+  it('"Zeca, ..." e "zeca ..." chamam o bot; o nome sai do texto', () => {
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'Zeca, quanto gastei com mercado?' }), cfg, new Set()))
+      .toEqual({ tipo: 'pergunta', p: { id: 'X1', pessoa: 'Ariane', texto: 'quanto gastei com mercado?' } });
+    expect(lerWebhook(msg({ participant: '222@lid', texto: 'zeca trilha' }), cfg, new Set())).toMatchObject({ tipo: 'pergunta', p: { texto: 'trilha' } });
+  });
+  it('"Zecão", "Zezeca" e "o zeca falou" não chamam', () => {
+    for (const t of ['Zecão chegou', 'Zezeca', 'o zeca falou']) expect(lerWebhook(msg({ participant: '222@lid', texto: t }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+  });
+  it('imagem com legenda "zeca ..." também chama', () => {
+    expect(lerWebhook(msg({ participant: '222@lid', tipo: { imageMessage: { caption: 'zeca o que é isso?' } } }), cfg, new Set())).toMatchObject({ tipo: 'nao_texto' });
+  });
+});

@@ -2,7 +2,7 @@
 // Os ingredientes vêm de getProjecaoBase (queries.ts). Tudo recebe a data de
 // referência `hoje` ('AAAA-MM-DD', fuso SP) — é o que permite calcular a previsão
 // "como se fosse" uma data passada e comparar com o que aconteceu.
-import { currentDateSP, mesLabel } from './format';
+import { currentDateSP, mesLabel, parseValorBR } from './format';
 
 /** compromissos cadastrados manualmente (aluguel, luz, água, financiamentos — a Pluggy não sabe "até quando") */
 export interface CompromissoManual {
@@ -237,6 +237,47 @@ export function aplicarCenario(base: ProjecaoBase, c: Cenario): ProjecaoBase {
     dataInicio: `${c.aPartirDe}-01`, mesesTotais: null, observacao: 'cenário (não gravado)', dataFim: null,
   });
   return { ...base, compromissosManuais: compromissos };
+}
+
+/** P1 (auditoria 13/10): "e se mudarmos de cidade em AAAA-MM?" — aluguel novo daquele mês em diante + custo da mudança. */
+export interface Mudanca { mes: string; aluguel: number; custo: number }
+
+export function cenarioMudanca(base: ProjecaoBase, m: Mudanca): ProjecaoBase {
+  const b = aplicarCenario(base, { aPartirDe: m.mes, categoria: 'Housing', valor: m.aluguel });
+  if (m.custo <= 0) return b;
+  const fim = `${m.mes}-01`;
+  return { ...b, compromissosManuais: [...b.compromissosManuais, {
+    id: -2, nome: 'Cenário: custo da mudança', categoria: 'Moving', valor: m.custo, responsavel: 'casal',
+    dataInicio: fim, mesesTotais: 1, observacao: 'cenário (não gravado)', dataFim: fim,
+  }] };
+}
+
+/**
+ * Comparação da tela: saldo em conta no fim de cada mês sem e com a mudança, do mês anterior a ela até o fim do
+ * horizonte (no máximo 8 linhas); o primeiro mês que fecha no vermelho com a mudança; e a diferença no último mês.
+ */
+export function resumoMudanca(sem: ProjecaoMes[], com: ProjecaoMes[], mes: string) {
+  const desde = addMonths(mes, -1);
+  const linhas = com
+    .map((c, i) => ({ mes: c.mes, mesLabel: c.mesLabel, sem: sem[i]?.saldoProjetado ?? 0, com: c.saldoProjetado }))
+    .filter((l) => l.mes >= desde)
+    .slice(0, 8);
+  const ultimo = com.length - 1;
+  return {
+    linhas,
+    primeiroVermelho: com.find((c) => c.saldoProjetado < 0)?.mes ?? null,
+    diferencaFim: ultimo >= 0 ? Math.round((com[ultimo].saldoProjetado - (sem[ultimo]?.saldoProjetado ?? 0)) * 100) / 100 : 0,
+    mesFim: ultimo >= 0 ? com[ultimo].mes : null,
+  };
+}
+
+/** Cenário vindo do link (?mudanca=AAAA-MM&aluguel=…&custo=…); qualquer coisa inválida = sem cenário. */
+export function lerMudanca(q: { mudanca?: string; aluguel?: string; custo?: string }): Mudanca | null {
+  const num = (s: string | undefined) => (s === undefined || s.trim() === '' ? 0 : parseValorBR(s));
+  if (!q.mudanca || !/^\d{4}-(0[1-9]|1[0-2])$/.test(q.mudanca)) return null;
+  const aluguel = num(q.aluguel), custo = num(q.custo);
+  if (!Number.isFinite(aluguel) || !Number.isFinite(custo) || aluguel < 0 || custo < 0) return null;
+  return { mes: q.mudanca, aluguel, custo };
 }
 
 /**

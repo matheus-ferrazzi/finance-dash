@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addMonths, aplicarCenario, avisosDeCadastro, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarCenario, cenarioMudanca, lerMudanca, resumoMudanca, avisosDeCadastro, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type EntradaReceita, type ProjecaoBase,
 } from '../../src/lib/previsao';
 
@@ -278,5 +278,45 @@ describe('aviso de cadastro desatualizado (N13)', () => {
   });
   it('compromisso que já acabou não conta', () => {
     expect(avisosDeCadastro([{ ...c('Velho', 'Housing', 100), dataFim: '2026-05-01' }], { Housing: 2000 }, '2026-10')).toEqual([]);
+  });
+});
+
+// auditoria 13/10 (P1): "e se mudarmos em mar/27?" — aluguel novo a partir do mês + custo da mudança só nele
+describe('cenarioMudanca', () => {
+  const aluguel = { id: 1, nome: 'Aluguel', categoria: 'Housing', valor: 2000, responsavel: 'casal',
+    dataInicio: '2026-09-01', mesesTotais: null, observacao: null, dataFim: null };
+  const base = () => baseFake({ compromissosManuais: [aluguel], despesaCasaPorCategoria: {} });
+  it('troca o aluguel a partir do mês e cobra o custo da mudança uma vez, no próprio mês', () => {
+    const p = computeProjecao(cenarioMudanca(base(), { mes: '2027-03', aluguel: 1200, custo: 3000 }), 8, '2026-10-09');
+    const mes = (ym: string) => p.find((m) => m.mes === ym)!.despesaManual;
+    expect([mes('2027-02'), mes('2027-03'), mes('2027-04')]).toEqual([2000, 4200, 1200]);
+  });
+  it('sem custo: só o aluguel muda', () => {
+    const p = computeProjecao(cenarioMudanca(base(), { mes: '2027-03', aluguel: 2500, custo: 0 }), 8, '2026-10-09');
+    expect(p.find((m) => m.mes === '2027-03')!.despesaManual).toBe(2500);
+  });
+  it('lê o cenário do link: mês válido e valores ≥ 0; o resto é ignorado', () => {
+    expect(lerMudanca({ mudanca: '2027-03', aluguel: '1800', custo: '4000,50' })).toEqual({ mes: '2027-03', aluguel: 1800, custo: 4000.5 });
+    expect(lerMudanca({ mudanca: '2027-03', aluguel: '1800' })).toEqual({ mes: '2027-03', aluguel: 1800, custo: 0 });
+    expect(lerMudanca({ mudanca: '2027-13', aluguel: '1800' })).toBeNull();
+    expect(lerMudanca({ mudanca: '2027-03', aluguel: '-5' })).toBeNull();
+    expect(lerMudanca({})).toBeNull();
+  });
+});
+
+describe('resumoMudanca (P1)', () => {
+  const pm = (mes: string, saldoProjetado: number) => ({ mes, mesLabel: mes, saldoProjetado } as any);
+  const sem = ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02'].map((m, i) => pm(m, 1000 + i * 100));
+  const com = ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02'].map((m, i) => pm(m, i < 2 ? 1000 + i * 100 : -200 * i));
+  it('linhas do mês anterior à mudança em diante; primeiro mês no vermelho e diferença no fim do horizonte', () => {
+    const r = resumoMudanca(sem, com, '2026-12');
+    expect(r.linhas.map((l) => [l.mes, l.sem, l.com])).toEqual([
+      ['2026-11', 1100, 1100], ['2026-12', 1200, -400], ['2027-01', 1300, -600], ['2027-02', 1400, -800]]);
+    expect(r.primeiroVermelho).toBe('2026-12');
+    expect(r.diferencaFim).toBe(-2200);
+    expect(r.mesFim).toBe('2027-02');
+  });
+  it('nenhum mês no vermelho: null', () => {
+    expect(resumoMudanca(sem, sem, '2026-12').primeiroVermelho).toBeNull();
   });
 });

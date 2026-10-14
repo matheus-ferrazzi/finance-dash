@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { debitoParaSairAte, niveisMeta, tabelaMeta } from '../../src/lib/meta';
+import { debitoParaSairAte, niveisMeta, projecaoComDebito, tabelaMeta } from '../../src/lib/meta';
 import type { ProjecaoBase } from '../../src/lib/previsao';
 
 // entra 5 mil; saem 3 mil de débito, 1,5 mil da casa e 1 mil do cartão: −500 por mês
@@ -59,5 +59,15 @@ describe('texto da meta', () => {
       .toBe('Para sair do vermelho até out/27: gastar até R$ 5000/mês no débito (R$ 1000 a menos que a média de hoje). Em set/26 foram R$ 4500: dentro da meta, é manter.');
     expect(textoMetaAlvo(5000, 6000, 'out/27', brl, { label: 'set/26', valor: 5400 }))
       .toBe('Para sair do vermelho até out/27: gastar até R$ 5000/mês no débito (R$ 1000 a menos que a média de hoje). Em set/26 foram R$ 5400.');
+  });
+});
+
+// Onda 5: a linha "com a meta" do gráfico da Previsão é a mesma projeção que decide a tabela da meta
+describe('projecaoComDebito', () => {
+  it('menos débito → saldo maior no fim; 24 meses', () => {
+    const p = projecaoComDebito(base(), 2000, '2026-10-14');
+    const atual = projecaoComDebito(base(), 3000, '2026-10-14');
+    expect(p).toHaveLength(24);
+    expect(p.at(-1)!.saldoProjetado).toBeGreaterThan(atual.at(-1)!.saldoProjetado);
   });
 });

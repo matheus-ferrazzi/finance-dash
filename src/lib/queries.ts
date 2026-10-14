@@ -11,7 +11,7 @@ import { agruparGastos, FIXO_DEBITO_CATS, grupoDaCategoria, type GrupoGasto } fr
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
 import { componentesPrevistos, type Componentes } from './backtest';
-import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
+import { calibrarValidada, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
 import { situacaoFatura, type UltimaFatura } from './faturas';
 import { periodoDaSemana } from './periodos';
@@ -782,7 +782,7 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
     if (real.receita === 0 && real.debito === 0) return null; // mês sem dado não calibra
     return componentesPrevistos(computeProjecao(base, 1, vesp)[1]).saldo - real.saldo;
   }));
-  return calibrar(erros.filter((e): e is number => e !== null), hoje);
+  return calibrarValidada(erros.filter((e): e is number => e !== null), hoje);
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */

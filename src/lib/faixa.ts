@@ -19,28 +19,39 @@ export function percentil(xs: number[], p: number): number {
   return i + 1 < s.length ? s[i] + f * (s[i + 1] - s[i]) : s[i];
 }
 
-/**
- * P2 (auditoria 13/10): cobertura fora da amostra — para cada mês, a faixa calibrada com os OUTROS meses
- * contém o erro dele? Dentro da amostra a faixa p10–p90 acerta ~80% por construção, o que não prova nada.
- */
-export function coberturaForaDaAmostra(erros: number[]): number {
-  if (erros.length < 2) return 0;
-  const acertos = erros.filter((e, i) => {
-    const outros = erros.filter((_, j) => j !== i);
-    return e >= percentil(outros, 10) - 1e-9 && e <= percentil(outros, 90) + 1e-9;
-  }).length;
-  return acertos / erros.length;
+/** Menos de 6 meses de erro: sem faixa (as decisões usam só o número provável). */
+export function calibrar(erros: number[], calculadaEm: string): Calibracao | null {
+  if (erros.length < 6) return null;
+  return { p10: r2(percentil(erros, 10)), p90: r2(percentil(erros, 90)), n: erros.length, calculadaEm };
 }
 
 /**
- * Menos de 6 meses de erro: sem faixa (as decisões usam só o número provável). Com 6+, a faixa só liga se a
- * cobertura fora da amostra ficar entre 70% e 90% (spec F2a): fora disso ela mentiria sobre a incerteza.
+ * P2 (auditoria 13/10): cobertura fora da amostra, como o aceite da spec (e o coberturaH1 do backtest): cada
+ * mês (em ordem) é testado com a faixa calibrada só nos meses ANTERIORES (mínimo 6). Calibrar e medir nos
+ * mesmos meses daria ~80% por construção.
  */
-export function calibrar(erros: number[], calculadaEm: string): Calibracao | null {
-  if (erros.length < 6) return null;
-  const cobertura = coberturaForaDaAmostra(erros);
+export function coberturaAnteriores(erros: number[]): { dentro: number; total: number } {
+  let dentro = 0, total = 0;
+  erros.forEach((e, i) => {
+    const c = calibrar(erros.slice(0, i), '');
+    if (!c) return;
+    total++;
+    if (e >= c.p10 && e <= c.p90) dentro++;
+  });
+  return { dentro, total };
+}
+
+/**
+ * A faixa que vai para a tela: só liga se acertou entre 70% e 90% dos meses testados fora da amostra (spec
+ * F2a). Com 6 meses ainda não há mês para testar — fica desligada até o 7º (decisão de 13/10).
+ */
+export function calibrarValidada(erros: number[], calculadaEm: string): Calibracao | null {
+  const { dentro, total } = coberturaAnteriores(erros);
+  if (total === 0) return null;
+  const cobertura = dentro / total;
   if (cobertura < 0.7 || cobertura > 0.9) return null;
-  return { p10: r2(percentil(erros, 10)), p90: r2(percentil(erros, 90)), n: erros.length, calculadaEm, cobertura: r2(cobertura) };
+  const c = calibrar(erros, calculadaEm);
+  return c && { ...c, cobertura: r2(cobertura) };
 }
 
 // erro todo de um lado (previsão sempre pessimista, p90 < 0) inverteria a faixa: o pior caso ficaria

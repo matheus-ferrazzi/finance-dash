@@ -42,7 +42,9 @@ describe.skipIf(!url)('getCalibracao (integração)', () => {
   });
 
   it('revisão final: chamadas simultâneas no 1º acesso do dia esperam o mesmo cálculo', async () => {
-    const [a, b] = await Promise.all([queries.getCalibracao('2032-07-15'), queries.getCalibracao('2032-07-15')]);
+    // outro mês tira junho do cache; junho de novo = 1º acesso (a janela de julho fica fora dos 70–90% do P2)
+    await queries.getCalibracao('2032-07-15');
+    const [a, b] = await Promise.all([queries.getCalibracao('2032-06-20'), queries.getCalibracao('2032-06-20')]);
     expect(a).not.toBeNull();
     expect(a).toBe(b);
   });

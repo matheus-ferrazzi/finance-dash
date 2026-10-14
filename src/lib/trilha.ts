@@ -215,7 +215,8 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
       { n: 1, titulo: 'Sair das dívidas', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
       { n: 2, titulo: 'Fazer sobrar', status: st(2, f2ok), quando: f2ok ? null : q2, proximoPasso: d.textoMeta },
       { n: 3, titulo: 'Reserva de emergência', status: st(3, f3ok), quando: q3, proximoPasso: p3 },
-      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar ${Math.round(metas.metaPatrimonio * 1000) / 10}% do que entra (${marcaDinheiro(receitaMedia * metas.metaPatrimonio)}/mês).` },
+      // F3 (d): o passo diz o % de hoje (a faixa do topo só mostra o passo)
+      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Hoje: ${Math.round(pct * 100)}% do que entra vai para aplicação. Aplicar ${Math.round(metas.metaPatrimonio * 1000) / 10}% do que entra (${marcaDinheiro(receitaMedia * metas.metaPatrimonio)}/mês).` },
     ],
     reserva: { meta, aplicado: d.aplicado, ritmo, meses: metas.mesesReserva },
     patrimonio: { pct, meta: metas.metaPatrimonio },

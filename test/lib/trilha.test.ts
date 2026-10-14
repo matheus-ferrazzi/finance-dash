@@ -216,3 +216,9 @@ describe('pendências do F3 (auditoria 13/10)', () => {
     expect(r).toEqual([{ chave: 'renegociação de pendências|B', nome: 'renegociação de pendências', banco: 'B', plano: 8, valorParcela: 100, restantes: 5, fim: '2027-03' }]);
   });
 });
+
+// F3 (d): na fase 4 a faixa do topo não dizia quanto já se aplica
+it('F3 (d): o próximo passo da fase 4 diz o % aplicado de hoje', () => {
+  const t = avaliarTrilha(dados({ aplicado: 5000 }));
+  expect(t.fases[3].proximoPasso).toMatch(/^Hoje: 10% do que entra vai para aplicação\. /);
+});

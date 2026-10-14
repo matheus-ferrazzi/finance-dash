@@ -47,12 +47,12 @@ describe('montarMes — contas fixas', () => {
   it('conta que soma: curso 300 + 50 no mesmo mês = 350; MEI em duas guias', () => {
     const r = montarMes('2026-08', [
       conta({ id: 1, nome: 'Curso', padrao: 'Clinica', valorPrevisto: 300, somar: true }),
-      conta({ id: 2, nome: 'MEI', padrao: 'DARF|MINISTERIO DA FAZENDA', valorPrevisto: 183.65, somar: true }),
+      conta({ id: 2, nome: 'MEI', padrao: 'DARF|MINISTERIO DA FAZENDA', valorPrevisto: 177.60, somar: true }),
     ], [], [
       mov('2026-08-03', 300, 'PIX ENVIADO Clinica Exemplo'), mov('2026-08-03', 50, 'PIX ENVIADO Clinica Exemplo'),
-      mov('2026-08-03', 86.05, 'PAGAMENTO DARF EM CANAIS'), mov('2026-08-03', 97.60, 'PAGAMENTO DARF EM CANAIS'),
+      mov('2026-08-03', 80.00, 'PAGAMENTO DARF EM CANAIS'), mov('2026-08-03', 97.60, 'PAGAMENTO DARF EM CANAIS'),
     ]);
-    expect(r.itens.map((i) => i.pago)).toEqual([350, 183.65]);
+    expect(r.itens.map((i) => i.pago)).toEqual([350, 177.60]);
   });
 
   it('banco da conta filtra: fatura do Nubank conta só a linha do Nubank, não o espelho no Santander', () => {

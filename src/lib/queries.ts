@@ -1454,14 +1454,20 @@ async function gravarMudancas(c: Cli, muda: { r: any; novo: { categoria: string;
   }
 }
 
-export async function previaRegra(p: PedidoRegra): Promise<{ afetados: number; porCategoria: Record<string, number> } | { erro: string }> {
+export async function previaRegra(p: PedidoRegra): Promise<{
+  afetados: number; porCategoria: Record<string, number>; mudancasDeClasse: { de: string; para: string; n: number }[];
+} | { erro: string }> {
   const alvo = await resolver(writerPool, p);
   if ('erro' in alvo) return alvo;
   const outras = (await regrasDoPainel(writerPool)).filter((r) => !(r.tipo === alvo.tipo && r.chave === alvo.chave));
   const muda = await planejar(writerPool, alvo.tipo, alvo.chave, [...outras, { id: Number.MAX_SAFE_INTEGER, tipo: alvo.tipo, chave: alvo.chave, categoria: p.categoria }]);
   const porCategoria: Record<string, number> = {};
   for (const { r } of muda) porCategoria[r.categoria] = (porCategoria[r.categoria] ?? 0) + 1;
-  return { afetados: muda.length, porCategoria };
+  // F4 (pendência): mudar a categoria pode mudar a classe (uma entrada "receita" vira "estorno"): a prévia diz
+  const classes = new Map<string, number>();
+  for (const { r, novo } of muda) if (novo.classe !== r.classe) classes.set(`${r.classe}|${novo.classe}`, (classes.get(`${r.classe}|${novo.classe}`) ?? 0) + 1);
+  const mudancasDeClasse = Array.from(classes, ([k, n]) => { const [de, para] = k.split('|'); return { de, para, n }; });
+  return { afetados: muda.length, porCategoria, mudancasDeClasse };
 }
 
 export async function salvarRegra(p: PedidoRegra): Promise<{ id: number; afetados: number } | { erro: string }> {

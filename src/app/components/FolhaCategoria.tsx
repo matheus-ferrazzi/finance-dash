@@ -17,7 +17,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
   const [busca, setBusca] = useState('');
   const [tipo, setTipo] = useState<Tipo>('lancamento');
   const [texto, setTexto] = useState(lanc.sugestaoTexto);
-  const [previa, setPrevia] = useState<{ afetados: number; porCategoria: Record<string, number> } | null>(null);
+  const [previa, setPrevia] = useState<{ afetados: number; porCategoria: Record<string, number>; mudancasDeClasse?: { de: string; para: string; n: number }[] } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [divida, setDivida] = useState<string | null>(null);
@@ -119,6 +119,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
           {`Muda ${previa.afetados} lançamento${previa.afetados === 1 ? '' : 's'}`
             + (previa.afetados > 0 ? ` (${Object.entries(previa.porCategoria).map(([c, n]) => `${n} de ${traduzCategoria(c)}`).join(', ')})` : '')
             + ` → ${traduzCategoria(categoria)}`}
+          {textoMudancaClasse(previa.mudancasDeClasse ?? []) && <span className="block text-warn">{textoMudancaClasse(previa.mudancasDeClasse ?? [])}</span>}
         </p>
       )}
       {erro && <p className="text-xs text-despesa">{erro}</p>}
@@ -131,6 +132,16 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
       {divida && <p className="text-xs text-muted">{divida}</p>}
     </div>
   );
+}
+
+const NOME_CLASSE: Record<string, string> = {
+  receita: 'receita', despesa: 'gasto', estorno: 'estorno', pagamento_fatura: 'pagamento de fatura',
+  transferencia_interna: 'transferência entre contas', aporte: 'aplicação',
+};
+/** F4 (pendência): a prévia diz quando a categoria nova muda a classe (o que conta como receita/gasto). */
+export function textoMudancaClasse(ms: readonly { de: string; para: string; n: number }[]): string | null {
+  if (!ms.length) return null;
+  return ms.map(({ de, para, n }) => `${n} ${n === 1 ? 'deixa' : 'deixam'} de contar como ${NOME_CLASSE[de] ?? de} e ${n === 1 ? 'passa' : 'passam'} a contar como ${NOME_CLASSE[para] ?? para}.`).join(' ');
 }
 
 /** F4 (pendência): Esc fecha a folha. */

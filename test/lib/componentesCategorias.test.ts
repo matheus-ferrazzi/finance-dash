@@ -73,3 +73,12 @@ describe('pendências do F4 (auditoria 13/10)', () => {
     expect(fechou).toBe(1);
   });
 });
+
+describe('texto da prévia (F4)', () => {
+  it('mudança de classe aparece em português; sem mudança, nada', async () => {
+    const { textoMudancaClasse } = await import('../../src/app/components/FolhaCategoria');
+    expect(textoMudancaClasse([{ de: 'receita', para: 'estorno', n: 1 }])).toBe('1 deixa de contar como receita e passa a contar como estorno.');
+    expect(textoMudancaClasse([{ de: 'despesa', para: 'transferencia_interna', n: 3 }])).toBe('3 deixam de contar como gasto e passam a contar como transferência entre contas.');
+    expect(textoMudancaClasse([])).toBeNull();
+  });
+});

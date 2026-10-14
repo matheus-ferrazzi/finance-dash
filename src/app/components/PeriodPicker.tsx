@@ -2,7 +2,7 @@
 
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { mesLongo } from '@/lib/format';
+import { mesLabel, mesLongo } from '@/lib/format';
 import { mesNoLimite, podeIrParaMesSeguinte, temSeletorDeMes } from '@/lib/links';
 
 function shift(mes: string, delta: number): string {
@@ -15,23 +15,12 @@ function mesAtualBR(): string {
   return `${p.find((x) => x.type === 'year')!.value}-${p.find((x) => x.type === 'month')!.value}`;
 }
 
-const PRESETS = [
-  { key: '7d', label: '7 dias' },
-  { key: '15d', label: '15 dias' },
-  { key: '30d', label: '30 dias' },
-  { key: 'mes', label: 'Mês' },
-] as const;
-
 export function PeriodPicker() {
   const path = usePathname();
   const sp = useSearchParams();
   const router = useRouter();
 
   const atual = mesAtualBR();
-  const p = sp.get('p');
-  // atalhos 7/15/30 dias só fazem sentido em Gastos; nas outras telas é sempre o mês
-  const emGastos = path === '/gastos';
-  const kind = emGastos && (p === '7d' || p === '15d' || p === '30d') ? p : 'mes';
   const rawMes = sp.get('mes');
   // o seletor mostra o mesmo mês que a tela usa (a home não passa do mês atual, por exemplo)
   const mes = mesNoLimite(rawMes, path, atual);
@@ -45,43 +34,25 @@ export function PeriodPicker() {
     const s = params.toString();
     router.push(path + (s ? `?${s}` : ''));
   }
-  const selectKind = (k: string) => (k === 'mes' ? setParams({ p: null }) : setParams({ p: k, mes: null }));
   const goMonth = (novo: string) => setParams({ p: null, mes: novo === atual ? null : novo });
   const podeAvancar = shift(mes, 1) <= (podeIrParaMesSeguinte(path) ? shift(atual, 1) : atual);
   if (!temSeletorDeMes(path)) return null;
 
+  // Onda 5: os atalhos 7/15/30 dias moram na própria tela Gastos; aqui é só o mês (curto no celular)
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {emGastos && (
-      <div className="inline-flex rounded-xl border border-border bg-surface p-1">
-        {PRESETS.map((pr) => (
-          <button
-            key={pr.key}
-            onClick={() => selectKind(pr.key)}
-            className={`px-2 sm:px-2.5 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${
-              kind === pr.key ? 'bg-surface-3 text-text' : 'text-muted hover:text-text'
-            }`}
-          >
-            {pr.label}
-          </button>
-        ))}
+    <div className="flex items-center">
+      <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
+        <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3" aria-label="Mês anterior">
+          <ChevronLeft size={16} />
+        </button>
+        <span className="min-w-[3.2rem] text-center text-sm font-medium capitalize sm:min-w-[6.5rem]"><span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span></span>
+        <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-7 place-items-center rounded-lg text-muted enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
+          <ChevronRight size={16} />
+        </button>
+        {mes !== atual && (
+          <button onClick={() => goMonth(atual)} className="ml-0.5 rounded-lg px-1.5 py-1 text-xs text-accent hover:bg-accent/10">hoje</button>
+        )}
       </div>
-      )}
-
-      {kind === 'mes' && (
-        <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
-          <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3" aria-label="Mês anterior">
-            <ChevronLeft size={16} />
-          </button>
-          <span className="min-w-[6.5rem] text-center text-sm font-medium capitalize">{mesLongo(mes)}</span>
-          <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-7 place-items-center rounded-lg text-muted enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
-            <ChevronRight size={16} />
-          </button>
-          {mes !== atual && (
-            <button onClick={() => goMonth(atual)} className="ml-0.5 rounded-lg px-1.5 py-1 text-xs text-accent hover:bg-accent/10">hoje</button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

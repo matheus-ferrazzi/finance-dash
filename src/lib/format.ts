@@ -147,3 +147,14 @@ export function diasAte(d: string | Date | null | undefined): number | null {
 export function faltamMeses(n: number): string {
   return n === 1 ? 'falta 1 mês' : `faltam ${n} meses`;
 }
+
+const NUNCA_SINCRONIZOU = 99999;
+/** Há quanto tempo o banco sincronizou, em texto curto (selo e bolinha de sincronização). */
+export function textoHoras(h: number): string {
+  if (h >= NUNCA_SINCRONIZOU) return 'nunca sincronizou';
+  if (h < 1) return `há ${Math.max(1, Math.round(h * 60))} min`;
+  if (h < 48) return `há ${Math.round(h)}h`;
+  return `há ${Math.round(h / 24)} dias`;
+}
+/** Onda 5: cor da bolinha de sincronização pelo banco mais atrasado (as faixas do selo: < 24 h, < 48 h). */
+export const corDaSincronizacao = (h: number): 'bom' | 'atencao' | 'ruim' => (h < 24 ? 'bom' : h < 48 ? 'atencao' : 'ruim');

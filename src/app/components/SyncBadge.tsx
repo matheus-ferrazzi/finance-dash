@@ -3,17 +3,10 @@
 import { useState } from 'react';
 import { RefreshCw, Info, X } from 'lucide-react';
 
-const NUNCA = 99999;
+import { textoHoras as fmtH } from '@/lib/format';
 
 interface Conn { banco: string; responsavel: string; horas: number; }
 interface Status { oldestH: number; conns: Conn[] }
-
-function fmtH(h: number): string {
-  if (h >= NUNCA) return 'nunca sincronizou';
-  if (h < 1) return `há ${Math.max(1, Math.round(h * 60))} min`;
-  if (h < 48) return `há ${Math.round(h)}h`;
-  return `há ${Math.round(h / 24)} dias`;
-}
 function toneCls(h: number): string {
   return h < 24 ? 'text-accent' : h < 48 ? 'text-warn' : 'text-despesa';
 }

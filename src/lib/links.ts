@@ -45,9 +45,12 @@ export function podeIrParaMesSeguinte(path: string): boolean {
   return path === '/contas' || path === '/previsibilidade';
 }
 
-/** O seletor de mês do topo: a Previsão navega pelas setas do próprio detalhe; Simulador, Trilha e Regras não têm mês. */
+/**
+ * O seletor de mês do topo: a Previsão navega pelas setas do próprio detalhe; Simulador, Trilha e Regras não têm mês;
+ * Faturas é "agora" (Onda 5: o mês do topo não mudava nada nela).
+ */
 export function temSeletorDeMes(path: string): boolean {
-  return path !== '/previsibilidade' && path !== '/simulador' && path !== '/trilha' && path !== '/regras';
+  return !['/previsibilidade', '/simulador', '/trilha', '/regras', '/faturas'].includes(path);
 }
 
 /** Mês que a tela de `path` pode mostrar: até o seguinte em Contas/Previsão, até o atual no resto. */

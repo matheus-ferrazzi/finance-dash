@@ -312,11 +312,19 @@ describe('resumoMudanca (P1)', () => {
     const r = resumoMudanca(sem, com, '2026-12');
     expect(r.linhas.map((l) => [l.mes, l.sem, l.com])).toEqual([
       ['2026-11', 1100, 1100], ['2026-12', 1200, -400], ['2027-01', 1300, -600], ['2027-02', 1400, -800]]);
-    expect(r.primeiroVermelho).toBe('2026-12');
+    expect(r.vermelhoPorCausa).toBe('2026-12');
     expect(r.diferencaFim).toBe(-2200);
     expect(r.mesFim).toBe('2027-02');
   });
   it('nenhum mês no vermelho: null', () => {
-    expect(resumoMudanca(sem, sem, '2026-12').primeiroVermelho).toBeNull();
+    expect(resumoMudanca(sem, sem, '2026-12').vermelhoPorCausa).toBeNull();
+  });
+  it('mês que já fecha no vermelho sem a mudança não é culpa dela (visto em produção em 14/10)', () => {
+    const jaVermelho = sem.map((m, i) => (i === 0 ? { ...m, saldoProjetado: -300 } : m));
+    const comVermelho = com.map((m, i) => (i === 0 ? { ...m, saldoProjetado: -300 } : m));
+    const r = resumoMudanca(jaVermelho, comVermelho, '2026-12');
+    expect(r.vermelhoPorCausa).toBe('2026-12');
+    expect(r.vermelhoSemMudar).toBe(true);
+    expect(resumoMudanca(jaVermelho, jaVermelho, '2026-12')).toMatchObject({ vermelhoPorCausa: null, vermelhoSemMudar: true });
   });
 });

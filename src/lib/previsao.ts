@@ -265,7 +265,10 @@ export function resumoMudanca(sem: ProjecaoMes[], com: ProjecaoMes[], mes: strin
   const ultimo = com.length - 1;
   return {
     linhas,
-    primeiroVermelho: com.find((c) => c.saldoProjetado < 0)?.mes ?? null,
+    // só o que a mudança causa: mês que fecha no vermelho com ela e não fecharia sem ela (out/26 já fechava
+    // negativo em 14/10 e aparecia como "com a mudança, out/26 fecha no vermelho")
+    vermelhoPorCausa: com.find((c, i) => c.saldoProjetado < 0 && (sem[i]?.saldoProjetado ?? 0) >= 0)?.mes ?? null,
+    vermelhoSemMudar: sem.some((s) => s.saldoProjetado < 0),
     diferencaFim: ultimo >= 0 ? Math.round((com[ultimo].saldoProjetado - (sem[ultimo]?.saldoProjetado ?? 0)) * 100) / 100 : 0,
     mesFim: ultimo >= 0 ? com[ultimo].mes : null,
   };

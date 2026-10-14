@@ -51,9 +51,10 @@ export function CenarioMudanca({ mudanca, aluguelAtual, resumo, mesMinimo, indiv
       {mudanca && resumo && (
         <div className="fadein mt-4">
           <p className="text-sm">
-            {resumo.primeiroVermelho
-              ? <>Com a mudança, <b className="text-down">{mesLabel(resumo.primeiroVermelho)}</b> fecha no vermelho.</>
-              : <>Com a mudança, nenhum mês dos próximos 24 fecha no vermelho.</>}
+            {resumo.vermelhoPorCausa
+              ? <>A mudança leva <b className="text-down">{mesLabel(resumo.vermelhoPorCausa)}</b> para o vermelho.</>
+              : <>A mudança não leva nenhum mês para o vermelho.</>}
+            {resumo.vermelhoSemMudar && <> (Há meses que já fecham no vermelho sem ela.)</>}
             {resumo.mesFim && <> Em {mesLabel(resumo.mesFim)}, a conta teria <span className="tnum money">{brl(Math.abs(resumo.diferencaFim))}</span> {resumo.diferencaFim < 0 ? 'a menos' : 'a mais'} do que sem mudar.</>}
           </p>
           <table className="mt-3 w-full text-sm">

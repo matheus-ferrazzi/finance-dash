@@ -1589,15 +1589,17 @@ export async function marcarDivida(
   let nome: string;
   if (p.tipo === 'divida') {
     const [l] = await q<any>(
-      `SELECT descricao, COALESCE(banco,'—') AS banco, classe, forma_pagamento, tipo_movimento FROM financas_lancamentos WHERE id_transacao = $1`,
+      `SELECT descricao, COALESCE(banco,'—') AS banco, classe, forma_pagamento, tipo_movimento, parcela_total FROM financas_lancamentos WHERE id_transacao = $1`,
       [p.idTransacao],
     );
     if (!l) return { erro: 'Lançamento não encontrado.' };
     // a mesma seleção da trilha (getTrilhaDados): receita ou pagamento de fatura pela conta nunca entram
     const entra = l.classe === 'despesa' || (l.classe === 'pagamento_fatura' && l.forma_pagamento === 'Crédito' && l.tipo_movimento === 'Saída');
     if (!entra) return { erro: 'Só despesa ou parcela no cartão entra na trilha.' };
-    chave = chaveDivida(l.descricao ?? '', l.banco);
-    nome = chave.split('|')[0];
+    // F4b: parcelamento marca só aquele plano (antes marcava todos de mesma descrição no banco)
+    const base = chaveDivida(l.descricao ?? '', l.banco);
+    chave = Number(l.parcela_total) > 1 ? `${base}#${Number(l.parcela_total)}` : base;
+    nome = base.split('|')[0];
   } else {
     if (!p.chave || !p.chave.includes('|')) return { erro: 'Dívida inválida.' };
     chave = p.chave;

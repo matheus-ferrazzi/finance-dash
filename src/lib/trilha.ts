@@ -49,7 +49,11 @@ export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: Marcas
   const grupos = new Map<string, LancDivida[]>();
   for (const l of lancs) {
     const k = chaveDivida(l.descricao, l.banco);
-    if (marcas.nao.has(k) || !(ehDivida(l.descricao, l.categoria) || marcas.sim.has(k))) continue;
+    // F4b: a marca pode ser do plano (chave#parcelas): vale só para aquele parcelamento
+    const kp = l.parcelaTotal ? `${k}#${l.parcelaTotal}` : null;
+    const nao = marcas.nao.has(k) || (kp !== null && marcas.nao.has(kp));
+    const sim = marcas.sim.has(k) || (kp !== null && marcas.sim.has(kp));
+    if (nao || !(ehDivida(l.descricao, l.categoria) || sim)) continue;
     const g = `${k}#${l.parcelaTotal ?? ''}`;
     grupos.set(g, [...(grupos.get(g) ?? []), l]);
   }

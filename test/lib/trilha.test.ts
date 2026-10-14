@@ -222,3 +222,10 @@ it('F3 (d): o próximo passo da fase 4 diz o % aplicado de hoje', () => {
   const t = avaliarTrilha(dados({ aplicado: 5000 }));
   expect(t.fases[3].proximoPasso).toMatch(/^Hoje: 10% do que entra vai para aplicação\. /);
 });
+
+// F4b (pendência): marcar "é dívida" num parcelamento comum marcava junto os outros de mesma descrição no banco
+it('F4b: marca "é dívida" com o plano vale só para aquele parcelamento', () => {
+  const l = (data: string, parcelaTotal: number) => ({ descricao: 'LOJA X', categoria: 'Shopping', banco: 'B', forma: 'Crédito', data, valor: 50, parcelaTotal });
+  const r = agruparDividas([l('2026-11-05', 3), l('2026-12-05', 3), l('2026-11-07', 5)], '2026-10-15', { nao: new Set(), sim: new Set(['loja x|B#3']) });
+  expect(r.map((d) => [d.plano, d.restantes])).toEqual([[3, 2]]);
+});

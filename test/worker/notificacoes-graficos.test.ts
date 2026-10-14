@@ -144,3 +144,19 @@ describe('rótulo das barras', () => {
     expect(s).toContain('>Mercado<');
   });
 });
+
+// visto no PNG de 14/10: os rótulos "gasto" e "o que cabe" caíam em cima das retas tracejadas
+describe('rótulos do diário fora das retas', () => {
+  const num = (s: string, re: RegExp) => Number(s.match(re)![1]);
+  it('"o que cabe" fica abaixo da reta quando o ritmo vai além (e acima quando não); "gasto" abaixo do ponto', () => {
+    const d = { mesLabel: 'out/26', fechaCom: -500, diasRestantes: 17, ritmoSeguroDia: 100, ritmoAtualDia: 180, contas: [],
+      serie: [{ dia: 1, acumulado: 0 }, { dia: 14, acumulado: 2500 }], cabeNoMes: 4200, diasNoMes: 31 };
+    const s = graficoDiario(d)!;
+    const reta = s.match(/<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#[0-9A-Fa-f]+" stroke-width="3" stroke-dasharray="10 8"/)!.slice(1).map(Number);
+    const xr = num(s, /<text x="([\d.]+)" y="[\d.]+"[^>]*>o que cabe</), yr = num(s, /<text x="[\d.]+" y="([\d.]+)"[^>]*>o que cabe</);
+    const yLinha = reta[1] + ((reta[3] - reta[1]) * (xr + 75 - reta[0])) / (reta[2] - reta[0]);
+    expect(yr).toBeGreaterThan(yLinha + 20); // abaixo da reta (o ritmo projetado passa por cima)
+    const yPonto = num(s, /<circle cx="[\d.]+" cy="([\d.]+)"/);
+    expect(num(s, /<text x="[\d.]+" y="([\d.]+)"[^>]*>gasto /)).toBeGreaterThan(yPonto + 20);
+  });
+});

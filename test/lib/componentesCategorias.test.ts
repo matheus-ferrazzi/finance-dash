@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FormCategoria } from '../../src/app/components/FolhaCategoria';
+// a folha usa o router do Next (só para atualizar a lista ao fechar): no render estático, um router falso
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {} }) }));
 import { ListaRegras } from '../../src/app/components/ListaRegras';
 
 const lanc = { id: 't1', data: '2026-10-05', valor: 42, descricao: 'PIX LOJA DO BICHO', categoria: 'Shopping', origem: 'banco' as const, temDoc: true, nomeContraparte: 'Loja do Bicho Ltda', sugestaoTexto: 'PIX LOJA DO BICHO', maisUsadas: ['Groceries'] };
@@ -49,5 +51,25 @@ describe('tela regras: seção trilha', () => {
   it('sem ajustes: mensagem', async () => {
     const { ListaAjustesTrilha } = await import('../../src/app/components/AjustesTrilha');
     expect(renderToStaticMarkup(createElement(ListaAjustesTrilha, { ajustes: { marcacoes: [], metas: [] } }))).toContain('Nenhum ajuste da trilha');
+  });
+});
+
+describe('pendências do F4 (auditoria 13/10)', () => {
+  it('chips de categoria com 44 px de toque; busca recebe o foco ao abrir', () => {
+    const h = renderToStaticMarkup(createElement(FormCategoria, { lanc, onSalvo: () => {} }));
+    expect(h).not.toContain('min-h-[36px]');
+    expect(h).toMatch(/<button[^>]*min-h-\[44px\][^>]*>Mercado<\/button>/);
+    expect(h).toMatch(/<input[^>]*autofocus/i);
+  });
+  it('a folha é um diálogo modal com rótulo (leitor de tela) e fecha com Esc', async () => {
+    const { FolhaCategoria, fecharComEsc } = await import('../../src/app/components/FolhaCategoria');
+    const h = renderToStaticMarkup(createElement(FolhaCategoria, { id: 't1', onFechar: () => {} }));
+    expect(h).toContain('role="dialog"');
+    expect(h).toContain('aria-modal="true"');
+    expect(h).toContain('aria-label="Mudar categoria"');
+    let fechou = 0;
+    fecharComEsc(() => { fechou++; })({ key: 'Escape' } as KeyboardEvent);
+    fecharComEsc(() => { fechou++; })({ key: 'a' } as KeyboardEvent);
+    expect(fechou).toBe(1);
   });
 });

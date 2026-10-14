@@ -123,4 +123,13 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     expect((await queries.getMetasTrilha()).mesesReserva).toBe(6);
     await queries.apagarMeta('meta_patrimonio');
   });
+
+  // F4 (pendência): "Agora:" mostrava a categoria crua; as telas usam categoria_efetiva (regras antigas nas vagas)
+  it('F4: "Agora:" com a categoria que as telas mostram (regra antiga numa categoria vaga)', async () => {
+    await pool.query(readFileSync('db/migrations/005_regras_por_documento.sql', 'utf8'));
+    await pool.query(`INSERT INTO financas_regras_categoria (padrao, contraparte_doc, categoria) VALUES ('PADARIA DO ZE F4', NULL, 'Groceries')`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, classe, banco, responsavel)
+      VALUES ('f4ag', '2046-05-01', 12, 'PIX PADARIA DO ZE F4', 'Transfer - PIX', 'despesa', 'B', 'X')`);
+    expect((await queries.getLancamentoParaCorrigir('f4ag'))!.categoria).toBe('Groceries');
+  });
 });

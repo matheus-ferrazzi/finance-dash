@@ -1530,7 +1530,9 @@ export async function getLancamentoParaCorrigir(id: string): Promise<LancCorrigi
   const leitor: Cli = { query: (t, p) => q<any>(t, p).then((rows) => ({ rows })) };
   const [rows, regras, usadas] = await Promise.all([
     q<any>(
-      `SELECT id_transacao, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao, categoria,
+      // F4 (pendência): "Agora:" com a categoria que as telas mostram (categoria_efetiva aplica as regras antigas nas vagas)
+      `SELECT id_transacao, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao,
+              categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
               COALESCE(categoria_banco, categoria) AS categoria_banco, contraparte_doc, contraparte_nome
        FROM financas_lancamentos WHERE id_transacao = $1`,
       [id],

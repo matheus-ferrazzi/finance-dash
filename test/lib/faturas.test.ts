@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cicloAtual, cicloPedido, cicloQueFechaEm, mesDaUltimaFechada, ordenarPorPedido, situacaoFatura, totalAPagar } from '../../src/lib/faturas';
+import { cicloAtual, cicloPedido, proximosVencimentos, cicloQueFechaEm, mesDaUltimaFechada, ordenarPorPedido, situacaoFatura, totalAPagar } from '../../src/lib/faturas';
 
 // auditoria 13/10 (N4): a fatura é a do histórico (a última fechada), não o saldo devedor do cartão
 describe('situação da última fatura fechada', () => {
@@ -80,5 +80,33 @@ describe('ciclo pedido no link (P3)', () => {
   it('AAAA-MM: a fatura que fechou naquele mês; sem pedido: null', () => {
     expect(cicloPedido('2026-10', '2026-09-20', '2026-10-14')?.end).toBe(ms('2026-10-20'));
     expect(cicloPedido(undefined, '2026-09-20', '2026-10-14')).toBeNull();
+  });
+});
+
+// Onda 5 (Faturas): linha do tempo — fechadas não pagas e o ciclo em curso de cada cartão, pela data de vencimento
+describe('próximos vencimentos (Onda 5)', () => {
+  const u = (vencimento: string, total: number, pago: number, situacao: any, falta: number) => ({ vencimento, total, pago, parcelado: 0, situacao, falta });
+  it('fechada a vencer + ciclo em curso, ordenados pela data; vencimento do ciclo = mesmo dia, mês seguinte ao fechamento', () => {
+    const v = proximosVencimentos([
+      { banco: 'Nubank', responsavel: 'Matheus', fechamento: '2026-09-30', ultima: u('2026-10-17', 500, 0, 'a_vencer', 500), somaCiclo: 120 },
+      { banco: 'Neon', responsavel: 'Ariane', fechamento: '2026-09-29', ultima: u('2026-10-05', 80, 80, 'paga', 0), somaCiclo: 60 },
+    ], '2026-10-14');
+    expect(v.map((x) => [x.banco, x.situacao, x.vence, x.valor, x.ciclo])).toEqual([
+      ['Nubank', 'fechada', '2026-10-17', 500, 'fechada'],
+      ['Neon', 'parcial', '2026-11-05', 60, '2026-10'],
+      ['Nubank', 'parcial', '2026-11-17', 120, '2026-10'],
+    ]);
+    expect(v[1].fecha).toBe('2026-10-29');
+  });
+  it('atrasada vem primeiro; sem fatura no histórico: vencimento desconhecido (fica no fim)', () => {
+    const v = proximosVencimentos([
+      { banco: 'Inter', responsavel: 'Matheus', fechamento: '2026-09-10', ultima: null, somaCiclo: 40 },
+      { banco: 'Santander', responsavel: 'Matheus', fechamento: '2026-09-28', ultima: u('2026-10-04', 90, 0, 'atrasada', 90), somaCiclo: 0 },
+    ], '2026-10-14');
+    expect(v.map((x) => [x.banco, x.situacao, x.vence])).toEqual([['Santander', 'atrasada', '2026-10-04'], ['Inter', 'parcial', null]]);
+  });
+  it('ciclo em curso sem compra não aparece; nenhum cartão = lista vazia', () => {
+    expect(proximosVencimentos([{ banco: 'Neon', responsavel: 'Ariane', fechamento: '2026-09-29', ultima: null, somaCiclo: 0 }], '2026-10-14')).toEqual([]);
+    expect(proximosVencimentos([], '2026-10-14')).toEqual([]);
   });
 });

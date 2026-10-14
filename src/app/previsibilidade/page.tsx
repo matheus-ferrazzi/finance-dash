@@ -67,7 +67,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
         {notaVisaoIndividual(resp) && <p className="mt-1 text-[11px] text-faint">{notaVisaoIndividual(resp)}</p>}
         {!calib && (
           <p className="mt-1 text-[11px] text-faint">
-            {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza ainda: a fase atual tem menos de 6 meses de histórico.'}
+            {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza: ela precisa de 6 meses da fase atual e de acertar entre 70% e 90% deles no teste contra o passado.'}
           </p>
         )}
       </div>

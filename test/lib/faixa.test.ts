@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calibrar, doRegime, faixaMes, faixaMesCorrente, percentil } from '../../src/lib/faixa';
+import { calibrar, coberturaForaDaAmostra, doRegime, faixaMes, faixaMesCorrente, percentil } from '../../src/lib/faixa';
 
 describe('faixa', () => {
   it('percentil com interpolação linear', () => {
@@ -9,6 +9,18 @@ describe('faixa', () => {
   it('calibrar: menos de 6 erros = sem faixa', () => {
     expect(calibrar([1, 2, 3, 4, 5], '2026-10-10')).toBeNull();
     expect(calibrar([0, 0, 0, 0, 0, 100, -100], '2026-10-10')).toMatchObject({ n: 7 });
+  });
+  // P2 (auditoria 13/10): a spec do F2a pedia "só ligar a faixa se ela acertar 70–90% dos meses" — fora da amostra
+  it('P2: cobertura fora da amostra = fração dos meses que caem na faixa calibrada SEM eles', () => {
+    expect(coberturaForaDaAmostra([0, 0, 0, 0, 0, 100, -100])).toBeCloseTo(5 / 7, 6);
+    // erros espalhados por igual: as pontas (1, 2, 9, 10) ficam fora da faixa calibrada sem elas
+    expect(coberturaForaDaAmostra([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toBeCloseTo(0.6, 6);
+  });
+  it('P2: faixa só liga com cobertura entre 70% e 90%; fora disso, sem faixa', () => {
+    expect(calibrar([0, 0, 0, 0, 0, 100, -100], '2026-10-10')).toMatchObject({ n: 7, cobertura: 0.71 });
+    expect(calibrar([0, 0, 0, 0, 0, 0, 0, 5000, -5000, 9000], '2026-10-10')).toMatchObject({ n: 10, cobertura: 0.7 });
+    // 60% fora da amostra: a faixa diria "8 em 10" e acertaria 6 — não liga
+    expect(calibrar([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], '2026-10-10')).toBeNull();
   });
   it('mês k: pior caso = projetado − p90·√k; melhor = projetado − p10·√k', () => {
     const c = { p10: -200, p90: 300, n: 12, calculadaEm: 'x' };

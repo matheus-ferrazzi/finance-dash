@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ordenarPorPedido, situacaoFatura, totalAPagar } from '../../src/lib/faturas';
+import { cicloAtual, cicloPedido, cicloQueFechaEm, mesDaUltimaFechada, ordenarPorPedido, situacaoFatura, totalAPagar } from '../../src/lib/faturas';
 
 // auditoria 13/10 (N4): a fatura é a do histórico (a última fechada), não o saldo devedor do cartão
 describe('situação da última fatura fechada', () => {
@@ -43,5 +43,42 @@ describe('cartão pedido pelo link', () => {
   it('sem pedido ou cartão que não existe: ordem original, nada aberto', () => {
     expect(ordenarPorPedido(lista, undefined).map((x) => x.aberto)).toEqual([false, false, false]);
     expect(ordenarPorPedido(lista, 'Inter:Matheus').map((x) => x.v.banco)).toEqual(['Neon', 'Nubank', 'Nubank']);
+  });
+});
+
+// auditoria 13/10 (P3): o link "a pagar" abre a fatura FECHADA (ciclo=AAAA-MM, o mês em que ela fechou),
+// não as compras do ciclo em curso, que ainda não foram cobradas
+describe('ciclos da fatura', () => {
+  const ms = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  it('ciclo em curso: do último fechamento (inclusive) ao próximo (exclusive)', () => {
+    expect(cicloAtual('2026-09-03', ms('2026-10-14'))).toEqual({ start: ms('2026-10-03'), end: ms('2026-11-03'), closeDay: 3 });
+    expect(cicloAtual('2026-09-20', ms('2026-10-14'))).toEqual({ start: ms('2026-09-20'), end: ms('2026-10-20'), closeDay: 20 });
+  });
+  it('ciclo que fecha em AAAA-MM: o mês anterior até o fechamento daquele mês', () => {
+    expect(cicloQueFechaEm('2026-10', '2026-09-03')).toEqual({ start: ms('2026-09-03'), end: ms('2026-10-03'), closeDay: 3 });
+    expect(cicloQueFechaEm('2027-01', '2026-09-20')).toEqual({ start: ms('2026-12-20'), end: ms('2027-01-20'), closeDay: 20 });
+    // fecha dia 30: em março o ciclo começa no último dia de fevereiro
+    expect(cicloQueFechaEm('2027-03', '2026-09-30')!.start).toBe(ms('2027-02-28'));
+  });
+  it('mês em que fechou a última fatura: o do início do ciclo em curso', () => {
+    expect(mesDaUltimaFechada('2026-09-03', '2026-10-14')).toBe('2026-10');
+    expect(mesDaUltimaFechada('2026-09-20', '2026-10-14')).toBe('2026-09');
+    expect(mesDaUltimaFechada('2026-09-14', '2026-10-14')).toBe('2026-10'); // fechou hoje
+  });
+  it('ciclo inválido no link: null (a tela segue no ciclo em curso)', () => {
+    expect(cicloQueFechaEm('2026-13', '2026-09-03')).toBeNull();
+    expect(cicloQueFechaEm(undefined, '2026-09-03')).toBeNull();
+  });
+});
+
+describe('ciclo pedido no link (P3)', () => {
+  const ms = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  it('"fechada": cada cartão abre a própria última fatura fechada', () => {
+    expect(cicloPedido('fechada', '2026-09-03', '2026-10-14')).toEqual({ start: ms('2026-09-03'), end: ms('2026-10-03'), closeDay: 3 });
+    expect(cicloPedido('fechada', '2026-09-20', '2026-10-14')).toEqual({ start: ms('2026-08-20'), end: ms('2026-09-20'), closeDay: 20 });
+  });
+  it('AAAA-MM: a fatura que fechou naquele mês; sem pedido: null', () => {
+    expect(cicloPedido('2026-10', '2026-09-20', '2026-10-14')?.end).toBe(ms('2026-10-20'));
+    expect(cicloPedido(undefined, '2026-09-20', '2026-10-14')).toBeNull();
   });
 });

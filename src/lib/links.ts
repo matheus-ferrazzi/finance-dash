@@ -10,6 +10,8 @@ export interface Filtros {
   forma?: 'debito';
   /** N19: segunda-feira da semana (AAAA-MM-DD): a tela mostra só aquela semana */
   semana?: string;
+  /** P3: fatura que fechou neste mês (AAAA-MM), ou "fechada" (a última de cada cartão), em vez do ciclo em curso */
+  ciclo?: string;
 }
 
 const CAMINHO: Record<Tela, string> = {
@@ -29,6 +31,8 @@ export function linkPara(tela: Tela, f: Filtros = {}, mesAtual: string = current
   if (mes && mes !== mesAtual) p.set('mes', mes);
   if (f.grupo) p.set('grupo', f.grupo);
   if (f.cartao) p.set('cartao', f.cartao);
+  const ciclo = f.ciclo === 'fechada' ? 'fechada' : mesValido(f.ciclo);
+  if (ciclo) p.set('ciclo', ciclo);
   if (f.tipo === 'livre') p.set('tipo', 'livre');
   if (f.forma === 'debito') p.set('forma', 'debito');
   if (f.semana && /^\d{4}-\d{2}-\d{2}$/.test(f.semana)) p.set('p', `sem-${f.semana}`);

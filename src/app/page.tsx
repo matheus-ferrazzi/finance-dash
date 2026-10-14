@@ -87,7 +87,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
             </>
           )}
         </BlocoHome>
-        <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao ? `${cartao.banco}:${cartao.responsavel}` : undefined }, atual)}
+        <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao ? `${cartao.banco}:${cartao.responsavel}` : undefined, ciclo: cartao && cartao.aPagar > 0 ? 'fechada' : undefined }, atual)}
           valor={cartao ? brl(cartao.aPagar) : '—'}
           detalhe={cartao ? `a pagar · ${cartao.banco} ${cartao.usoPct}% do limite` : 'sem cartão'}
           tom={cartao && cartao.usoPct >= 80 ? 'ruim' : 'neutro'} />

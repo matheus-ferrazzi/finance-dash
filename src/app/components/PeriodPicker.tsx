@@ -42,11 +42,11 @@ export function PeriodPicker() {
   return (
     <div className="flex items-center">
       <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
-        <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-7 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3" aria-label="Mês anterior">
+        <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-6 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3 sm:w-7" aria-label="Mês anterior">
           <ChevronLeft size={16} />
         </button>
         <span className="min-w-[3.2rem] text-center text-sm font-medium capitalize sm:min-w-[6.5rem]"><span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span></span>
-        <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-7 place-items-center rounded-lg text-muted enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
+        <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-6 place-items-center rounded-lg text-muted sm:w-7 enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
           <ChevronRight size={16} />
         </button>
         {mes !== atual && (

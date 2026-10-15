@@ -125,7 +125,7 @@ export function RespToggle() {
         <button
           key={r.key}
           onClick={() => set(r.key)}
-          className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${
+          className={`flex items-center gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${
             resp === r.key ? 'bg-surface-3 text-text' : 'text-muted hover:text-text'
           }`}
         >

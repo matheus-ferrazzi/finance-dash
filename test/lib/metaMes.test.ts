@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { alertasDaMeta, estadoMeta } from '../../src/lib/metaMes';
+import { alertasDaMeta, estadoMeta, type EstadoMeta } from '../../src/lib/metaMes';
 
 // 15/10: a meta do débito e o gasto do mês "se conversam" (card, mensagem do Zeca e alertas) — valores inventados
 const e = (gasto: number, previstoFim: number, diaHoje = 15, meta: number | null = 4000, diasNoMes = 30) =>
-  estadoMeta({ meta, gasto, previstoFim, diaHoje, diasNoMes });
+  estadoMeta({ meta, gasto, previstoFim, diaHoje, diasNoMes }) as EstadoMeta;
 
 describe('estadoMeta', () => {
   it('dentro: falta, por dia (hoje também conta) e % arredondado', () => {

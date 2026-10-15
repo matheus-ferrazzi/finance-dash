@@ -5,6 +5,7 @@ import {
   type ChaveMeta, type DadosTrilha, type MarcasDivida, type MetasTrilha,
 } from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
+import { estadoMeta } from './metaMes';
 import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, grupoDaCategoria, type GrupoGasto } from './grupos';
@@ -786,6 +787,49 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
+/**
+ * Meta do débito (15/10/2026): o débito do mês de `hoje` até hoje, com o recorte da meta e do `debito` de
+ * getRealizado — despesa no débito, fora as contas da casa e os espelhos do cartão. Agendado (data futura) fica fora.
+ */
+export async function getDebitoMesAte(hoje: string = currentDateSP()): Promise<number> {
+  const [r] = await q<any>(
+    `SELECT COALESCE(SUM(valor), 0)::float8 AS v FROM financas_lancamentos
+      WHERE classe = 'despesa' AND forma_pagamento = 'Débito' AND NOT (categoria = ANY($3::text[])) AND ${SEM_ESPELHO}
+        AND data_lancamento >= $1::date AND data_lancamento <= $2::date`,
+    [`${hoje.slice(0, 7)}-01`, hoje, CASA_CATS],
+  );
+  return Math.round(Number(r.v) * 100) / 100;
+}
+
+/** Tetos do Orçamento e o gasto do mês até hoje em cada um (débito e crédito: é gasto da categoria). */
+export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{ item: string; emoji: string; teto: number; gasto: number }[]> {
+  const rows = await q<any>(
+    `SELECT o.item, COALESCE(o.emoji, '') AS emoji, o.teto::float8 AS teto, COALESCE(SUM(l.valor), 0)::float8 AS gasto
+       FROM financas_orcamento o
+       LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND l.categoria = ANY(o.categorias)
+            AND l.data_lancamento >= $1::date AND l.data_lancamento <= $2::date
+      WHERE o.ativo = true GROUP BY 1, 2, 3 ORDER BY 1`,
+    [`${hoje.slice(0, 7)}-01`, hoje],
+  );
+  return rows.map((x) => ({ item: x.item, emoji: x.emoji, teto: Number(x.teto), gasto: Math.round(Number(x.gasto) * 100) / 100 }));
+}
+
+/**
+ * O estado da meta do débito hoje (casal): a meta da Previsão recalculada (sair do vermelho em 12 meses), o débito
+ * do mês até hoje e onde o mês fecha no ritmo da previsão (o que já foi + o débito que a previsão ainda espera).
+ */
+export async function getMetaMes(hoje: string = currentDateSP()) {
+  const mes = hoje.slice(0, 7);
+  const [base, gasto, orcamento] = await Promise.all([getProjecaoBase('casal', hoje), getDebitoMesAte(hoje), getOrcamentoMes(hoje)]);
+  const atual = computeProjecao(base, 1, hoje)[0];
+  const meta = debitoParaSairAte(base, hoje, addMonths(mes, 12));
+  const estado = estadoMeta({
+    meta, gasto, previstoFim: gasto + atual.despesaVariavel + atual.despesaFixa,
+    diaHoje: Number(hoje.slice(8, 10)), diasNoMes: diasNoMes(mes),
+  });
+  return { mes, mesLabel: mesLabel(mes), estado, orcamento };
+}
+
 export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<Componentes> {
   const rr = rf(resp, 3);
   const [r] = await q<any>(

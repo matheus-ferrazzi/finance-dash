@@ -66,6 +66,7 @@ describe('seletor de mês do topo', () => {
   it('some na Previsão (as setas do detalhe navegam) e no Simulador (não tem mês); fica no resto', () => {
     expect(temSeletorDeMes('/previsibilidade')).toBe(false);
     expect(temSeletorDeMes('/simulador')).toBe(false);
+    expect(temSeletorDeMes('/faturas')).toBe(false); // Onda 5: fatura é "agora"
     expect(temSeletorDeMes('/trilha')).toBe(false);
     expect(temSeletorDeMes('/regras')).toBe(false);
     expect(temSeletorDeMes('/gastos')).toBe(true);

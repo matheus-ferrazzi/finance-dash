@@ -1,7 +1,8 @@
 import { getFaturas, getCreditoDespesas, currentDateSP, Resp } from '@/lib/queries';
 import { brl } from '@/lib/format';
-import { cicloAtual, cicloPedido, diaDoMes, ordenarPorPedido, totalAPagar } from '@/lib/faturas';
-import { PageTitle, StatStrip } from '../components/ui';
+import { cicloAtual, cicloPedido, diaDoMes, ordenarPorPedido, proximosVencimentos, totalAPagar } from '@/lib/faturas';
+import { CardResposta } from '../components/CardResposta';
+import { LinhaVencimentos } from '../components/LinhaVencimentos';
 import { FaturaCard, FaturaView } from '../components/FaturaCard';
 
 export const dynamic = 'force-dynamic';
@@ -26,10 +27,13 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   const tempo = (d: string) => new Date(d + 'T00:00:00Z').getTime();
   // "ciclo em curso" do topo é sempre o de hoje, mesmo quando os cartões mostram uma fatura fechada (P3)
   let emCurso = 0;
+  const somaAtual: number[] = [];
   const views: FaturaView[] = faturas.map((f) => {
     const meus = creditos.filter((c) => c.banco === f.banco && c.responsavel === f.responsavel);
     const atual = cicloAtual(f.fechamento, hojeMs);
-    emCurso += meus.filter((c) => tempo(c.data) >= atual.start && tempo(c.data) < atual.end).reduce((s, c) => s + c.valor, 0);
+    const noCiclo = meus.filter((c) => tempo(c.data) >= atual.start && tempo(c.data) < atual.end).reduce((s, c) => s + c.valor, 0);
+    somaAtual.push(noCiclo);
+    emCurso += noCiclo;
     // ?ciclo=fechada (link do "a pagar") ou AAAA-MM: as compras da fatura já fechada, não as do ciclo em curso
     const pedido = cicloPedido(searchParams.ciclo, f.fechamento, hoje);
     const { start, end, closeDay } = pedido ?? atual;
@@ -58,27 +62,35 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   // N4: "a pagar" = o que falta das faturas FECHADAS (a vencer + em atraso); o saldo devedor do cartão
   // inclui as compras do ciclo novo e fica no "limite usado" de cada cartão
   const aPagar = totalAPagar(faturas.flatMap((f) => (f.ultima ? [f.ultima] : [])));
-  const limiteTotal = faturas.reduce((s, f) => s + (f.limite ?? 0), 0);
-  const dispTotal = faturas.reduce((s, f) => s + (f.disponivel ?? 0), 0);
-
+  // Onda 5: o que vai sair dos cartões, por data — fechadas não pagas e o ciclo em curso de cada um
+  const vencs = proximosVencimentos(views.map((v, k) => ({
+    banco: v.banco, responsavel: v.responsavel, fechamento: v.fechamento, ultima: v.ultima, somaCiclo: somaAtual[k],
+  })), hoje);
+  const aCobrar = vencs.filter((v) => v.situacao !== 'parcial');
+  const proxima = aCobrar[0];
+  const dd = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '');
+  const secao = 'mb-1.5 mt-4 px-1 text-[11px] uppercase tracking-wide text-faint';
 
   return (
     <div>
-      <PageTitle title="Faturas" subtitle="Cartões de crédito — toque em cada um pra ver as compras do ciclo." />
+      {aPagar > 0 && proxima ? (
+        <CardResposta pergunta="Próximo pagamento" valor={brl(aPagar)} tom={proxima.situacao === 'atrasada' ? 'ruim' : 'atencao'}
+          apoio={`${proxima.banco} (${proxima.responsavel}) ${proxima.situacao === 'atrasada' ? 'venceu' : 'vence'} ${dd(proxima.vence)}`
+            + (aCobrar.length > 1 ? ` · + ${aCobrar.length - 1} fatura(s)` : '')} />
+      ) : (
+        <CardResposta pergunta="Próximo pagamento" valor="R$ 0 agora" dinheiro={false} complemento={<span className="text-accent">tudo pago</span>}
+          apoio={<>As faturas que fecham agora já somam <span className="money">{brl(emCurso)}</span> (parcial — ainda pode entrar compra)</>} />
+      )}
 
-      <StatStrip
-        stats={[
-          { label: 'Faturas a pagar', value: brl(aPagar), tone: aPagar > 0 ? 'down' : 'muted', hint: 'fechadas e não pagas' },
-          { label: 'Ciclo em curso', value: brl(emCurso), tone: 'warn', hint: 'vira fatura depois' },
-          { label: 'Limite disponível', value: brl(dispTotal), tone: 'muted', hint: `de ${brl(limiteTotal)}` },
-        ]}
-      />
+      <div className={secao}>Próximos vencimentos</div>
+      <LinhaVencimentos itens={vencs} resp={resp} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {ordenadas.map(({ v, aberto }) => <FaturaCard key={v.id} f={v} abertoInicial={aberto} />)}
+      <div className={secao}>Cartões</div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {ordenadas.map(({ v, aberto }) => <FaturaCard key={v.id} f={v} abertoInicial={aberto} compacto />)}
       </div>
       {views.length === 0 && (
-        <div className="card"><p className="text-sm text-muted">Nenhuma fatura cadastrada.</p></div>
+        <div className="card"><p className="text-sm text-muted">Nenhum cartão.</p></div>
       )}
     </div>
   );

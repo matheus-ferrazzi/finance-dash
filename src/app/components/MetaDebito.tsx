@@ -1,5 +1,4 @@
 import { brl, mesLabel } from '@/lib/format';
-import { textoMetaAlvo } from '@/lib/meta';
 import { SectionTitle } from './ui';
 
 export interface MetaProps {
@@ -15,7 +14,13 @@ export function MetaDebito({ meta }: { meta: MetaProps }) {
   return (
     <div className="card">
       <SectionTitle>Meta de gasto no débito</SectionTitle>
-      <p className="text-sm text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v), meta.ultimoMes)}</p>
+      {/* Onda 5: a meta em si está no topo da Previsão; aqui só o que o topo não diz — o último mês contra ela (N16) */}
+      {meta.ultimoMes && meta.maxDebito !== null && (
+        <p className="text-sm text-muted">
+          Em {meta.ultimoMes.label} foram <span className="tnum money">{brl(Math.round(meta.ultimoMes.valor))}</span>
+          {Math.round(meta.ultimoMes.valor) <= meta.maxDebito ? ': dentro da meta, é manter.' : ', acima da meta.'}
+        </p>
+      )}
       <div className="mt-3 divide-y divide-border/60 text-sm">
         {meta.linhas.map((l, i) => (
           <div key={l.debito} className="flex justify-between gap-2 py-1.5">

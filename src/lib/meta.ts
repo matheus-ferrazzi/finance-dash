@@ -13,10 +13,14 @@ export function niveisMeta(debitoAtual: number): number[] {
   return [Math.round(debitoAtual), ...[500, 1000, 1500, 2000].map((d) => topo - d)].filter((v) => v > 0);
 }
 
-function saiCom(base: ProjecaoBase, debitoMensal: number, hoje: string): string | null {
+/** A projeção de 24 meses se o débito mensal fosse `debitoMensal` (Onda 5: a linha "com a meta" do gráfico). */
+export function projecaoComDebito(base: ProjecaoBase, debitoMensal: number, hoje: string) {
   const fixo = base.despesaFixaDebitoMedia ?? 0;
-  const ajustada = { ...base, despesaVariavelMediaMensal: Math.max(0, debitoMensal - fixo) };
-  return saiDoVermelho(computeProjecao(ajustada, HORIZONTE, hoje), null).provavel;
+  return computeProjecao({ ...base, despesaVariavelMediaMensal: Math.max(0, debitoMensal - fixo) }, HORIZONTE, hoje);
+}
+
+function saiCom(base: ProjecaoBase, debitoMensal: number, hoje: string): string | null {
+  return saiDoVermelho(projecaoComDebito(base, debitoMensal, hoje), null).provavel;
 }
 
 /** Para cada nível de gasto mensal no débito, em que mês o saldo fica ≥ 0 e continua (null = não sai em 24 meses). */

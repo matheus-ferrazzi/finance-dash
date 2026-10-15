@@ -5,6 +5,7 @@ import { NavLinks, RespToggle, MobileNav } from './components/Nav';
 import { PeriodPicker } from './components/PeriodPicker';
 import { PrivacyToggle } from './components/PrivacyToggle';
 import { SyncBadge } from './components/SyncBadge';
+import { SyncDot } from './components/SyncDot';
 import { getSyncStatus } from '@/lib/queries';
 import { lerVersao } from '@/lib/versao';
 import { VersaoAviso } from './components/VersaoAviso';
@@ -45,12 +46,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
           <main className="flex-1 min-w-0 pb-20 md:pb-0">
             <header className="sticky top-0 z-10 border-b border-border bg-base/85 backdrop-blur">
-              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
-                <Suspense fallback={<div className="h-10 w-40" />}>
+              {/* Onda 5: uma linha no celular — mês · pessoa · bolinha de sincronização · olho */}
+              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-1.5 px-3 py-2.5 md:gap-3 md:px-6 md:py-3">
+                <Suspense fallback={<div className="h-10 w-28" />}>
                   <PeriodPicker />
                 </Suspense>
-                <div className="flex items-center gap-2">
-                  <SyncBadge status={sync} />
+                <div className="ml-auto flex items-center gap-1.5 md:gap-2">
+                  <SyncDot status={sync} />
+                  <div className="hidden md:block"><SyncBadge status={sync} /></div>
                   <Suspense fallback={<div className="h-9 w-56" />}>
                     <RespToggle />
                   </Suspense>

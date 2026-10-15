@@ -75,6 +75,42 @@ export function cicloPedido(ciclo: string | undefined, fechamento: string | null
   return cicloQueFechaEm(ciclo === 'fechada' ? mesDaUltimaFechada(fechamento, hoje) : ciclo, fechamento);
 }
 
+export interface Vencimento {
+  banco: string; responsavel: string; vence: string | null; fecha: string | null; valor: number;
+  situacao: 'fechada' | 'atrasada' | 'parcial'; ciclo: string;
+}
+const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** Onda 5: linha do tempo de Faturas — fechadas não pagas e o ciclo em curso de cada cartão, pela data de vencimento. */
+export function proximosVencimentos(
+  cs: readonly { banco: string; responsavel: string; fechamento: string | null; ultima: UltimaFatura | null; somaCiclo: number }[], hoje: string,
+): Vencimento[] {
+  const [y, m, d] = hoje.split('-').map(Number);
+  const out: Vencimento[] = [];
+  for (const c of cs) {
+    const u = c.ultima;
+    if (u && (u.situacao === 'a_vencer' || u.situacao === 'atrasada')) {
+      out.push({ banco: c.banco, responsavel: c.responsavel, vence: u.vencimento, fecha: null, valor: u.falta,
+        situacao: u.situacao === 'atrasada' ? 'atrasada' : 'fechada', ciclo: 'fechada' });
+    }
+    if (c.somaCiclo <= 0) continue;
+    const { end } = cicloAtual(c.fechamento, Date.UTC(y, m - 1, d));
+    const fim = new Date(end);
+    // vence no dia de sempre (o da última fatura), no primeiro mês em que esse dia cai depois do fechamento
+    let vence: string | null = null;
+    if (u) {
+      const dia = Number(u.vencimento.slice(8, 10));
+      let t = diaDoMes(fim.getUTCFullYear(), fim.getUTCMonth(), dia);
+      if (t <= end) t = diaDoMes(fim.getUTCFullYear(), fim.getUTCMonth() + 1, dia);
+      vence = iso(t);
+    }
+    out.push({ banco: c.banco, responsavel: c.responsavel, vence, fecha: iso(end), valor: Math.round(c.somaCiclo * 100) / 100,
+      situacao: 'parcial', ciclo: iso(end).slice(0, 7) });
+  }
+  const ordem = (v: Vencimento) => (v.situacao === 'atrasada' ? '0' : '1') + (v.vence ?? '9999');
+  return out.sort((a, b) => (ordem(a) < ordem(b) ? -1 : ordem(a) > ordem(b) ? 1 : 0));
+}
+
 /**
  * F1 (pendência): o cartão pedido pelo link vem primeiro e aberto. `pedido` = "Banco:Pessoa" (um cartão) ou
  * "Banco" (link antigo: todos daquele banco). Pedido que não existe não muda nada.

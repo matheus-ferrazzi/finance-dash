@@ -4,6 +4,7 @@ import { linhasBackup, linhasSaude, type BackupDados, type SaudeDados } from './
 import type { Aviso } from '../../lib/avisos';
 import type { Desafio } from '../../lib/desafio';
 import { mesLabel } from '../../lib/format';
+import { seta } from '../../lib/seta';
 
 // os mesmos JSON das rotas /api/resumo/* do painel (o worker não importa do painel)
 export interface ResumoDiario {
@@ -84,14 +85,6 @@ export function montarDiario(r: ResumoDiario, link: string): string {
   if (r.contas.length) l.push('', ...r.contas.map((c) => `🧾 ${c.nome} (${brl(c.valor)}) vence ${c.quando}`));
   l.push('', `👉 ${link}`);
   return l.join('\n');
-}
-
-function seta(semana: number, media: number): string {
-  if (media > 0 && semana >= 2 * media) return '⏫';
-  if (media > 0 && semana <= media / 2) return '⏬';
-  if (semana > media) return '⬆️';
-  if (semana < media) return '⬇️';
-  return '➖';
 }
 
 export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha: string }): string {

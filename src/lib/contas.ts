@@ -165,3 +165,20 @@ export function destaqueDoTopo(
   if (r.entrou <= 0) return { label: 'Sobra do caderno', valor: null, hint: 'quando o salário cair' };
   return { label: 'Sobra do caderno', valor: r.sobra, hint: 'entrou − contas do caderno (cartão e dia a dia fora)' };
 }
+
+const semAcentoC = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** Onda 5: o topo de Contas é o que falta; a lista começa por ele (por vencimento) e as pagas ficam recolhidas. */
+export function separarContas(itens: ItemConta[]): { falta: ItemConta[]; pagas: ItemConta[] } {
+  const v = (i: ItemConta) => i.vence ?? 99;
+  return {
+    falta: itens.filter((i) => i.status !== 'pago').sort((a, b) => v(a) - v(b)),
+    pagas: itens.filter((i) => i.status === 'pago').sort((a, b) => (a.dia ?? 99) - (b.dia ?? 99)),
+  };
+}
+
+/** Conta do caderno que é a fatura de um cartão (ex.: "Crédito Neon" da Ariane): mesma pessoa, nome contém o banco. */
+export function contaEhFatura(item: { nome: string; responsavel: string }, cartoes: readonly { banco: string; responsavel: string }[]) {
+  const c = cartoes.find((f) => f.responsavel === item.responsavel && semAcentoC(item.nome).includes(semAcentoC(f.banco)));
+  return c ? { banco: c.banco, responsavel: c.responsavel } : null;
+}

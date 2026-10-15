@@ -30,7 +30,7 @@ export function PrivacyToggle() {
       onClick={toggle}
       aria-label={hidden ? 'Mostrar valores' : 'Ocultar valores'}
       title={hidden ? 'Mostrar valores' : 'Ocultar valores'}
-      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border bg-surface text-muted hover:text-text hover:bg-surface-2 transition-colors"
+      className="grid h-9 w-8 shrink-0 sm:w-9 place-items-center rounded-xl border border-border bg-surface text-muted hover:text-text hover:bg-surface-2 transition-colors"
     >
       {hidden ? <EyeOff size={18} /> : <Eye size={18} />}
     </button>

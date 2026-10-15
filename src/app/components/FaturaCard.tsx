@@ -27,7 +27,8 @@ const TOM_SITUACAO: Record<UltimaFatura['situacao'], string> = {
   paga: 'text-up', a_vencer: 'text-warn', parcelada: 'text-muted', atrasada: 'text-down',
 };
 
-export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; abertoInicial?: boolean }) {
+/** compacto (Onda 5, tela Faturas): sem vencimento, valor e próxima fatura — a linha do tempo já mostra; fica o limite e as compras */
+export function FaturaCard({ f, abertoInicial = false, compacto = false }: { f: FaturaView; abertoInicial?: boolean; compacto?: boolean }) {
   const [open, setOpen] = useState(abertoInicial);
   const usado = f.limite > 0 ? f.limite - f.disponivel : 0;
   const u = f.ultima;
@@ -39,11 +40,14 @@ export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; aberto
         <div className="flex items-center gap-2">
           <span className="font-medium">{f.banco}</span>{respBadge(f.responsavel)}
         </div>
-        <span className="text-xs text-muted">
+        {compacto ? (
+          f.limite > 0 && <span className={`text-xs tnum ${usado / f.limite >= 0.8 ? 'text-warn' : 'text-muted'}`}>{Math.round((usado / f.limite) * 100)}% do limite</span>
+        ) : <span className="text-xs text-muted">
           {u ? `${u.vencimento >= hojeISO() ? 'vence' : 'venceu'} ${dataBR(u.vencimento)}` : 'sem fatura fechada'}{d != null && d >= 0 ? ` · ${d}d` : ''}
-        </span>
+        </span>}
       </div>
 
+      {!compacto && <>
       <div className="mt-3 text-2xl font-semibold tnum money">{u ? brl(u.total) : '—'}</div>
       <div className="text-xs text-muted">
         última fatura{u && <> · <span className={TOM_SITUACAO[u.situacao]}>{ROTULO_SITUACAO[u.situacao]}</span></>}
@@ -59,9 +63,10 @@ export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; aberto
           <span className="tnum money text-sm font-medium">{brl(f.proxSoma)}</span>
         </div>
       )}
+      </>}
 
       {f.limite > 0 && (
-        <div className="mt-4">
+        <div className={compacto ? "mt-3" : "mt-4"}>
           <div className="flex justify-between text-xs text-muted mb-1.5">
             <span>Limite usado</span><span className="tnum">{brl(usado)} / {brl(f.limite)}</span>
           </div>

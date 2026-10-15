@@ -18,6 +18,21 @@ export function cartaoDestaque(faturas: Fatura[]): { banco: string; responsavel:
   return { banco: top.banco, responsavel: top.responsavel, usoPct: uso(top), aPagar: totalAPagar(faturas.flatMap((f) => (f.ultima ? [f.ultima] : []))) };
 }
 
+/**
+ * Textos do bloco Cartões (15/10): o valor é o que há a pagar das faturas fechadas; o limite usado é outra linha.
+ * Antes saía "a pagar · Nubank 92% do limite" em vermelho com R$ 0,00 — parecia fatura em aberto.
+ */
+export function textosCartoes(c: { banco: string; responsavel: string; usoPct: number; aPagar: number } | null): {
+  detalhe: string; tom: 'bom' | 'atencao' | 'neutro'; limite: { texto: string; tom: 'atencao' | 'neutro' } | null;
+} {
+  if (!c) return { detalhe: 'sem cartão', tom: 'neutro', limite: null };
+  return {
+    detalhe: c.aPagar > 0 ? 'a pagar (faturas fechadas)' : 'nada a pagar agora',
+    tom: c.aPagar > 0 ? 'atencao' : 'bom',
+    limite: { texto: `limite do ${c.banco} (${c.responsavel}): ${c.usoPct}% usado`, tom: c.usoPct >= 80 ? 'atencao' : 'neutro' },
+  };
+}
+
 export function contasResumo(itens: ItemConta[]): { pagas: number; total: number; falta: number } | null {
   if (itens.length === 0) return null;
   const falta = itens.filter((i) => i.status !== 'pago').reduce((s, i) => s + i.previsto, 0);

@@ -43,7 +43,7 @@ describe('Gastos (Onda 5)', () => {
     const g = (nome: string, total: number, seta: string | null = null) => ({ nome, emoji: '•', total, cats: ['Groceries'], seta, categorias: [] });
     const h = renderToStaticMarkup(createElement(GruposGastos, {
       grupos: [g('Casa', 500, '➖'), g('Mercado', 300, '⏫'), g('Saúde', 100), g('Pet', 50), g('Compras', 40), g('Resto', 10)],
-      total: 1000, titulo: 'Tudo que saiu em outubro', hrefGrupo: (n: string) => `/gastos?grupo=${n}`, periodo: null,
+      total: 1000, titulo: 'Tudo que saiu em outubro', hrefs: { Casa: '/gastos?grupo=Casa' }, periodo: null,
     }));
     expect(h).toContain('Tudo que saiu em outubro');
     expect(h).toContain('⏫');
@@ -52,7 +52,7 @@ describe('Gastos (Onda 5)', () => {
     expect((h.match(/money/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
   it('sem gastos: aviso', () => {
-    expect(renderToStaticMarkup(createElement(GruposGastos, { grupos: [], total: 0, titulo: 't', hrefGrupo: () => '/', periodo: null })))
+    expect(renderToStaticMarkup(createElement(GruposGastos, { grupos: [], total: 0, titulo: 't', hrefs: {}, periodo: null })))
       .toContain('Sem gastos no período');
   });
 });
@@ -117,5 +117,14 @@ describe('Previsão (Onda 5)', () => {
   it('um ponto só ou nenhum: não quebra', () => {
     expect(renderToStaticMarkup(createElement(GraficoSaida, { pontos: [] }))).toBe('');
     expect(renderToStaticMarkup(createElement(GraficoSaida, { pontos: [p('out/26', 10, null, true)] }))).toContain('<svg');
+  });
+});
+
+// visto em produção em 15/10: função como prop de componente cliente derruba a página (fronteira servidor → cliente)
+describe('props dos componentes cliente da Onda 5 são serializáveis', () => {
+  it('GruposGastos não recebe função', () => {
+    const props = { grupos: [], total: 0, titulo: 't', hrefs: {}, periodo: null };
+    expect(Object.values(props).some((v) => typeof v === 'function')).toBe(false);
+    expect(() => JSON.stringify(props)).not.toThrow();
   });
 });

@@ -92,7 +92,8 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
       {topo}
 
       <GruposGastos grupos={grupos} total={total} titulo={`Tudo que saiu · ${per.label.toLowerCase()}`}
-        hrefGrupo={(nome) => linkPara('gastos', { resp, mes: searchParams.mes, grupo: nome })} periodo={<PeriodoGastos />} />
+        hrefs={Object.fromEntries(grupos.map((g) => [g.nome, linkPara('gastos', { resp, mes: searchParams.mes, grupo: g.nome })]))}
+        periodo={<PeriodoGastos />} />
 
       {totalDinheiro > 0 && <p className="mb-3 px-1 text-xs text-muted">Inclui <span className="money">{brl(totalDinheiro)}</span> em dinheiro vivo 💵</p>}
 

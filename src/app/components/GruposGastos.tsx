@@ -8,8 +8,10 @@ import { BarraGrupos, CORES_GRUPOS } from './BarraGrupos';
 import { CategoryAccordion } from './CategoryAccordion';
 
 /** Onda 5 (Gastos): "Tudo que saiu" — barra empilhada da home, grupos com seta vs média; o grupo abre as categorias. */
-export function GruposGastos({ grupos, total, titulo, hrefGrupo, periodo }: {
-  grupos: GrupoTela[]; total: number; titulo: string; hrefGrupo: (nome: string) => string; periodo: React.ReactNode;
+export function GruposGastos({ grupos, total, titulo, hrefs, periodo }: {
+  grupos: GrupoTela[]; total: number; titulo: string;
+  /** link de cada grupo (pronto: função não atravessa de servidor para componente cliente) */
+  hrefs: Record<string, string>; periodo: React.ReactNode;
 }) {
   const [aberto, setAberto] = useState<string | null>(null);
   const [todos, setTodos] = useState(false);
@@ -21,7 +23,7 @@ export function GruposGastos({ grupos, total, titulo, hrefGrupo, periodo }: {
         <span className="text-xs text-muted">{titulo} · <span className="tnum money">{brl(total)}</span></span>
         {periodo}
       </div>
-      <BarraGrupos grupos={grupos.slice(0, CORES_GRUPOS.length).map((g) => ({ nome: g.nome, pct: pct(g.total), href: hrefGrupo(g.nome) }))} />
+      <BarraGrupos grupos={grupos.slice(0, CORES_GRUPOS.length).map((g) => ({ nome: g.nome, pct: pct(g.total), href: hrefs[g.nome] ?? '/gastos' }))} />
       {grupos.length === 0 && <p className="mt-2 text-sm text-muted">Sem gastos no período.</p>}
       <div className="mt-2 divide-y divide-border/60">
         {visiveis.map((g) => (

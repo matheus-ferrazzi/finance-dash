@@ -128,3 +128,13 @@ describe('props dos componentes cliente da Onda 5 são serializáveis', () => {
     expect(() => JSON.stringify(props)).not.toThrow();
   });
 });
+
+// visto no celular em 15/10: "ver fatura" na mesma linha espremia o nome da conta para "Nu..."
+describe('Contas: "ver fatura" não disputa espaço com o nome', () => {
+  it('fica numa linha própria, depois da linha da conta (fora da fileira do nome/valor/⋮)', () => {
+    const i = { contaId: 1, marcaId: null, nome: 'Nubank', responsavel: 'Ariane', previsto: 10, pago: null, status: 'a_confirmar' as const,
+      dia: null, vence: 5, parcela: null, avulsa: false, origem: null };
+    const h = renderToStaticMarkup(createElement(ContasLista, { mes: '2026-10', resp: 'casal', tiradas: [], itens: [i], cartoes: [{ banco: 'Nubank', responsavel: 'Ariane' }] }));
+    expect(h.indexOf('ver fatura')).toBeGreaterThan(h.indexOf('Opções de Nubank'));
+  });
+});

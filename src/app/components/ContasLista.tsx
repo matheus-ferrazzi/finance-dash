@@ -123,13 +123,6 @@ export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
                 {difere && <div className="text-[10px] text-faint">previsto {brl(i.previsto)}</div>}
               </div>
             </button>
-            {(() => {
-              const fat = contaEhFatura(i, cartoes);
-              return fat && (
-                <Link href={linkPara('faturas', { cartao: `${fat.banco}:${fat.responsavel}` })}
-                  className="grid min-h-[36px] shrink-0 place-items-center px-1 text-[11px] text-accent">ver fatura ›</Link>
-              );
-            })()}
             <button
               onClick={() => { setAberto(aberto === chave ? null : chave); setEditando(null); }}
               className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-faint hover:text-text"
@@ -138,6 +131,14 @@ export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
               <MoreVertical size={18} />
             </button>
           </div>
+          {(() => {
+            // Onda 5: a conta que é fatura de cartão leva à fatura — numa linha própria, sem espremer o nome
+            const fat = contaEhFatura(i, cartoes);
+            return fat && (
+              <Link href={linkPara('faturas', { cartao: `${fat.banco}:${fat.responsavel}` })}
+                className="ml-9 inline-flex min-h-[32px] items-center text-[11px] text-accent">ver fatura ›</Link>
+            );
+          })()}
           {aberto === chave && editando?.chave === chave && (
             <div className="mt-2 space-y-1.5 pl-9">
               <div className="flex gap-2">

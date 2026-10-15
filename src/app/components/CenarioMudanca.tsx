@@ -26,7 +26,7 @@ export function CenarioMudanca({ mudanca, aluguelAtual, resumo, mesMinimo, indiv
       {individual ? (
         <p className="text-sm text-muted">O cenário de mudança é da visão do casal: o aluguel é dos dois.</p>
       ) : (
-        <form method="get" className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-end">
+        <form method="get" className="grid grid-cols-1 gap-3">
           <label className="block">
             <span className="text-xs text-muted">Mês da mudança</span>
             <input type="month" name="mudanca" required min={mesMinimo} defaultValue={mudanca?.mes ?? ''} className={CAMPO} />

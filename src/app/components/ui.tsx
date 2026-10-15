@@ -57,7 +57,7 @@ export function StatStrip({
 }) {
   const color = { up: 'text-accent', down: 'text-despesa', warn: 'text-warn', muted: 'text-muted' };
   return (
-    <div className="card mb-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:flex sm:items-start sm:gap-10">
+    <div className="card mb-4 grid grid-cols-2 gap-x-6 gap-y-3">
       {stats.map((s, i) => (
         <div key={i}>
           <div className="text-[11px] text-muted">{s.label}</div>

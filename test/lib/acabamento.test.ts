@@ -63,3 +63,12 @@ describe('desktop igual ao celular', () => {
     }
   });
 });
+
+describe('cabeçalho igual em qualquer tela', () => {
+  it('pessoa e olho sem variantes de tela grande (a coluna é sempre da largura do celular)', async () => {
+    const { RespToggle } = await import('../../src/app/components/Nav');
+    const { PrivacyToggle } = await import('../../src/app/components/PrivacyToggle');
+    expect(renderToStaticMarkup(createElement(RespToggle))).not.toContain('sm:');
+    expect(renderToStaticMarkup(createElement(PrivacyToggle))).not.toContain('sm:');
+  });
+});

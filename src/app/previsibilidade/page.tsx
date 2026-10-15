@@ -1,11 +1,15 @@
 import {
   getProjecaoBase, computeProjecao, computeRitmo, fotografarPrevisto, getCalibracaoPara, getCompromissosParcelados, getMesesPassados, Resp,
 } from '@/lib/queries';
-import { PageTitle } from '../components/ui';
+import { linkPara } from '@/lib/links';
+import { serieSaida } from '@/lib/saida';
+import { CardResposta } from '../components/CardResposta';
+import { Elo } from '../components/Elo';
+import { GraficoSaida } from '../components/GraficoSaida';
 import { brl, currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths, avisosDeCadastro, diasNoMes } from '@/lib/previsao';
 import { saiDoVermelho } from '@/lib/decisoes';
-import { debitoParaSairAte, niveisMeta, tabelaMeta, textoMetaAlvo } from '@/lib/meta';
+import { debitoParaSairAte, niveisMeta, projecaoComDebito, tabelaMeta } from '@/lib/meta';
 import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, notaVisaoIndividual, semPassadosSeFalhar } from '@/lib/mesAMes';
 import { ListaMeses } from '../components/ListaMeses';
 import { DetalheMes } from '../components/DetalheMes';
@@ -54,23 +58,35 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   const i = indiceDoMes(linhas, searchParams.mes);
   const aberto = i >= 0 ? linhas[i] : null;
 
+  // Onda 5: a linha "com a meta" — só no casal e só quando a meta pede menos que a média de hoje
+  const comMeta = resp === 'casal' && meta.maxDebito !== null && meta.maxDebito < meta.debitoAtual
+    ? projecaoComDebito(base, meta.maxDebito, hoje) : null;
+  const pontos = serieSaida(passados.map((m) => ({ mes: m.mes, saldoFim: m.saldoFim })), projecao, comMeta);
+  const textoMeta = meta.maxDebito === null
+    ? <>Nem zerando o débito sai do vermelho até {meta.alvoLabel}.</>
+    : meta.maxDebito >= meta.debitoAtual
+      ? <>No ritmo de hoje (<span className="money">{brl(Math.round(meta.debitoAtual))}</span>/mês no débito) já sai até {meta.alvoLabel}.</>
+      : <>Com até <b className="money text-accent">{brl(meta.maxDebito)}/mês</b> no débito (hoje <span className="money">{brl(Math.round(meta.debitoAtual))}</span>), sai em {meta.alvoLabel}.</>;
+
   return (
     <div>
-      <PageTitle title="Previsão" subtitle="Quanto dinheiro vai ter em conta no fim de cada mês, e de onde vem cada número." />
+      {/* Onda 5: "Quando a gente sai do vermelho, e o que mudar pra isso?" */}
+      <CardResposta pergunta="Saindo do vermelho" dinheiro={false} tom={sai.provavel ? 'bom' : 'ruim'}
+        valor={sai.provavel ? `Sai em ${mesLabel(sai.provavel)}` : `Não sai em ${HORIZONTE_MAX} meses`}
+        apoio={<>
+          {textoMeta}
+          {calib && sai.piorCaso !== sai.provavel && <> Pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai em ${HORIZONTE_MAX} meses`}.</>}
+          {notaVisaoIndividual(resp) && <span className="mt-1 block text-[11px] text-faint">{notaVisaoIndividual(resp)}</span>}
+          {!calib && (
+            <span className="mt-1 block text-[11px] text-faint">
+              {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza: ela precisa de 6 meses da fase atual e de acertar entre 70% e 90% deles no teste contra o passado.'}
+            </span>
+          )}
+        </>}>
+        <GraficoSaida pontos={pontos} />
+      </CardResposta>
 
-      <div className="card mb-4">
-        <p className="text-sm">
-          {sai.provavel ? <>Sai do vermelho em <b>{mesLabel(sai.provavel)}</b></> : <>Não sai do vermelho nos próximos {HORIZONTE_MAX} meses</>}
-          {calib && sai.piorCaso !== sai.provavel && <span className="text-muted"> (pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai nos próximos ${HORIZONTE_MAX} meses`})</span>}
-        </p>
-        <p className="mt-1 text-xs text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v), meta.ultimoMes)}</p>
-        {notaVisaoIndividual(resp) && <p className="mt-1 text-[11px] text-faint">{notaVisaoIndividual(resp)}</p>}
-        {!calib && (
-          <p className="mt-1 text-[11px] text-faint">
-            {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza: ela precisa de 6 meses da fase atual e de acertar entre 70% e 90% deles no teste contra o passado.'}
-          </p>
-        )}
-      </div>
+      <div className="mb-3"><MetaDebito meta={meta} /></div>
 
       {aberto ? (
         <DetalheMes
@@ -81,11 +97,15 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
           passado={aberto.tipo === 'passado' ? detalheMesPassado(passados[i]) : undefined}
         />
       ) : (
-        <ListaMeses linhas={linhas} resp={resp} mostrarTodos={searchParams.todos === '1'} />
+        <details open={searchParams.todos === '1'} className="mb-3">
+          <summary className="card flex min-h-[44px] cursor-pointer items-center p-3.5 text-sm text-accent">Mês a mês ({linhas.length} meses) ›</summary>
+          <div className="mt-2"><ListaMeses linhas={linhas} resp={resp} mostrarTodos={searchParams.todos === '1'} /></div>
+        </details>
       )}
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <MetaDebito meta={meta} />
+      <Elo href={linkPara('simulador', { resp })} acao="simular">E se a gente se mudar, ou comprar algo grande?</Elo>
+
+      <div className="mt-4">
         <PrevisibilidadeClient parcelados={parcelados} manuais={base.compromissosCadastrados}
           avisos={avisosDeCadastro(base.compromissosCadastrados, base.mesCorrente.casaNoMesCasalPorCategoria ?? base.mesCorrente.casaNoMesPorCategoria, hoje.slice(0, 7))} />
       </div>

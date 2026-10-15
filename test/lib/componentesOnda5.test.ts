@@ -8,6 +8,7 @@ import { GruposGastos } from '../../src/app/components/GruposGastos';
 import { LinhaVencimentos } from '../../src/app/components/LinhaVencimentos';
 import { FaturaCard } from '../../src/app/components/FaturaCard';
 import { ContasLista } from '../../src/app/components/ContasLista';
+import { GraficoSaida } from '../../src/app/components/GraficoSaida';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {}, push() {} }), usePathname: () => '/', useSearchParams: () => new URLSearchParams() }));
 import { corDaSincronizacao } from '../../src/lib/format';
@@ -98,5 +99,23 @@ describe('Contas (Onda 5)', () => {
   });
   it('nada faltando: pagas abertas', () => {
     expect(renderToStaticMarkup(createElement(ContasLista, { mes: '2026-10', resp: 'casal', tiradas: [], itens: [i('Sabesp', 'pago')] }))).toContain('Sabesp');
+  });
+});
+
+describe('Previsão (Onda 5)', () => {
+  const p = (mes: string, saldo: number, meta: number | null, hoje = false) => ({ mes, mesLabel: mes, saldo, meta, passado: false, hoje });
+  it('gráfico com linha do zero, ponto de hoje, linha da meta só quando há meta; rótulos do 1º e último mês', () => {
+    const com = renderToStaticMarkup(createElement(GraficoSaida, { pontos: [p('jul/26', -800, null), p('out/26', -250, -250, true), p('out/28', -9000, 300)] }));
+    expect(com).toContain('stroke-dasharray');
+    expect(com).toContain('com a meta');
+    expect(com).toContain('jul/26');
+    expect(com).toContain('out/28');
+    expect(com).toContain('<circle');
+    const sem = renderToStaticMarkup(createElement(GraficoSaida, { pontos: [p('out/26', -250, null, true), p('nov/26', -400, null)] }));
+    expect(sem).not.toContain('com a meta');
+  });
+  it('um ponto só ou nenhum: não quebra', () => {
+    expect(renderToStaticMarkup(createElement(GraficoSaida, { pontos: [] }))).toBe('');
+    expect(renderToStaticMarkup(createElement(GraficoSaida, { pontos: [p('out/26', 10, null, true)] }))).toContain('<svg');
   });
 });

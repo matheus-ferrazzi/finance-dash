@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Circle, Clock, MoreVertical, Plus, X } from 'lucide-react';
+import Link from 'next/link';
+import { CheckCircle2, ChevronDown, Circle, Clock, MoreVertical, Plus, X } from 'lucide-react';
 import { brl, parseValorBR } from '@/lib/format';
-import type { ItemConta, Tirada } from '@/lib/contas';
+import { contaEhFatura, separarContas, type ItemConta, type Tirada } from '@/lib/contas';
+import { linkPara } from '@/lib/links';
 import { respBadge } from './ui';
 
 function mesAnterior(mes: string): string {
@@ -16,13 +18,18 @@ function mesAnterior(mes: string): string {
  * Lista do caderno da Ariane, no celular: um toque marca/desmarca; o ⋯ abre tirar/remover.
  * Conta confirmada pelo banco não tem toque — quem manda é o extrato.
  */
-export function ContasLista({ mes, resp, itens, tiradas }: { mes: string; resp: string; itens: ItemConta[]; tiradas: Tirada[] }) {
+export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
+  mes: string; resp: string; itens: ItemConta[]; tiradas: Tirada[];
+  /** Onda 5: cartões da pessoa — a conta que é fatura ("Crédito Neon") ganha "ver fatura" */
+  cartoes?: { banco: string; responsavel: string }[];
+}) {
   const router = useRouter();
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [editando, setEditando] = useState<{ chave: string; valor: string } | null>(null);
   const [nova, setNova] = useState<{ nome: string; valor: string; responsavel: string } | null>(null);
+  const [verPagas, setVerPagas] = useState(() => itens.every((i) => i.status === 'pago'));
 
   async function chamar(url: string, init: RequestInit) {
     setOcupado(true);
@@ -82,107 +89,126 @@ export function ContasLista({ mes, resp, itens, tiradas }: { mes: string; resp: 
   }
 
   const acao = 'rounded-lg border border-border px-3 py-2 text-xs disabled:opacity-50';
+  // Onda 5: a lista começa pelo que falta (por vencimento); as pagas ficam recolhidas (abertas se não falta nada)
+  const { falta, pagas } = separarContas(itens);
+  const linha = (i: ItemConta) => {
+      const chave = `${i.contaId ?? 'a'}-${i.marcaId ?? ''}-${i.nome}`;
+      const Icone = i.status === 'pago' ? CheckCircle2 : i.status === 'a_confirmar' ? Clock : Circle;
+      const cor = i.status === 'pago' ? 'text-accent' : i.status === 'a_confirmar' ? 'text-warn' : 'text-faint';
+      const valor = i.pago ?? i.previsto;
+      const difere = i.pago !== null && Math.abs(i.pago - i.previsto) > i.previsto * 0.05; // centavos de Vivo/Sabesp não poluem
+      return (
+        <div key={chave} className="py-3 first:pt-0 last:pb-0">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => tocar(i)}
+              disabled={i.status === 'pago' || i.avulsa || ocupado}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+            >
+              <Icone size={24} className={`shrink-0 ${cor}`} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium">{i.nome}</span>
+                  {i.parcela && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] text-muted">{i.parcela}</span>}
+                  {resp === 'casal' && respBadge(i.responsavel)}
+                </div>
+                <div className="mt-0.5 text-xs text-faint">
+                  {i.status === 'pago' && `pago dia ${i.dia} · no banco`}
+                  {i.status === 'a_confirmar' && 'marcado · esperando o banco'}
+                  {i.status === 'falta' && (i.avulsa ? 'avulsa' : 'toque para marcar como pago')}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className={`tnum money text-sm font-medium ${i.status === 'pago' ? '' : 'text-muted'}`}>{brl(valor)}</div>
+                {difere && <div className="text-[10px] text-faint">previsto {brl(i.previsto)}</div>}
+              </div>
+            </button>
+            {(() => {
+              const fat = contaEhFatura(i, cartoes);
+              return fat && (
+                <Link href={linkPara('faturas', { cartao: `${fat.banco}:${fat.responsavel}` })}
+                  className="grid min-h-[36px] shrink-0 place-items-center px-1 text-[11px] text-accent">ver fatura ›</Link>
+              );
+            })()}
+            <button
+              onClick={() => { setAberto(aberto === chave ? null : chave); setEditando(null); }}
+              className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-faint hover:text-text"
+              aria-label={`Opções de ${i.nome}`}
+            >
+              <MoreVertical size={18} />
+            </button>
+          </div>
+          {aberto === chave && editando?.chave === chave && (
+            <div className="mt-2 space-y-1.5 pl-9">
+              <div className="flex gap-2">
+                <input
+                  autoFocus inputMode="decimal" value={editando.valor}
+                  onChange={(e) => setEditando({ chave, valor: e.target.value })}
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-base tnum"
+                />
+                <button disabled={ocupado || !editando.valor.trim()} onClick={() => salvarValor(i)}
+                  className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Salvar</button>
+                <button onClick={() => setEditando(null)} className={`${acao} text-muted`}>Cancelar</button>
+              </div>
+              <p className="text-[11px] text-faint">
+                {i.avulsa ? 'Valor que vai ser procurado no banco.' : 'Valor previsto deste mês em diante. O pago continua vindo do banco.'}
+              </p>
+            </div>
+          )}
+          {aberto === chave && editando?.chave !== chave && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 pl-9">
+              {!(i.avulsa && i.status === 'pago') && (
+                <button disabled={ocupado} className={`${acao} text-text`}
+                  onClick={() => setEditando({ chave, valor: i.previsto.toFixed(2).replace('.', ',') })}>
+                  Alterar valor
+                </button>
+              )}
+              {!i.avulsa && i.status !== 'pago' && (
+                <button disabled={ocupado} className={`${acao} text-muted`}
+                  onClick={() => post({ contaId: i.contaId, responsavel: i.responsavel, pago: false })}>
+                  Tirar deste mês
+                </button>
+              )}
+              {!i.avulsa && (
+                <button disabled={ocupado} className={`${acao} text-despesa`} onClick={() => removerDeVez(i)}>
+                  Remover de vez
+                </button>
+              )}
+              {i.avulsa && i.status === 'pago' && (
+                <button disabled={ocupado} className={`${acao} text-accent`} onClick={() => repetir(i)}>
+                  Repetir todo mês
+                </button>
+              )}
+              {i.avulsa && (
+                <button disabled={ocupado} className={`${acao} text-despesa`} onClick={() => removerAvulsa(i)}>
+                  Remover
+                </button>
+              )}
+              {i.avulsa && i.status !== 'pago' && (
+                <span className="text-[11px] text-faint">dá para repetir todo mês depois que o banco confirmar</span>
+              )}
+              {!i.avulsa && i.status === 'pago' && <span className="text-[11px] text-faint">paga no banco: fica neste mês</span>}
+            </div>
+          )}
+        </div>
+      );
+  };
 
   return (
     <div>
       <div className="card divide-y divide-border/60">
         {itens.length === 0 && <p className="py-2 text-sm text-muted">Nenhuma conta cadastrada para este mês.</p>}
-        {itens.map((i) => {
-          const chave = `${i.contaId ?? 'a'}-${i.marcaId ?? ''}-${i.nome}`;
-          const Icone = i.status === 'pago' ? CheckCircle2 : i.status === 'a_confirmar' ? Clock : Circle;
-          const cor = i.status === 'pago' ? 'text-accent' : i.status === 'a_confirmar' ? 'text-warn' : 'text-faint';
-          const valor = i.pago ?? i.previsto;
-          const difere = i.pago !== null && Math.abs(i.pago - i.previsto) > i.previsto * 0.05; // centavos de Vivo/Sabesp não poluem
-          return (
-            <div key={chave} className="py-3 first:pt-0 last:pb-0">
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => tocar(i)}
-                  disabled={i.status === 'pago' || i.avulsa || ocupado}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
-                >
-                  <Icone size={24} className={`shrink-0 ${cor}`} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">{i.nome}</span>
-                      {i.parcela && <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] text-muted">{i.parcela}</span>}
-                      {resp === 'casal' && respBadge(i.responsavel)}
-                    </div>
-                    <div className="mt-0.5 text-xs text-faint">
-                      {i.status === 'pago' && `pago dia ${i.dia} · no banco`}
-                      {i.status === 'a_confirmar' && 'marcado · esperando o banco'}
-                      {i.status === 'falta' && (i.avulsa ? 'avulsa' : 'toque para marcar como pago')}
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className={`tnum money text-sm font-medium ${i.status === 'pago' ? '' : 'text-muted'}`}>{brl(valor)}</div>
-                    {difere && <div className="text-[10px] text-faint">previsto {brl(i.previsto)}</div>}
-                  </div>
-                </button>
-                <button
-                  onClick={() => { setAberto(aberto === chave ? null : chave); setEditando(null); }}
-                  className="grid h-9 w-8 shrink-0 place-items-center rounded-lg text-faint hover:text-text"
-                  aria-label={`Opções de ${i.nome}`}
-                >
-                  <MoreVertical size={18} />
-                </button>
-              </div>
-              {aberto === chave && editando?.chave === chave && (
-                <div className="mt-2 space-y-1.5 pl-9">
-                  <div className="flex gap-2">
-                    <input
-                      autoFocus inputMode="decimal" value={editando.valor}
-                      onChange={(e) => setEditando({ chave, valor: e.target.value })}
-                      className="min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 py-2 text-base tnum"
-                    />
-                    <button disabled={ocupado || !editando.valor.trim()} onClick={() => salvarValor(i)}
-                      className="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Salvar</button>
-                    <button onClick={() => setEditando(null)} className={`${acao} text-muted`}>Cancelar</button>
-                  </div>
-                  <p className="text-[11px] text-faint">
-                    {i.avulsa ? 'Valor que vai ser procurado no banco.' : 'Valor previsto deste mês em diante. O pago continua vindo do banco.'}
-                  </p>
-                </div>
-              )}
-              {aberto === chave && editando?.chave !== chave && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 pl-9">
-                  {!(i.avulsa && i.status === 'pago') && (
-                    <button disabled={ocupado} className={`${acao} text-text`}
-                      onClick={() => setEditando({ chave, valor: i.previsto.toFixed(2).replace('.', ',') })}>
-                      Alterar valor
-                    </button>
-                  )}
-                  {!i.avulsa && i.status !== 'pago' && (
-                    <button disabled={ocupado} className={`${acao} text-muted`}
-                      onClick={() => post({ contaId: i.contaId, responsavel: i.responsavel, pago: false })}>
-                      Tirar deste mês
-                    </button>
-                  )}
-                  {!i.avulsa && (
-                    <button disabled={ocupado} className={`${acao} text-despesa`} onClick={() => removerDeVez(i)}>
-                      Remover de vez
-                    </button>
-                  )}
-                  {i.avulsa && i.status === 'pago' && (
-                    <button disabled={ocupado} className={`${acao} text-accent`} onClick={() => repetir(i)}>
-                      Repetir todo mês
-                    </button>
-                  )}
-                  {i.avulsa && (
-                    <button disabled={ocupado} className={`${acao} text-despesa`} onClick={() => removerAvulsa(i)}>
-                      Remover
-                    </button>
-                  )}
-                  {i.avulsa && i.status !== 'pago' && (
-                    <span className="text-[11px] text-faint">dá para repetir todo mês depois que o banco confirmar</span>
-                  )}
-                  {!i.avulsa && i.status === 'pago' && <span className="text-[11px] text-faint">paga no banco: fica neste mês</span>}
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {falta.map(linha)}
       </div>
+      {pagas.length > 0 && (
+        <>
+          <button onClick={() => setVerPagas(!verPagas)} aria-expanded={verPagas}
+            className="mb-1.5 mt-3 flex min-h-[40px] items-center gap-1 px-1 text-[11px] uppercase tracking-wide text-faint">
+            Pagas ({pagas.length}) <ChevronDown size={13} className={verPagas ? 'rotate-180' : ''} />
+          </button>
+          {verPagas && <div className="card divide-y divide-border/60">{pagas.map(linha)}</div>}
+        </>
+      )}
 
       {tiradas.length > 0 && (
         <div className="mt-2 px-1 text-xs text-faint">

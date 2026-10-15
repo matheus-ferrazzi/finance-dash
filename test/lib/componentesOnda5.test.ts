@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CardResposta } from '../../src/app/components/CardResposta';
@@ -7,6 +7,9 @@ import { SyncDot } from '../../src/app/components/SyncDot';
 import { GruposGastos } from '../../src/app/components/GruposGastos';
 import { LinhaVencimentos } from '../../src/app/components/LinhaVencimentos';
 import { FaturaCard } from '../../src/app/components/FaturaCard';
+import { ContasLista } from '../../src/app/components/ContasLista';
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {}, push() {} }), usePathname: () => '/', useSearchParams: () => new URLSearchParams() }));
 import { corDaSincronizacao } from '../../src/lib/format';
 
 // Onda 5: peças comuns às 4 telas (card-resposta, elo, bolinha de sincronização)
@@ -80,5 +83,20 @@ describe('cartão compacto (Onda 5)', () => {
     expect(h).toContain('text-warn');
     expect(h).not.toContain('última fatura');
     expect(h).not.toContain('Próxima fatura');
+  });
+});
+
+describe('Contas (Onda 5)', () => {
+  const i = (nome: string, status: any) => ({ contaId: 1, marcaId: null, nome, responsavel: 'Ariane', previsto: 10, pago: status === 'pago' ? 10 : null,
+    status, dia: 2, vence: 5, parcela: null, avulsa: false, origem: null });
+  it('seção Falta primeiro, Pagas recolhidas com contagem; fatura ganha "ver fatura"', () => {
+    const h = renderToStaticMarkup(createElement(ContasLista, { mes: '2026-10', resp: 'casal', tiradas: [],
+      itens: [i('Sabesp', 'pago'), i('Crédito Neon', 'falta')], cartoes: [{ banco: 'Neon', responsavel: 'Ariane' }] }));
+    expect(h.indexOf('Crédito Neon')).toBeLessThan(h.indexOf('Pagas (1)'));
+    expect(h).not.toContain('Sabesp'); // pagas recolhidas quando há o que pagar
+    expect(h).toContain('href="/faturas?cartao=Neon%3AAriane"');
+  });
+  it('nada faltando: pagas abertas', () => {
+    expect(renderToStaticMarkup(createElement(ContasLista, { mes: '2026-10', resp: 'casal', tiradas: [], itens: [i('Sabesp', 'pago')] }))).toContain('Sabesp');
   });
 });

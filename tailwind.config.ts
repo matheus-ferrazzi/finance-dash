@@ -14,7 +14,7 @@ const config: Config = {
         text: '#e9ecf1',
         muted: '#8b93a1',
         faint: '#5c636e',
-        accent: '#2ee6a0',      // verde menta (receita/positivo)
+        accent: '#4fd6a4',      // verde menta (receita/positivo) — dessaturado no acabamento de 15/10 (era #2ee6a0)
         'accent-dim': '#1f9d74',
         despesa: '#ff6b6b',     // coral (gasto)
         warn: '#f5b642',        // âmbar
@@ -22,11 +22,13 @@ const config: Config = {
         ariane: '#ec5f9e',      // rosa
       },
       fontFamily: {
-        sans: ['ui-sans-serif', 'system-ui', 'Inter', 'Segoe UI', 'sans-serif'],
+        // Manrope via next/font (layout.tsx); o resto é o fallback enquanto carrega
+        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'],
       },
       boxShadow: {
-        card: '0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.25)',
-        glow: '0 0 0 1px rgba(46,230,160,.18), 0 6px 24px rgba(46,230,160,.08)',
+        // sombra tingida do fundo (não preto puro) + 1px de luz em cima: a borda do card fica mais suave
+        card: 'inset 0 1px 0 rgba(233,236,241,.035), 0 1px 2px rgba(2,6,10,.55), 0 10px 28px -12px rgba(2,10,16,.75)',
+        glow: '0 0 0 1px rgba(79,214,164,.18), 0 6px 24px rgba(79,214,164,.08)',
       },
     },
   },

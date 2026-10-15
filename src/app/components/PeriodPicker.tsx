@@ -45,12 +45,20 @@ export function PeriodPicker() {
         <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-6 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3 sm:w-7" aria-label="Mês anterior">
           <ChevronLeft size={16} />
         </button>
-        <span className="min-w-[3.2rem] text-center text-sm font-medium capitalize sm:min-w-[6.5rem]"><span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span></span>
+        {mes !== atual ? (
+          // fora do mês atual, o próprio mês é o atalho de volta (no celular não cabe o "hoje" ao lado)
+          <button onClick={() => goMonth(atual)} aria-label="Voltar para o mês atual"
+            className="min-w-[3.2rem] text-center text-sm font-medium capitalize text-warn sm:min-w-[6.5rem] sm:text-text">
+            <span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span>
+          </button>
+        ) : (
+          <span className="min-w-[3.2rem] text-center text-sm font-medium capitalize sm:min-w-[6.5rem]"><span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span></span>
+        )}
         <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-6 place-items-center rounded-lg text-muted sm:w-7 enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
           <ChevronRight size={16} />
         </button>
         {mes !== atual && (
-          <button onClick={() => goMonth(atual)} className="ml-0.5 rounded-lg px-1.5 py-1 text-xs text-accent hover:bg-accent/10">hoje</button>
+          <button onClick={() => goMonth(atual)} className="ml-0.5 hidden rounded-lg px-1.5 py-1 text-xs text-accent hover:bg-accent/10 sm:inline-block">hoje</button>
         )}
       </div>
     </div>

@@ -9,8 +9,11 @@ import { LinhaVencimentos } from '../../src/app/components/LinhaVencimentos';
 import { FaturaCard } from '../../src/app/components/FaturaCard';
 import { ContasLista } from '../../src/app/components/ContasLista';
 import { GraficoSaida } from '../../src/app/components/GraficoSaida';
+import { MetaDebito } from '../../src/app/components/MetaDebito';
+import { PeriodPicker } from '../../src/app/components/PeriodPicker';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {}, push() {} }), usePathname: () => '/', useSearchParams: () => new URLSearchParams() }));
+const nav = vi.hoisted(() => ({ path: '/', qs: '' }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh() {}, push() {} }), usePathname: () => nav.path, useSearchParams: () => new URLSearchParams(nav.qs) }));
 import { corDaSincronizacao } from '../../src/lib/format';
 
 // Onda 5: peças comuns às 4 telas (card-resposta, elo, bolinha de sincronização)
@@ -136,5 +139,31 @@ describe('Contas: "ver fatura" não disputa espaço com o nome', () => {
       dia: null, vence: 5, parcela: null, avulsa: false, origem: null };
     const h = renderToStaticMarkup(createElement(ContasLista, { mes: '2026-10', resp: 'casal', tiradas: [], itens: [i], cartoes: [{ banco: 'Nubank', responsavel: 'Ariane' }] }));
     expect(h.indexOf('ver fatura')).toBeGreaterThan(h.indexOf('Opções de Nubank'));
+  });
+});
+
+// pendência da Onda 5: o card da meta repetia o texto que o topo da Previsão já diz
+describe('MetaDebito sem repetir o topo', () => {
+  const meta = { debitoAtual: 6000, alvo: '2027-10', alvoLabel: 'out/27', maxDebito: 4700, linhas: [{ debito: 6000, sai: null }, { debito: 4500, sai: '2027-09' }] };
+  it('não repete "Para sair do vermelho"; mantém só o último mês contra a meta', () => {
+    const h = renderToStaticMarkup(createElement(MetaDebito, { meta: { ...meta, ultimoMes: { label: 'set/26', valor: 4800 } } }));
+    expect(h).not.toContain('Para sair do vermelho');
+    expect(h).toContain('Em set/26 foram');
+    expect(h).toContain('acima da meta');
+  });
+  it('último mês dentro da meta: "é manter"; sem último mês, sem frase', () => {
+    expect(renderToStaticMarkup(createElement(MetaDebito, { meta: { ...meta, ultimoMes: { label: 'set/26', valor: 4500 } } }))).toContain('dentro da meta, é manter');
+    expect(renderToStaticMarkup(createElement(MetaDebito, { meta }))).not.toContain('Em ');
+  });
+});
+
+// pendência da Onda 5: num mês passado o botão "hoje" fazia o cabeçalho quebrar em 2 linhas no celular
+describe('cabeçalho num mês passado', () => {
+  it('"hoje" só aparece do sm para cima; no celular o rótulo do mês volta para o mês atual', () => {
+    nav.path = '/gastos'; nav.qs = 'mes=2026-01';
+    const h = renderToStaticMarkup(createElement(PeriodPicker));
+    nav.path = '/'; nav.qs = '';
+    expect(h).toMatch(/class="[^"]*hidden[^"]*sm:inline[^"]*"[^>]*>hoje</);
+    expect(h).toContain('aria-label="Voltar para o mês atual"');
   });
 });

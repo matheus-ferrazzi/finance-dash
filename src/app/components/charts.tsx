@@ -2,17 +2,12 @@
 
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-  AreaChart, Area, Cell, PieChart, Pie, ComposedChart, Line, ReferenceLine,
+  AreaChart, Area, Cell, ComposedChart, Line, ReferenceLine,
 } from 'recharts';
 import { brlCompact, mesLabel, brl } from '@/lib/format';
 
 const AXIS = { fill: '#8b93a1', fontSize: 11 };
 const GRID = '#1e222a';
-
-export const PIE_COLORS = [
-  '#2ee6a0', '#f0932b', '#ec5f9e', '#f5b642', '#5bc8f5',
-  '#7ed957', '#c792ea', '#ff6b6b', '#4dd0b1', '#e0729e', '#9aa0ab',
-];
 
 function TT({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -148,22 +143,6 @@ export function ProjecaoChart({
           />
         )}
       </ComposedChart>
-    </ResponsiveContainer></div>
-  );
-}
-
-export function CategoriaDonut({ data }: { data: { categoria: string; total: number }[] }) {
-  const top = data.slice(0, 8);
-  const resto = data.slice(8).reduce((s, x) => s + x.total, 0);
-  const d = resto > 0 ? [...top, { categoria: 'Outros', total: resto }] : top;
-  return (
-    <div className="money"><ResponsiveContainer width="100%" height={230}>
-      <PieChart>
-        <Pie data={d} dataKey="total" nameKey="categoria" cx="50%" cy="50%" innerRadius={58} outerRadius={92} paddingAngle={2} stroke="none">
-          {d.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-        </Pie>
-        <Tooltip content={<TT />} />
-      </PieChart>
     </ResponsiveContainer></div>
   );
 }

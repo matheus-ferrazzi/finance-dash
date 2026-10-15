@@ -16,7 +16,9 @@ const soma = (ls: LancGasto[]) => r2(ls.reduce((s, x) => s + x.valor, 0));
 export const diaADia = (ls: LancGasto[]) =>
   soma(ls.filter((x) => !x.dinheiroId && x.forma === 'Débito' && categoriaNoFiltro(x.categoria, { tipo: 'livre' })));
 export const noCredito = (ls: LancGasto[]) => soma(ls.filter((x) => x.forma === 'Crédito'));
-export const ateODia = (ls: LancGasto[], dia: number) => ls.filter((x) => Number(x.data.slice(8, 10)) <= dia);
+// o pg entrega a coluna date como Date (meia-noite local), apesar do tipo dizer string: aceita os dois
+const diaDoLancamento = (d: string | Date) => (typeof d === 'string' ? Number(d.slice(8, 10)) : d.getDate());
+export const ateODia = (ls: LancGasto[], dia: number) => ls.filter((x) => diaDoLancamento(x.data) <= dia);
 /** O que cabe no mês = o que já foi + o que ainda dá (sobra negativa não "tira" do que já foi gasto). */
 export const cabeNoMes = (gasto: number, sobra: number) => r2(gasto + Math.max(0, sobra));
 

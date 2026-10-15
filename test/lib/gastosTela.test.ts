@@ -39,3 +39,12 @@ describe('Gastos (Onda 5)', () => {
     expect(cabeNoMes(2000, -300)).toBe(2000);
   });
 });
+
+// visto em produção em 15/10: o pg devolve a coluna date como Date (o tipo diz string) e /gastos deu 500
+describe('data vinda do banco como Date', () => {
+  it('ateODia aceita Date (meia-noite local, como o pg entrega)', () => {
+    const d = (s: string) => new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
+    const ls = [l('Groceries', 1, { data: d('2026-09-05') as any }), l('Groceries', 2, { data: d('2026-09-20') as any })];
+    expect(ateODia(ls, 14).map((x) => x.valor)).toEqual([1]);
+  });
+});

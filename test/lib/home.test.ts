@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cartaoDestaque, contasResumo, topGrupos } from '../../src/lib/home';
+import { cartaoDestaque, contasResumo, textosCartoes, topGrupos } from '../../src/lib/home';
 
 describe('blocos da home', () => {
   it('topGrupos: 3 maiores com % sobre o total', () => {
@@ -22,5 +22,19 @@ describe('blocos da home', () => {
     const i = (status: string, previsto: number, pago: number | null) => ({ status, previsto, pago }) as any;
     expect(contasResumo([i('pago', 100, 100), i('a_confirmar', 50, null), i('falta', 30, null)])).toEqual({ pagas: 1, total: 3, falta: 80 });
     expect(contasResumo([])).toBeNull();
+  });
+});
+
+// 15/10: "R$ 0,00 · a pagar · Nubank 92% do limite" em vermelho parecia fatura em aberto — a pagar e limite separados
+describe('textos do bloco Cartões', () => {
+  const c = (aPagar: number, usoPct: number) => ({ banco: 'Nubank', responsavel: 'Ariane', usoPct, aPagar });
+  it('nada a pagar: verde e diz isso; o limite é outra linha, âmbar a partir de 80%', () => {
+    expect(textosCartoes(c(0, 92))).toEqual({ detalhe: 'nada a pagar agora', tom: 'bom', limite: { texto: 'limite do Nubank (Ariane): 92% usado', tom: 'atencao' } });
+  });
+  it('fatura fechada a pagar: âmbar; limite abaixo de 80% fica discreto', () => {
+    expect(textosCartoes(c(250, 40))).toEqual({ detalhe: 'a pagar (faturas fechadas)', tom: 'atencao', limite: { texto: 'limite do Nubank (Ariane): 40% usado', tom: 'neutro' } });
+  });
+  it('sem cartão', () => {
+    expect(textosCartoes(null)).toEqual({ detalhe: 'sem cartão', tom: 'neutro', limite: null });
   });
 });

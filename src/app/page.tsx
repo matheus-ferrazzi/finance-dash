@@ -4,7 +4,7 @@ import { brl, currentDateSP, currentMonthSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
 import { linkPara, mesValido } from '@/lib/links';
 import { serieDoMes } from '@/lib/linhaDoMes';
-import { cartaoDestaque, contasResumo, topGrupos } from '@/lib/home';
+import { cartaoDestaque, contasResumo, textosCartoes, topGrupos } from '@/lib/home';
 import { faixaMesCorrente } from '@/lib/faixa';
 import { LinhaDoMes } from './components/LinhaDoMes';
 import { BlocoHome } from './components/BlocoHome';
@@ -57,6 +57,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   for (const d of despesas) porCat.set(d.categoria, (porCat.get(d.categoria) ?? 0) + d.valor);
   const grupos = topGrupos(agruparGastos(porCat, 0));
   const cartao = cartaoDestaque(faturas);
+  const txtCartoes = textosCartoes(cartao);
   const cr = contasResumo(contas.itens);
   const f = { resp, mes };
 
@@ -93,8 +94,13 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
         </BlocoHome>
         <BlocoHome titulo="Cartões" href={linkPara('faturas', { resp, cartao: cartao ? `${cartao.banco}:${cartao.responsavel}` : undefined, ciclo: cartao && cartao.aPagar > 0 ? 'fechada' : undefined }, atual)}
           valor={cartao ? brl(cartao.aPagar) : '—'}
-          detalhe={cartao ? `a pagar · ${cartao.banco} ${cartao.usoPct}% do limite` : 'sem cartão'}
-          tom={cartao && cartao.usoPct >= 80 ? 'ruim' : 'neutro'} />
+          detalhe={<>
+            {txtCartoes.detalhe}
+            {txtCartoes.limite && (
+              <span className={`mt-0.5 block ${txtCartoes.limite.tom === 'atencao' ? 'text-warn' : 'text-muted'}`}>{txtCartoes.limite.texto}</span>
+            )}
+          </>}
+          tom={txtCartoes.tom} />
       </div>
     </div>
   );

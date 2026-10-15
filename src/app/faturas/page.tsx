@@ -69,7 +69,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   const aCobrar = vencs.filter((v) => v.situacao !== 'parcial');
   const proxima = aCobrar[0];
   const dd = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '');
-  const secao = 'mb-1.5 mt-4 px-1 text-[11px] uppercase tracking-wide text-faint';
+  const secao = 'mb-1.5 mt-4 px-1 text-xs font-medium text-muted';
 
   return (
     <div>
@@ -86,7 +86,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
       <LinhaVencimentos itens={vencs} resp={resp} />
 
       <div className={secao}>Cartões</div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3">
         {ordenadas.map(({ v, aberto }) => <FaturaCard key={v.id} f={v} abertoInicial={aberto} compacto />)}
       </div>
       {views.length === 0 && (

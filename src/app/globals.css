@@ -8,9 +8,34 @@ html, body {
   background: #0a0b0d;
   color: #e9ecf1;
 }
+/* acabamento (15/10): uma luz menta bem fraca no topo, para o fundo não ser chapado */
+body {
+  background:
+    radial-gradient(900px 420px at 50% -120px, rgba(79, 214, 164, 0.055), transparent 70%),
+    #0a0b0d;
+  background-attachment: fixed;
+}
+p, li { text-wrap: pretty; }
 
 .card {
-  @apply bg-surface border border-border rounded-2xl p-5 shadow-card;
+  @apply bg-surface border border-border/70 rounded-2xl p-5 shadow-card;
+}
+
+/* foco visível para teclado (não aparece no toque) */
+:where(a, button, summary, input, select, textarea, [role='button']):focus-visible {
+  outline: 2px solid #4fd6a4;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* retorno ao toque: o que é clicável cede um pouco, como um botão físico */
+:where(button, summary, a.card, a[class*='rounded']) {
+  transition: transform 0.15s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+:where(button:not(:disabled), summary, a.card, a[class*='rounded']):active { transform: scale(0.98); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 .card-2 {
   @apply bg-surface-2 border border-border rounded-xl;

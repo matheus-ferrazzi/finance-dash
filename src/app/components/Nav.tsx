@@ -10,8 +10,8 @@ import {
 } from 'lucide-react';
 
 /**
- * Barra principal (F1): os 4 lugares de uso diário. O resto fica em "Mais" — no celular,
- * uma folha que sobe da barra; no computador, abaixo de um separador na barra lateral.
+ * Barra principal (F1): os 4 lugares de uso diário. O resto fica em "Mais", uma folha que sobe da barra
+ * (desde 15/10 igual no computador: sem barra lateral).
  */
 const LINKS = [
   { href: '/', label: 'Início', short: 'Início', icon: LayoutDashboard },
@@ -39,34 +39,6 @@ const RESPS = [
   { key: 'Ariane', label: 'Ariane', dot: 'bg-ariane' },
 ];
 
-export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
-  const path = usePathname();
-  const sp = useSearchParams();
-  const qs = qsNavegacao(sp.toString());
-  return (
-    <nav className="flex flex-col gap-1">
-      {[...LINKS, null, ...EXTRA].map((l) => {
-        if (!l) return <div key="sep" className="my-2 border-t border-border" />;
-        const { href, label, icon: Icon } = l;
-        const active = path === href;
-        return (
-          <Link
-            key={href}
-            href={href + (qs ? `?${qs}` : '')}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-              active ? 'bg-surface-2 text-text font-medium' : 'text-muted hover:text-text hover:bg-surface-2/50'
-            }`}
-          >
-            <Icon size={18} className={active ? 'text-accent' : 'text-faint'} />
-            {label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
 export function MobileNav() {
   const path = usePathname();
   const sp = useSearchParams();
@@ -78,8 +50,8 @@ export function MobileNav() {
     <>
       {mais && (
         <>
-          <div className="md:hidden fixed inset-0 z-30 bg-black/40" onClick={() => setMais(false)} aria-hidden />
-          <div className="md:hidden fixed inset-x-0 bottom-0 z-40 rounded-t-2xl border-t border-border bg-surface-2 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+          <div className="fixed inset-0 z-30 bg-black/40" onClick={() => setMais(false)} aria-hidden />
+          <div className="fixed inset-x-0 bottom-0 z-40 mx-auto max-w-lg rounded-t-2xl border-t border-border bg-surface-2 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]">
             <div className="grid grid-cols-4 gap-2">
               {EXTRA.map(({ href, short, icon: Icon }) => (
                 <Link key={href} href={href + (qs ? `?${qs}` : '')} onClick={() => setMais(false)}
@@ -91,7 +63,7 @@ export function MobileNav() {
           </div>
         </>
       )}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 flex border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed bottom-0 inset-x-0 z-20 mx-auto flex max-w-lg border-t border-border bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
         {LINKS.map(({ href, short, icon: Icon }) => (
           <Link key={href} href={href + (qs ? `?${qs}` : '')} className={`${item} ${path === href ? 'text-accent' : 'text-muted'}`}>
             <Icon size={20} />{short}

@@ -18,7 +18,7 @@ export function GraficoSaida({ pontos }: { pontos: PontoSaida[] }) {
   const meta = pontos.map((p, i) => ({ i, v: p.meta })).filter((p): p is { i: number; v: number } => p.v !== null);
   const iHoje = pontos.findIndex((p) => p.hoje);
   const fim = pontos[pontos.length - 1];
-  const cor = fim.saldo >= 0 ? '#2ee6a0' : '#ff6b6b';
+  const cor = fim.saldo >= 0 ? '#4fd6a4' : '#ff6b6b';
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" role="img"
       aria-label={`Saldo no fim de cada mês, de ${pontos[0].mesLabel} a ${fim.mesLabel}`}>
@@ -27,8 +27,8 @@ export function GraficoSaida({ pontos }: { pontos: PontoSaida[] }) {
       <polyline points={linha(proj)} fill="none" stroke={cor} strokeWidth="2.5" strokeLinejoin="round" />
       {meta.length > 1 && (
         <>
-          <polyline points={linha(meta)} fill="none" stroke="#2ee6a0" strokeWidth="2" strokeDasharray="5 4" />
-          <text x={x(meta[meta.length - 1].i)} y={y(meta[meta.length - 1].v) - 5} fill="#2ee6a0" fontSize="9" textAnchor="end">com a meta</text>
+          <polyline points={linha(meta)} fill="none" stroke="#4fd6a4" strokeWidth="2" strokeDasharray="5 4" />
+          <text x={x(meta[meta.length - 1].i)} y={y(meta[meta.length - 1].v) - 5} fill="#4fd6a4" fontSize="9" textAnchor="end">com a meta</text>
         </>
       )}
       {iHoje >= 0 && (

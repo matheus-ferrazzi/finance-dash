@@ -15,7 +15,7 @@ export function PageTitle({ title, subtitle }: { title: string; subtitle?: strin
 }
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-xs font-medium uppercase tracking-wide text-faint mb-3">{children}</h2>;
+  return <h2 className="text-sm font-medium text-muted mb-3">{children}</h2>;
 }
 
 export function KpiCard({

@@ -8,7 +8,7 @@ export function SyncDot({ status }: { status: { oldestH: number; conns: unknown[
   const texto = textoHoras(status.oldestH);
   return (
     <Link href="/diagnostico" aria-label={`Sincronização: ${texto}. Abrir diagnóstico.`} title={texto}
-      className="grid h-9 w-5 shrink-0 place-items-center md:hidden">
+      className="grid h-9 w-5 shrink-0 place-items-center">
       <span className={`h-2.5 w-2.5 rounded-full ${cor}`} />
     </Link>
   );

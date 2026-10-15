@@ -22,7 +22,7 @@ export function VersaoAviso({ carregada }: { carregada: string }) {
   if (!nova) return null;
   return (
     <button onClick={() => location.reload()}
-      className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+60px)] z-30 rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white shadow-card md:bottom-4 md:left-auto md:right-4 md:w-auto">
+      className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+60px)] z-30 mx-auto max-w-[29.5rem] rounded-xl bg-accent px-4 py-3 text-sm font-medium text-white shadow-card">
       Versão nova do painel — toque para atualizar
     </button>
   );

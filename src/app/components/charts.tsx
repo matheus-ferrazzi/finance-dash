@@ -34,7 +34,7 @@ export function ReceitaDespesaChart({ data }: { data: { mes: string; receita: nu
         <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
         <Tooltip content={<TT />} cursor={{ fill: '#ffffff08' }} />
-        <Bar dataKey="receita" name="Receita" fill="#2ee6a0" radius={[5, 5, 0, 0]} />
+        <Bar dataKey="receita" name="Receita" fill="#4fd6a4" radius={[5, 5, 0, 0]} />
         <Bar dataKey="despesa" name="Despesa" fill="#ff6b6b" radius={[5, 5, 0, 0]} />
       </BarChart>
     </ResponsiveContainer></div>
@@ -48,15 +48,15 @@ export function SaldoAreaChart({ data }: { data: { mes: string; receita: number;
       <AreaChart data={d} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
         <defs>
           <linearGradient id="gsaldo" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2ee6a0" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#2ee6a0" stopOpacity={0} />
+            <stop offset="0%" stopColor="#4fd6a4" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="#4fd6a4" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
         <Tooltip content={<TT />} cursor={{ stroke: '#ffffff14' }} />
-        <Area type="monotone" dataKey="saldo" name="Saldo" stroke="#2ee6a0" strokeWidth={2} fill="url(#gsaldo)" />
+        <Area type="monotone" dataKey="saldo" name="Saldo" stroke="#4fd6a4" strokeWidth={2} fill="url(#gsaldo)" />
       </AreaChart>
     </ResponsiveContainer></div>
   );
@@ -72,7 +72,7 @@ export function AportesChart({ data }: { data: { mes: string; valor: number }[] 
         <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
         <Tooltip content={<TT />} cursor={{ fill: '#ffffff08' }} />
         <Bar dataKey="valor" name="Aporte líquido" radius={[5, 5, 0, 0]}>
-          {d.map((x, i) => <Cell key={i} fill={x.valor >= 0 ? '#2ee6a0' : '#ff6b6b'} />)}
+          {d.map((x, i) => <Cell key={i} fill={x.valor >= 0 ? '#4fd6a4' : '#ff6b6b'} />)}
         </Bar>
       </BarChart>
     </ResponsiveContainer></div>
@@ -101,15 +101,15 @@ export function PatrimonioChart({ data }: { data: { data: string; valor: number 
       <AreaChart data={d} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
         <defs>
           <linearGradient id="gpat" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2ee6a0" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#2ee6a0" stopOpacity={0} />
+            <stop offset="0%" stopColor="#4fd6a4" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="#4fd6a4" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
         <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} />
         <YAxis tick={AXIS} axisLine={false} tickLine={false} tickFormatter={(v) => brlCompact(v)} width={52} />
         <Tooltip content={<TT />} cursor={{ stroke: '#ffffff14' }} />
-        <Area type="monotone" dataKey="valor" name="Patrimônio" stroke="#2ee6a0" strokeWidth={2} fill="url(#gpat)" dot={{ r: 3 }} />
+        <Area type="monotone" dataKey="valor" name="Patrimônio" stroke="#4fd6a4" strokeWidth={2} fill="url(#gpat)" dot={{ r: 3 }} />
       </AreaChart>
     </ResponsiveContainer></div>
   );
@@ -133,7 +133,7 @@ export function ProjecaoChart({
         <ReferenceLine yAxisId="conta" y={0} stroke="#ff6b6b" strokeDasharray="2 4" strokeOpacity={0.5} />
         <Tooltip content={<TT />} cursor={{ fill: '#ffffff08' }} />
         <Bar yAxisId="fluxo" dataKey="saldo" name="Sobra do mês" radius={[5, 5, 0, 0]} maxBarSize={44}>
-          {data.map((x, i) => <Cell key={i} fill={x.saldo >= 0 ? '#2ee6a0' : '#ff6b6b'} />)}
+          {data.map((x, i) => <Cell key={i} fill={x.saldo >= 0 ? '#4fd6a4' : '#ff6b6b'} />)}
         </Bar>
         <Line yAxisId="conta" type="monotone" dataKey="saldoProjetado" name="Dinheiro em conta" stroke="#5bc8f5" strokeWidth={2} dot={false} />
         {temSimulacao && (

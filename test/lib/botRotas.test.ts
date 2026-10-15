@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerParams } from '../../src/lib/botRotas';
+import { lerParams, linkDoPeriodo } from '../../src/lib/botRotas';
 
 const sp = (o: Record<string, string>) => new URLSearchParams(o);
 
@@ -30,5 +30,14 @@ describe('alinharPeriodos (comparação justa)', () => {
     const a = { inicio: '2026-08-01', fimExcl: '2026-09-01', label: 'ago/26' };
     const b = { inicio: '2026-09-01', fimExcl: '2026-10-01', label: 'set/26' };
     expect(alinharPeriodos(a, b, '2026-10-12')).toEqual({ a, b });
+  });
+});
+
+// N19: o bot respondia "gasto da semana passada" com link para o mês inteiro
+describe('link do período (N19)', () => {
+  it('semana abre a semana; mês abre o mês; pessoa e grupo vão junto; outro período só a tela', () => {
+    expect(linkDoPeriodo({ inicio: '2026-10-05', fimExcl: '2026-10-12' }, 'casal', null, '2026-10')).toBe('/gastos?p=sem-2026-10-05');
+    expect(linkDoPeriodo({ inicio: '2026-09-01', fimExcl: '2026-10-01' }, 'Ariane', 'Mercado', '2026-10')).toBe('/gastos?resp=Ariane&mes=2026-09&grupo=Mercado');
+    expect(linkDoPeriodo({ inicio: '2026-10-13', fimExcl: '2026-10-14' }, 'casal', null, '2026-10')).toBe('/gastos');
   });
 });

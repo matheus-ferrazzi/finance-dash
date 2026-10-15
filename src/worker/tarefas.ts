@@ -117,6 +117,8 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
       }
     }
     contagens.contas = porConta;
+    // N2: as duas pontas só existem juntas depois de todas as contas gravadas
+    if (ctx.modo === 'real') contagens.pareadas = await ctx.repo.parearTransferencias(desde);
   });
 }
 

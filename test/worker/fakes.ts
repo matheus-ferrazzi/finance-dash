@@ -60,6 +60,8 @@ export class RepoFake implements Repo {
   async upsertItem(id: string) { this.chamadas.push(`upsertItem ${id}`); }
   async registrarSync(b: string, r: string) { this.chamadas.push(`registrarSync ${b} ${r}`); }
   async registrarExecucao(e: Execucao) { this.execucoes.push(e); }
+  pareadas = 0;
+  async parearTransferencias(desde: string) { this.chamadas.push(`parear ${desde}`); return this.pareadas; }
 }
 
 export function linhaBancoFake(id: string, data = '2026-09-20'): LinhaBanco {

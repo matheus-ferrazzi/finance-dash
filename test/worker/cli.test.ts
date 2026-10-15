@@ -26,6 +26,9 @@ describe('AGENDA', () => {
   it('cobre as seis tarefas', () => {
     expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens', 'atualizar-itens']));
   });
+  it('S2: pede atualização dos itens parados às 7h e às 13h (antes das ingestões)', () => {
+    expect(AGENDA.find(([, t]) => t === 'atualizar-itens')![0]).toBe('0 7,13 * * *');
+  });
 });
 
 describe('notificações (C2)', () => {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { montarGasto } from '@/lib/bot';
-import { lerParams } from '@/lib/botRotas';
+import { lerParams, linkDoPeriodo } from '@/lib/botRotas';
 import { currentDateSP } from '@/lib/format';
 import { getDinheiroPorCategoriaEntre } from '@/lib/dinheiro';
 import { getGastoPorCategoriaEntre } from '@/lib/queries';
@@ -17,5 +17,5 @@ export async function GET(req: Request) {
     getDinheiroPorCategoriaEntre(periodo.inicio, periodo.fimExcl, pessoa),
   ]);
   const g = montarGasto(cat, grupo, din);
-  return NextResponse.json({ periodo: periodo.label, pessoa, grupo, ...g, link: '/gastos' });
+  return NextResponse.json({ periodo: periodo.label, pessoa, grupo, ...g, link: linkDoPeriodo(periodo, pessoa, grupo, currentDateSP().slice(0, 7)) });
 }

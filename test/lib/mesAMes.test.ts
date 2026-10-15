@@ -80,6 +80,10 @@ describe('detalhe do mês atual e passado', () => {
     ]);
     expect(d.fechaCom).toBe(-50);
   });
+  it('N1: o cartão sem histórico já pago no mês aparece no "já aconteceu" do cartão', () => {
+    const d = detalheMesAtual({ ...base, cartaoSemFatura: { mensal: 123.45, pagoNoMes: 123.45 } } as any, mes({}));
+    expect(d.linhas.find((l) => l.chave === 'cartao')!.jaAconteceu).toBe(523.45);
+  });
   it('passado: previsto × real × diferença (real − previsto); mês vazio dá diferença = −previsto', () => {
     const z = { receita: 0, debito: 0, casa: 0, fatura: 0, saldo: 0 };
     const d = detalheMesPassado({ mes: '2026-09', previsto: { receita: 100, debito: 50, casa: 20, fatura: 10, saldo: 20 }, real: z, saldoInicio: 5, saldoFim: 5 });

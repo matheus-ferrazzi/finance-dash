@@ -22,6 +22,7 @@ describe('paridade com o n8n', () => {
     const o = n8n('ritmo');
     const casos = [
       { mesLabel: 'out/26', fechaCom: -1900.00, diasRestantes: 20, ritmoSeguroDia: 54.8, ritmoAtualDia: 200.00, receitasAReceber: [{ valor: 1500.00 }] },
+      { mesLabel: 'out/26', fechaCom: -1000, diasRestantes: 18, ritmoSeguroDia: 50, ritmoAtualDia: 190, sobraParaODiaADia: 900, receitasAReceber: [] },
       { mesLabel: 'nov/26', fechaCom: 350, diasRestantes: 1, ritmoSeguroDia: 100, ritmoAtualDia: 80, receitasAReceber: [] },
       { mesLabel: 'dez/26', fechaCom: 0, diasRestantes: 0, ritmoSeguroDia: 0, ritmoAtualDia: 10, receitasAReceber: [] },
       { mesLabel: 'jan/27', fechaCom: -1, diasRestantes: 5, ritmoSeguroDia: 0, ritmoAtualDia: 33.3, receitasAReceber: [{ valor: 0 }] },

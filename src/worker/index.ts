@@ -11,6 +11,7 @@ import { criarServidor } from './bot/servidor';
 import { currentDateSP } from '../lib/format';
 import { CanalTelegram } from './notificacoes/canal';
 import { CanalWhatsApp } from './notificacoes/whatsapp';
+import { estadoDaSessao, vigiarWhatsApp } from './notificacoes/vigia';
 import { criarFontes } from './notificacoes/fontes';
 import { destinoDe, modoDoBot, rodarNotificacao } from './notificacoes/motor';
 import { paraPng } from './notificacoes/png';
@@ -96,6 +97,13 @@ async function main() {
       const n = await registroBot.limpar(90).catch(() => 0);
       if (n) log(`bot: ${n} conversa(s) com mais de 90 dias apagada(s)`);
     });
+    // S1 (auditoria 13/10): sessão do WhatsApp caiu → aviso pelo Telegram (o técnico sai pelo próprio WhatsApp)
+    if (waKey && process.env.WA_GRUPO) {
+      new Cron('0 1,7,13,19 * * *', { timezone: TZ, protect: true }, async () => {
+        const e = await vigiarWhatsApp(() => estadoDaSessao(waUrl, waKey, waInst), telegram).catch((x) => `erro ao avisar: ${x instanceof Error ? x.message : x}`);
+        if (e !== 'open') log(`vigia-whatsapp: sessão ${e}${telegram ? ' (aviso no Telegram)' : ' (sem Telegram para avisar)'}`);
+      });
+    }
     const faltando = ['GROQ_API_KEY', 'BOT_TOKEN', 'BOT_MEMBROS', 'BOT_JIDS', 'WA_GRUPO', 'WA_API_KEY'].filter((k) => !process.env[k]);
     if (faltando.length) log(`bot desligado: falta ${faltando.join(', ')}`);
     else {

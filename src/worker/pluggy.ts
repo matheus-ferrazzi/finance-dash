@@ -2,8 +2,20 @@ import { soDigitos } from './linha';
 import type { PluggyConta, PluggyFatura, PluggyInvestimento, PluggyItem, PluggyTransacao } from './tipos';
 
 export class PluggyErro extends Error {
-  constructor(public readonly status: number, public readonly caminho: string) {
-    super(`Pluggy HTTP ${status} em ${caminho}`);
+  /** `motivo`: codeDescription + message do corpo da Pluggy (curto) — diz se é consentimento, MFA, item em erro… */
+  constructor(public readonly status: number, public readonly caminho: string, motivo?: string) {
+    super(`Pluggy HTTP ${status} em ${caminho}${motivo ? `: ${motivo}` : ''}`);
+  }
+}
+
+/** code/message do corpo de erro da Pluggy, sem nada além disso (nunca o corpo inteiro no log). */
+async function motivoDoErro(r: Response): Promise<string | undefined> {
+  try {
+    const j = (await r.json()) as { codeDescription?: unknown; message?: unknown };
+    const m = [j.codeDescription, j.message].filter((x) => typeof x === 'string' && x).join(' ');
+    return m ? m.slice(0, 200) : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -68,7 +80,7 @@ export class PluggyClient implements PluggyApi {
         tentativa--;
         continue;
       }
-      if (!(r.status === 429 || r.status >= 500) || tentativa >= TENTATIVAS) throw new PluggyErro(r.status, semQuery);
+      if (!(r.status === 429 || r.status >= 500) || tentativa >= TENTATIVAS) throw new PluggyErro(r.status, semQuery, await motivoDoErro(r));
       await this.esperar(1000 * 2 ** (tentativa - 1));
     }
   }

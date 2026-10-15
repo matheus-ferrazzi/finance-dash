@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addMonths, aplicarCenario, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarCenario, avisosDeCadastro, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type EntradaReceita, type ProjecaoBase,
 } from '../../src/lib/previsao';
 
@@ -36,6 +36,18 @@ describe('computeProjecao com hoje explícito', () => {
     const base = baseFake();
     const r = computeRitmo(base, computeProjecao(base, 1, '2026-08-10')[0], '2026-08-10');
     expect([r.diaHoje, r.diasRestantes]).toEqual([10, 21]);
+  });
+  // N11 (auditoria 13/10): "dá pra gastar hoje" dividia pelos dias DEPOIS de hoje (hoje ficava sem parte) e
+  // no último dia do mês era sempre 0
+  it('N11: o que sobra para o dia a dia se divide entre hoje e os dias que faltam; último dia = tudo hoje', () => {
+    const base = baseFake({ saldoContasAtual: 20000 });
+    const m = computeProjecao(base, 1, '2026-08-10')[0];
+    const r = computeRitmo(base, m, '2026-08-10');
+    expect(r.ritmoSeguroDia).toBeCloseTo(Math.max(0, r.sobraParaODiaADia) / 22, 6);
+    const u = computeProjecao(base, 1, '2026-08-31')[0];
+    const ru = computeRitmo(base, u, '2026-08-31');
+    expect(ru.diasRestantes).toBe(0);
+    expect(ru.ritmoSeguroDia).toBeCloseTo(Math.max(0, ru.sobraParaODiaADia), 6);
   });
 });
 
@@ -131,6 +143,19 @@ describe('fatura', () => {
     const q = computeProjecao(baseFake({ faturaReal: {}, creditoPorVencimento: {} }), 0, '2026-08-11');
     expect(q[0].fatura).toBe(0);
   });
+  it('N3: fatura que falta vista por cartão manda no mês corrente (vencida/parcelada não sai de novo)', () => {
+    const b = baseFake({ faturaReal: { '2026-10': 3000 }, creditoPorVencimento: {} });
+    b.mesCorrente.faturaJaPaga = 2500;
+    b.mesCorrente.faturaRestante = 0;
+    expect(computeProjecao(b, 0, '2026-10-13')[0].fatura).toBe(0);
+  });
+  it('N1: cartão sem histórico — o pagamento mensal repetido sai todo mês; no corrente, só se ainda não saiu', () => {
+    const b = baseFake({ faturaReal: {}, creditoPorVencimento: {}, creditoNovoMedio: 0, cartaoSemFatura: { mensal: 123.45, pagoNoMes: 0 } });
+    const p = computeProjecao(b, 2, '2026-11-03');
+    expect([p[0].fatura, p[1].fatura, p[2].fatura]).toEqual([123.45, 123.45, 123.45]);
+    b.cartaoSemFatura = { mensal: 123.45, pagoNoMes: 123.45 };
+    expect(computeProjecao(b, 1, '2026-11-10')[0].fatura).toBe(0);
+  });
 });
 
 describe('aplicarCenario', () => {
@@ -194,8 +219,29 @@ describe('débito do mês em andamento: contas fixas à parte e perfil do mês (
   it('conta fixa que ainda não saiu entra como compromisso, não no ritmo; a já paga não conta de novo', () => {
     const b = baseFake({ despesaFixaDebitoMedia: 500, fracaoRestanteDebito: 0.4, mesCorrente: mc({ fixoJaGasto: 300 }) });
     expect(computeProjecao(b, 0, '2026-08-03')[0].despesaFixa).toBe(200);
-    const paga = baseFake({ despesaFixaDebitoMedia: 500, fracaoRestanteDebito: 0.4, mesCorrente: mc({ fixoJaGasto: 575 }) });
+    const paga = baseFake({ despesaFixaDebitoMedia: 500, fracaoRestanteDebito: 0.4, mesCorrente: mc({ fixoJaGasto: 500 }) });
     expect(computeProjecao(paga, 0, '2026-08-03')[0].despesaFixa).toBe(0);
+  });
+
+  // N12 (auditoria 13/10): com consórcio, seguro e MEI já pagos, "média total − pago total" ainda esperava dinheiro saindo
+  it('N12: conta travada vista por categoria: a que já saiu no mês está paga (mesmo abaixo da média); a que não saiu espera a média', () => {
+    const b = baseFake({ despesaFixaDebitoMedia: 1100, mesCorrente: mc({
+      fixoJaGasto: 1050,
+      fixoPorCategoria: {
+        Consortium: { media: 500, pago: 500 }, Insurance: { media: 300, pago: 300 }, Taxes: { media: 250, pago: 230 },
+      },
+    }) });
+    expect(computeProjecao(b, 0, '2026-10-13')[0].despesaFixa).toBe(0);
+    const falta = baseFake({ despesaFixaDebitoMedia: 1100, mesCorrente: mc({
+      fixoJaGasto: 500, fixoPorCategoria: { Consortium: { media: 500, pago: 500, ativa: true }, Insurance: { media: 300, pago: 0, ativa: true } },
+    }) });
+    expect(computeProjecao(falta, 0, '2026-10-13')[0].despesaFixa).toBeCloseTo(300, 2);
+  });
+  it('N12: conta travada que não apareceu no mês passado acabou (empréstimo de julho): não é esperada', () => {
+    const b = baseFake({ despesaFixaDebitoMedia: 120, mesCorrente: mc({
+      fixoJaGasto: 0, fixoPorCategoria: { 'Loans and financing': { media: 120, pago: 0, ativa: false } },
+    }) });
+    expect(computeProjecao(b, 0, '2026-10-13')[0].despesaFixa).toBe(0);
   });
 
   it('antes do dia 7: gasto livre que falta = média × fração histórica que sai depois de hoje', () => {
@@ -219,5 +265,18 @@ describe('débito do mês em andamento: contas fixas à parte e perfil do mês (
       fontesReceita: [], mesCorrente: mc({ fixoJaGasto: 0 }) });
     const p = computeProjecao(b, 0, '2026-08-11');
     expect(computeRitmo(b, p[0], '2026-08-11').sobraParaODiaADia).toBe(2500);
+  });
+});
+
+// auditoria 13/10 (N13): o cadastro manda na previsão; aluguel cadastrado bem abaixo do que saiu no mês
+describe('aviso de cadastro desatualizado (N13)', () => {
+  const c = (nome: string, categoria: string, valor: number) =>
+    ({ id: 1, nome, categoria, valor, responsavel: 'casal', dataInicio: '2026-01-01', mesesTotais: null, observacao: null, dataFim: null });
+  it('categoria cadastrada que saiu mais de 10% acima do cadastro no mês avisa; dentro de 10% ou sem cadastro, não', () => {
+    expect(avisosDeCadastro([c('Aluguel', 'Housing', 1000), c('Luz', 'Electricity', 200)], { Housing: 1300, Electricity: 215, Water: 500 }, '2026-10'))
+      .toEqual([{ categoria: 'Housing', nomes: ['Aluguel'], cadastro: 1000, realizado: 1300 }]);
+  });
+  it('compromisso que já acabou não conta', () => {
+    expect(avisosDeCadastro([{ ...c('Velho', 'Housing', 100), dataFim: '2026-05-01' }], { Housing: 2000 }, '2026-10')).toEqual([]);
   });
 });

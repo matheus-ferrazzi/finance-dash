@@ -27,16 +27,18 @@ export function graficoDiario(r: ResumoDiario): string | null {
   const x0 = 70, x1 = W - 40, y0 = H - 60, y1 = 140;
   const X = (d: number) => x0 + ((x1 - x0) * d) / dias;
   const Y = (v: number) => y0 - ((y0 - y1) * v) / max;
-  const cor = hoje.acumulado > (r.cabeNoMes * hoje.dia) / dias ? VERM : VERDE;
+  // N14: mesma régua do texto ("acima do que cabe" = ritmo atual > o que dá pra gastar por dia)
+  const cor = r.ritmoAtualDia > r.ritmoSeguroDia ? VERM : VERDE;
   const pts = [{ dia: 0, acumulado: 0 }, ...s].map((p) => `${f(X(p.dia))},${f(Y(p.acumulado))}`).join(' ');
   return svg([
     texto(40, 56, `${r.mesLabel} · dia ${hoje.dia}`, 24, SUAVE),
     // último dia: não há "hoje dá pra gastar"; o destaque é como o mês fecha
     texto(40, 106, r.diasRestantes > 0 ? `hoje: ${brlCurto(r.ritmoSeguroDia)}` : `fecha em ${brlCurto(r.fechaCom)}`, 44, TEXTO, ' font-weight="bold"'),
     `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="${GRADE}" stroke-width="2"/>`,
-    `<line x1="${f(X(0))}" y1="${f(Y(0))}" x2="${f(X(dias))}" y2="${f(Y(r.cabeNoMes))}" stroke="${CINZA}" stroke-width="3" stroke-dasharray="10 8"/>`,
-    // do lado oposto do gasto: abaixo da reta quando o gasto está acima, e vice-versa
-    texto(X(dias) - 150, cor === VERM ? Y((r.cabeNoMes * (dias - 150 / ((x1 - x0) / dias))) / dias) + 30 : Y(r.cabeNoMes) - 14, 'o que cabe', 20, SUAVE),
+    // N14: o que cabe DAQUI PRA FRENTE: do gasto de hoje até o total que não fecha no vermelho (inclinação =
+    // o "dá pra gastar" do texto), não uma reta do dia 1 que ignora o começo do mês mais pesado
+    `<line x1="${f(X(hoje.dia))}" y1="${f(Y(hoje.acumulado))}" x2="${f(X(dias))}" y2="${f(Y(r.cabeNoMes))}" stroke="${CINZA}" stroke-width="3" stroke-dasharray="10 8"/>`,
+    texto(X(dias) - 150, Y(r.cabeNoMes) + (r.cabeNoMes >= projFim ? -14 : 30), 'o que cabe', 20, SUAVE),
     hoje.dia < dias
       ? `<line x1="${f(X(hoje.dia))}" y1="${f(Y(hoje.acumulado))}" x2="${f(X(dias))}" y2="${f(Y(projFim))}" stroke="${cor}" stroke-width="3" stroke-dasharray="4 8" stroke-opacity="0.6"/>`
       : '',

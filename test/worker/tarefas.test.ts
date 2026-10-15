@@ -34,6 +34,14 @@ describe('transacoes', () => {
     expect(c.repo.aplicado).toEqual([{ linhas: ['a', 'x1', 'x2', 'x3', 'novo'], remover: ['b'] }]);
   });
 
+  it('N2: real pareia as transferências do casal depois de gravar todas as contas (sombra/dry-run não)', async () => {
+    const c = cenario('real');
+    c.repo.pareadas = 2;
+    const ex = await TAREFAS.transacoes(c, {});
+    expect(c.repo.chamadas.at(-1)).toBe('parear 2026-08-10');
+    expect(ex.contagens.pareadas).toBe(2);
+  });
+
   it('não remove o que é mais antigo que o histórico que o banco expõe (Itaú só devolve 12 meses)', async () => {
     const c = ctx('real');
     // pedido de 24 meses, mas a Pluggy só tem transações a partir de 2025-10-15

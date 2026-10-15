@@ -13,3 +13,10 @@ export function paraLancamentos(gs: GastoDinheiro[]) {
 export function juntarBusca(banco: LancTela[], dinheiro: GastoDinheiro[]): LancTela[] {
   return [...banco, ...paraLancamentos(dinheiro)].sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
 }
+
+/** N19: "Por banco" da própria lista mostrada (com filtro e com o dinheiro), para as barras somarem o total. */
+export function porBanco(ls: readonly { banco: string; valor: number }[]): { banco: string; total: number }[] {
+  const m = new Map<string, number>();
+  for (const l of ls) m.set(l.banco, (m.get(l.banco) ?? 0) + l.valor);
+  return Array.from(m, ([banco, total]) => ({ banco, total: Math.round(total * 100) / 100 })).sort((a, b) => b.total - a.total);
+}

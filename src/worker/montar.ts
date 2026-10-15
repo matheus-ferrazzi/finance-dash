@@ -60,7 +60,8 @@ export function montarInvestimento(inv: PluggyInvestimento, meta: { banco: strin
 export function precisaPedirAtualizacao(item: PluggyItem, agora: Date): boolean {
   if (item.nextAutoSyncAt) return false;
   if (!item.lastUpdatedAt) return true;
-  return agora.getTime() - new Date(item.lastUpdatedAt).getTime() > 26 * 3600 * 1000;
+  // 20 h (era 26): com a checagem às 7h e às 13h, nenhum item passa de ~1 dia parado (auditoria 13/10)
+  return agora.getTime() - new Date(item.lastUpdatedAt).getTime() > 20 * 3600 * 1000;
 }
 
 export function formaDoTipo(tipoPluggy: string): Forma | null {

@@ -12,13 +12,16 @@ interface GrupoCortavel { nome: string; emoji: string; total: number; }
  * fechado e mostra o que aconteceria com a sobra mensal se esse gasto caísse.
  */
 export function SimuladorCorte({
-  grupos, sobraMensal, saldoProjetado,
+  grupos, sobraMensal, saldoProjetado, mesGastoLabel, mesSobraLabel,
 }: {
   grupos: GrupoCortavel[];
   /** sobra projetada num mês cheio, como está hoje */
   sobraMensal: number;
   /** quanto você deve ter em conta no fim do mês atual */
   saldoProjetado: number;
+  /** N17: o gasto dos grupos é de um mês (o último fechado); a sobra, de outro (o próximo cheio) */
+  mesGastoLabel?: string;
+  mesSobraLabel?: string;
 }) {
   const [alvo, setAlvo] = useState(grupos[0]?.nome ?? '');
   const [pct, setPct] = useState(30);
@@ -75,7 +78,7 @@ export function SimuladorCorte({
       {r && grupo && (
         <div className="fadein mt-4">
           <div className="text-sm">
-            {grupo.emoji} {grupo.nome}: <span className="tnum money text-muted">{brl(grupo.total)}</span>
+            {grupo.emoji} {grupo.nome}{mesGastoLabel ? ` (gasto de ${mesGastoLabel})` : ''}: <span className="tnum money text-muted">{brl(grupo.total)}</span>
             {' → '}
             <span className="tnum money text-accent font-medium">{brl(r.novoValor)}</span>
           </div>
@@ -86,7 +89,7 @@ export function SimuladorCorte({
               <div className="mt-1 tnum money text-sm font-medium text-accent">+{brl(r.economia)}</div>
             </div>
             <div className="card-2 px-3 py-2.5">
-              <div className="text-[11px] text-muted">Sobra passa a ser</div>
+              <div className="text-[11px] text-muted">{mesSobraLabel ? `Sobra prevista de ${mesSobraLabel} passa a ser` : 'Sobra passa a ser'}</div>
               <div className={`mt-1 tnum money text-sm font-semibold ${r.novaSobra >= 0 ? 'text-accent' : 'text-despesa'}`}>
                 {brl(r.novaSobra)}
               </div>

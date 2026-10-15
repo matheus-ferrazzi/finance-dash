@@ -1,9 +1,9 @@
 import {
-  getProjecaoBase, computeProjecao, computeRitmo, getCalibracaoPara, getCompromissosParcelados, getMesesPassados, Resp,
+  getProjecaoBase, computeProjecao, computeRitmo, fotografarPrevisto, getCalibracaoPara, getCompromissosParcelados, getMesesPassados, Resp,
 } from '@/lib/queries';
 import { PageTitle } from '../components/ui';
 import { brl, currentDateSP, mesLabel } from '@/lib/format';
-import { addMonths, diasNoMes } from '@/lib/previsao';
+import { addMonths, avisosDeCadastro, diasNoMes } from '@/lib/previsao';
 import { saiDoVermelho } from '@/lib/decisoes';
 import { debitoParaSairAte, niveisMeta, tabelaMeta, textoMetaAlvo } from '@/lib/meta';
 import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, semPassadosSeFalhar } from '@/lib/mesAMes';
@@ -24,6 +24,8 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   const resp = resolveResp(searchParams.resp);
   const hoje = currentDateSP();
 
+  // N15: primeira abertura no mês tira a foto do previsto do mês (se o resumo do dia 1 ainda não tirou)
+  await fotografarPrevisto(resp, hoje.slice(0, 7)).catch((e) => console.error('foto do previsto falhou', e));
   // getProjecaoBase já traz saldos e compromissos manuais — não consultar de novo
   const [base, parcelados, { calib, motivo }, passados] = await Promise.all([
     getProjecaoBase(resp),
@@ -39,10 +41,12 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   // meta de gasto no débito: o que mais decide "quando saio do vermelho"
   const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
   const alvo = addMonths(hoje.slice(0, 7), 12);
+  const ultimo = passados[passados.length - 1];
   const meta = {
     debitoAtual, alvo, alvoLabel: mesLabel(alvo),
     linhas: tabelaMeta(base, hoje, niveisMeta(debitoAtual)),
     maxDebito: debitoParaSairAte(base, hoje, alvo),
+    ultimoMes: ultimo ? { label: mesLabel(ultimo.mes), valor: ultimo.real.debito } : undefined,
   };
 
   // ?mes= abre o mês; inválido ou fora da lista (3 passados .. 24 à frente) mostra a lista
@@ -59,7 +63,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
           {sai.provavel ? <>Sai do vermelho em <b>{mesLabel(sai.provavel)}</b></> : <>Não sai do vermelho nos próximos {HORIZONTE_MAX} meses</>}
           {calib && sai.piorCaso !== sai.provavel && <span className="text-muted"> (pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai nos próximos ${HORIZONTE_MAX} meses`})</span>}
         </p>
-        <p className="mt-1 text-xs text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v))}</p>
+        <p className="mt-1 text-xs text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v), meta.ultimoMes)}</p>
         {!calib && (
           <p className="mt-1 text-[11px] text-faint">
             {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza ainda: a fase atual tem menos de 6 meses de histórico.'}
@@ -81,7 +85,8 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <MetaDebito meta={meta} />
-        <PrevisibilidadeClient parcelados={parcelados} manuais={base.compromissosCadastrados} />
+        <PrevisibilidadeClient parcelados={parcelados} manuais={base.compromissosCadastrados}
+          avisos={avisosDeCadastro(base.compromissosCadastrados, base.mesCorrente.casaNoMesCasalPorCategoria ?? base.mesCorrente.casaNoMesPorCategoria, hoje.slice(0, 7))} />
       </div>
     </div>
   );

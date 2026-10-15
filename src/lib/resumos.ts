@@ -2,7 +2,7 @@
 import type { ItemConta } from './contas';
 import type { GrupoGasto } from './grupos';
 import { mesLabel } from './format';
-import type { MesPassado } from './queries';
+import type { Fatura, MesPassado } from './queries';
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
@@ -21,6 +21,36 @@ export function contasDoDia(itens: ItemConta[], hojeDia: number, diasNoMes: numb
     else if (hojeDia < diasNoMes && dia === hojeDia + 1) out.push({ nome: i.nome, valor: i.previsto, quando: 'amanhã' });
   }
   return out.sort((a, b) => (a.quando === b.quando ? 0 : a.quando === 'hoje' ? -1 : 1));
+}
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const amanhaDe = (hoje: string) => {
+  const d = new Date(`${hoje}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+/**
+ * N5 (auditoria 13/10): faturas FECHADAS a vencer hoje ou amanhã, dos cartões dos dois. O caderno da Ariane
+ * já lembra os cartões dela que estão lá ("Nubank", "Crédito Neon"): esses não se repetem.
+ */
+export function faturasDoDia(faturas: Fatura[], hoje: string, caderno: ItemConta[]): ContaDoDia[] {
+  const amanha = amanhaDe(hoje);
+  const noCaderno = (f: Fatura) => caderno.some((c) => c.responsavel === f.responsavel && semAcento(c.nome).includes(semAcento(f.banco)));
+  const out: ContaDoDia[] = [];
+  for (const f of faturas) {
+    const u = f.ultima;
+    if (!u || u.situacao !== 'a_vencer' || noCaderno(f)) continue;
+    const quando = u.vencimento === hoje ? 'hoje' : u.vencimento === amanha ? 'amanhã' : null;
+    if (quando) out.push({ nome: `Fatura ${f.banco} (${f.responsavel})`, valor: u.falta, quando });
+  }
+  return out.sort((a, b) => (a.quando === b.quando ? 0 : a.quando === 'hoje' ? -1 : 1));
+}
+
+/** N7: total da semana e média das 4 anteriores (÷4) só do gasto livre — o mesmo recorte da lista de grupos. */
+export function totaisLivres(semana: GrupoGasto[], antes4: GrupoGasto[]): { total: number; mediaTotal: number } {
+  const soma = (gs: GrupoGasto[]) => gs.filter((g) => !g.travado).reduce((s, g) => s + g.total, 0);
+  return { total: r2(soma(semana)), mediaTotal: r2(soma(antes4) / 4) };
 }
 
 export interface GrupoSemana { nome: string; emoji: string; semana: number; media: number }

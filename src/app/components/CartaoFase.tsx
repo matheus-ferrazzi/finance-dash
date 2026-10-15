@@ -25,7 +25,7 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
         <div className="mt-2 space-y-1 text-xs">
           {dividas.length === 0 && <div className="text-muted">Nenhuma dívida em aberto.</div>}
           {dividas.map((d) => (
-            <div key={`${d.nome}|${d.banco}`} className="flex flex-wrap justify-between gap-x-3">
+            <div key={`${d.chave}#${d.plano ?? ''}`} className="flex flex-wrap justify-between gap-x-3">
               <span className="min-w-0 first-letter:uppercase">{d.nome} <span className="text-faint">· {d.banco}</span></span>
               <span className="shrink-0 text-muted">
                 <span className="tnum money">{brl(d.valorParcela)}</span>
@@ -61,7 +61,10 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
             <i className="block h-full bg-accent" style={{ width: `${fracao * 100}%` }} />
           </div>
           <div className="mt-1 text-faint">
-            {`${trilha.reserva.meses} × gasto travado: fixos `}<span className="tnum money">{brl(gastoTravado.fixos)}</span> + casa <span className="tnum money">{brl(gastoTravado.casa)}</span> + contas travadas <span className="tnum money">{brl(gastoTravado.debitoTravado)}</span>
+            {/* N18: "fixos" eram os compromissos cadastrados (aluguel, luz…) e "casa" só o que não tem cadastro */}
+            {`${trilha.reserva.meses} × gasto travado: compromissos cadastrados `}<span className="tnum money">{brl(gastoTravado.fixos)}</span>
+            {gastoTravado.casa > 0 && <> + outras contas da casa <span className="tnum money">{brl(gastoTravado.casa)}</span></>}
+            {' + seguro, consórcio e impostos '}<span className="tnum money">{brl(gastoTravado.debitoTravado)}</span>
           </div>
           {aplicacaoMensal.length > 0 && (
             <div className="mt-1 text-faint">
@@ -74,7 +77,7 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
 
       {fase.n === 4 && (
         <div className="mt-2 text-xs text-muted">
-          {`${Math.round(trilha.patrimonio.pct * 100)}% da renda aplicada (meta ${Math.round(trilha.patrimonio.meta * 1000) / 10}%) · total aplicado `}<span className="tnum money">{brl(r.aplicado)}</span>
+          {`${Math.round(trilha.patrimonio.pct * 100)}% da renda aplicada nos meses fechados, já descontado o que foi resgatado (meta ${Math.round(trilha.patrimonio.meta * 1000) / 10}%) · total aplicado `}<span className="tnum money">{brl(r.aplicado)}</span>
           <div><AjustarMeta chave="meta_patrimonio" valorTela={Math.round(trilha.patrimonio.meta * 1000) / 10} padrao={metasPadrao.patrimonio} /></div>
         </div>
       )}

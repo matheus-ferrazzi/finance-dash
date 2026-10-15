@@ -6,6 +6,8 @@ export interface MetaProps {
   debitoAtual: number; alvo: string; alvoLabel: string;
   linhas: { debito: number; sai: string | null }[];
   maxDebito: number | null;
+  /** N16: o débito do último mês fechado, para dizer se o corte já está acontecendo */
+  ultimoMes?: { label: string; valor: number };
 }
 
 /** Meta de gasto no débito: em que mês sai do vermelho para cada nível de gasto mensal. */
@@ -13,7 +15,7 @@ export function MetaDebito({ meta }: { meta: MetaProps }) {
   return (
     <div className="card">
       <SectionTitle>Meta de gasto no débito</SectionTitle>
-      <p className="text-sm text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v))}</p>
+      <p className="text-sm text-muted">{textoMetaAlvo(meta.maxDebito, meta.debitoAtual, meta.alvoLabel, (v) => brl(v), meta.ultimoMes)}</p>
       <div className="mt-3 divide-y divide-border/60 text-sm">
         {meta.linhas.map((l, i) => (
           <div key={l.debito} className="flex justify-between gap-2 py-1.5">

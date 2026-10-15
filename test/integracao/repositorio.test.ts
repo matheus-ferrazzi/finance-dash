@@ -27,6 +27,7 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/012_par_transferencia.sql', 'utf8'));
     repo = new PgRepo(pool);
   });
   afterAll(async () => pool?.end());
@@ -49,6 +50,35 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     expect(r.rows).toEqual([{ id_transacao: 'velha', d: 'y', motivo: 'sumiu_da_pluggy' }]);
     const c = await pool.query(`SELECT removida_em IS NOT NULL AS removida FROM pluggy_transacoes WHERE id = 'velha'`);
     expect(c.rows[0].removida).toBe(true);
+  });
+
+  it('N2: entrada "receita" com a saída interna de outra conta do casal (mesmo valor, ±1 dia) vira transferência; 1:1; reingestão não desfaz', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, account_id) VALUES
+      ('t-sai', '2026-09-04', 123.45, 'Pix enviado', 'Débito', 'Itaú', 'Matheus', 'transferencia_interna', 'Saída', 'itau'),
+      ('t-ent', '2026-09-05', 123.45, 'PIX RECEBIDO', 'Débito', 'Bradesco', 'Matheus', 'receita', 'Entrada', 'brad'),
+      ('t-ent2', '2026-09-05', 123.45, 'PIX RECEBIDO OUTRO', 'Débito', 'Bradesco', 'Matheus', 'receita', 'Entrada', 'brad'),
+      ('t-mesma', '2026-09-04', 50, 'PIX RECEBIDO', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', 'itau'),
+      ('t-sai2', '2026-09-04', 50, 'Pix enviado', 'Débito', 'Itaú', 'Matheus', 'transferencia_interna', 'Saída', 'itau'),
+      ('t-longe', '2026-09-10', 70, 'PIX RECEBIDO', 'Débito', 'Bradesco', 'Matheus', 'receita', 'Entrada', 'brad'),
+      ('t-sai3', '2026-09-04', 70, 'Pix enviado', 'Débito', 'Itaú', 'Matheus', 'transferencia_interna', 'Saída', 'itau')`);
+    expect(await repo.parearTransferencias('2026-09-01')).toBe(1);
+    const r = await pool.query(`SELECT id_transacao, classe, par_transferencia FROM financas_lancamentos WHERE id_transacao IN ('t-ent','t-ent2','t-mesma','t-longe') ORDER BY 1`);
+    // 1:1 (a saída casa com uma entrada só); mesma conta não é transferência entre contas; 6 dias é longe demais
+    expect(r.rows).toEqual([
+      { id_transacao: 't-ent', classe: 'transferencia_interna', par_transferencia: 't-sai' },
+      { id_transacao: 't-ent2', classe: 'receita', par_transferencia: null },
+      { id_transacao: 't-longe', classe: 'receita', par_transferencia: null },
+      { id_transacao: 't-mesma', classe: 'receita', par_transferencia: null },
+    ]);
+    // a Pluggy reenvia a entrada classificada como receita: o par segura a transferência
+    const reenvio = { ...linha('t-ent', '2026-09-05'), valor: 123.45, tipo_movimento: 'Entrada', classe: 'receita', forma_pagamento: 'Débito', banco: 'Bradesco', account_id: 'brad' } as Lancamento;
+    await repo.aplicarConta([reenvio], []);
+    expect((await pool.query(`SELECT classe FROM financas_lancamentos WHERE id_transacao = 't-ent'`)).rows[0].classe).toBe('transferencia_interna');
+    // e a comparação da sombra não conta isso como diferença (o banco devolve a classe "crua")
+    const brad: Conta = { ...conta, account_id: 'brad', banco: 'Bradesco', forma: 'Débito' };
+    expect((await repo.lancamentosDaConta(brad, '2026-09-01')).get('t-ent')!.classe).toBe('receita');
+    // segunda rodada: nada novo
+    expect(await repo.parearTransferencias('2026-09-01')).toBe(0);
   });
 
   it('registrarSync só escreve no log quando o lastUpdatedAt muda', async () => {

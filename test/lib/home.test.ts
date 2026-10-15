@@ -8,11 +8,13 @@ describe('blocos da home', () => {
     expect(topGrupos([])).toEqual([]);
   });
 
-  it('cartaoDestaque: maior uso do limite; soma das faturas; null sem cartão', () => {
-    const f = (banco: string, valor: number, limite: number, disponivel: number) =>
-      ({ id: banco, banco, responsavel: 'Ariane', valor, limite, disponivel, vencimento: null, fechamento: null });
-    expect(cartaoDestaque([f('X', 100, 1000, 900), f('Y', 50, 200, 40)])).toEqual({ banco: 'Y', usoPct: 80, totalAberto: 150 });
-    expect(cartaoDestaque([f('Z', 10, 0, 0)])).toEqual({ banco: 'Z', usoPct: 0, totalAberto: 10 });
+  it('cartaoDestaque: maior uso do limite; "a pagar" = o que falta das faturas fechadas (N4), não o limite usado; null sem cartão', () => {
+    const ult = (situacao: any, falta: number) => ({ total: 100, pago: 0, parcelado: 0, vencimento: '2026-10-20', situacao, falta });
+    const f = (banco: string, usado: number, limite: number, disponivel: number, ultima: any) =>
+      ({ id: banco, banco, responsavel: 'Ariane', usado, limite, disponivel, fechamento: null, ultima });
+    expect(cartaoDestaque([f('X', 100, 1000, 900, ult('a_vencer', 70)), f('Y', 160, 200, 40, ult('parcelada', 0))]))
+      .toEqual({ banco: 'Y', usoPct: 80, aPagar: 70 });
+    expect(cartaoDestaque([f('Z', 10, 0, 0, null)])).toEqual({ banco: 'Z', usoPct: 0, aPagar: 0 });
     expect(cartaoDestaque([])).toBeNull();
   });
 

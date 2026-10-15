@@ -37,8 +37,15 @@ export function debitoParaSairAte(base: ProjecaoBase, hoje: string, mesAlvo: str
   return lo * PASSO_BUSCA;
 }
 
-export function textoMetaAlvo(maxDebito: number | null, mediaAtual: number, alvoLabel: string, brl: (v: number) => string): string {
+export function textoMetaAlvo(
+  maxDebito: number | null, mediaAtual: number, alvoLabel: string, brl: (v: number) => string,
+  ultimoMes?: { label: string; valor: number },
+): string {
   if (maxDebito === null) return `Nem zerando o débito sai do vermelho até ${alvoLabel}.`;
   if (maxDebito >= mediaAtual) return `No ritmo de hoje (${brl(Math.round(mediaAtual))}/mês no débito) já sai do vermelho até ${alvoLabel}.`;
-  return `Para sair do vermelho até ${alvoLabel}: gastar até ${brl(maxDebito)}/mês no débito (${brl(Math.round(mediaAtual - maxDebito))} a menos que a média de hoje).`;
+  const base = `Para sair do vermelho até ${alvoLabel}: gastar até ${brl(maxDebito)}/mês no débito (${brl(Math.round(mediaAtual - maxDebito))} a menos que a média de hoje).`;
+  // N16: a média junta meses de gasto alto; o último mês fechado mostra se o corte já está acontecendo
+  if (!ultimoMes) return base;
+  const v = Math.round(ultimoMes.valor);
+  return `${base} Em ${ultimoMes.label} foram ${brl(v)}${v <= maxDebito ? ': dentro da meta, é manter.' : '.'}`;
 }

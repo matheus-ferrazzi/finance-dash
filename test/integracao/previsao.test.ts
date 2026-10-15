@@ -21,6 +21,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/013_previsto_foto.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {
@@ -219,7 +220,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('tr-7', '2038-03-07', 80, 'PIX APLICACAO', 'Transfers', 'Débito', 'B1', 'Ariane', 'aporte', 'Saída', '2038-03-07'),
       ('tr-8', '2038-02-11', 40, 'LOJA X 2/5', 'Shopping', 'Crédito', 'B1', 'Ariane', 'despesa', 'Saída', '2038-02-11')`);
     const d = await queries.getTrilhaDados('2038-04-15');
-    expect(d.dividas).toEqual([{ chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', valorParcela: 100, restantes: 2, fim: '2038-06' }]);
+    expect(d.dividas).toEqual([{ chave: 'renegociação de pendências|B1', nome: 'renegociação de pendências', banco: 'B1', plano: null, valorParcela: 100, restantes: 2, fim: '2038-06' }]);
     expect(d.atrasos).toContainEqual({ mes: '2038-03', motivo: 'juros' });
     expect(d.aplicacaoMensal).toEqual([{ mes: '2038-01', valor: 0 }, { mes: '2038-02', valor: 200 }, { mes: '2038-03', valor: 30 }]);
     expect(d.passados.map((p) => p.mes)).toEqual(['2038-01', '2038-02', '2038-03']);
@@ -237,9 +238,149 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('tf-2', '2039-03-09', 12, 'ENC ATRASO PARC FATURA', 'Credit card fees', 'Crédito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-03-09'),
       ('tf-3', '2039-04-05', 900, 'PAGAMENTO FATURA PARC CARTAO', 'Credit card payment', 'Débito', 'B3', 'Ariane', 'pagamento_fatura', 'Saída', '2039-04-05')`);
     const d = await queries.getTrilhaDados('2039-04-15');
-    expect(d.dividas).toEqual([{ chave: 'parcelamento de fatura|B3', nome: 'parcelamento de fatura', banco: 'B3', valorParcela: 70, restantes: 1, fim: '2039-05' }]);
+    expect(d.dividas).toEqual([{ chave: 'parcelamento de fatura|B3', nome: 'parcelamento de fatura', banco: 'B3', plano: null, valorParcela: 70, restantes: 1, fim: '2039-05' }]);
     expect(d.atrasos).toContainEqual({ mes: '2039-03', motivo: 'juros' });
   });
+  // auditoria 13/10 (N1): "GASTOS CARTAO" no débito é o pagamento da fatura de um cartão sem histórico
+  // de fatura na Pluggy (Bradesco) — dinheiro que sai de verdade, não espelho como "MORA CARTAO"
+  it('N1: pagamento de cartão sem histórico entra no realizado; MORA CARTAO continua fora', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n1-1', '2041-03-07', 200, 'GASTOS CARTAO DE CREDITO - DOCTO: 1', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2041-03-07'),
+      ('n1-2', '2041-03-12', 900, 'MORA CARTAO DE CREDITO - DOCTO: 2', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2041-03-12')`);
+    expect(await queries.getRealizado('2041-03')).toMatchObject({ fatura: 200 });
+  });
+
+  it('N1: pagamento repetido de cartão sem histórico vira fatura mensal prevista; valor que mudou não', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n1-a', '2042-01-07', 123.45, 'GASTOS CARTAO DE CREDITO - DOCTO: 3', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2042-01-07'),
+      ('n1-b', '2042-02-09', 123.45, 'GASTOS CARTAO DE CREDITO - DOCTO: 4', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2042-02-09'),
+      ('n1-c', '2042-03-08', 123.45, 'GASTOS CARTAO DE CREDITO - DOCTO: 5', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2042-03-08')`);
+    const abr = await queries.getProjecaoBase('casal', '2042-04-03');
+    expect(abr.cartaoSemFatura).toEqual({ mensal: 123.45, pagoNoMes: 0 });
+    // o mês de abril já pago: nada mais a sair nele
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n1-d', '2042-04-07', 123.45, 'GASTOS CARTAO DE CREDITO - DOCTO: 6', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2042-04-07')`);
+    expect((await queries.getProjecaoBase('casal', '2042-04-10')).cartaoSemFatura).toEqual({ mensal: 123.45, pagoNoMes: 123.45 });
+    // pela pessoa: a Ariane não tem esse cartão
+    expect((await queries.getProjecaoBase('Ariane', '2042-04-10')).cartaoSemFatura).toEqual({ mensal: 0, pagoNoMes: 0 });
+    // valores diferentes (fatura comum, não parcelada): não dá para prever
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n1-e', '2043-01-07', 1200, 'GASTOS CARTAO DE CREDITO - DOCTO: 7', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2043-01-07'),
+      ('n1-f', '2043-02-07', 1700, 'GASTOS CARTAO DE CREDITO - DOCTO: 8', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2043-02-07'),
+      ('n1-g', '2043-03-07', 1400, 'GASTOS CARTAO DE CREDITO - DOCTO: 9', 'Credit card payment', 'Débito', 'BX', 'Matheus', 'pagamento_fatura', 'Saída', '2043-03-07')`);
+    expect((await queries.getProjecaoBase('casal', '2043-04-03')).cartaoSemFatura?.mensal).toBe(0);
+  });
+
+  // auditoria 13/10 (N3): a fatura do mês em andamento é vista por cartão — vencida já não sai mais
+  // (o que não foi pago virou parcelamento/rotativo e aparece nas próximas); a vencer = total − o que o
+  // cartão já recebeu (o Nubank grava o mesmo pagamento duas vezes: conta uma)
+  it('N3: fatura que falta no mês, por cartão; parcelamento de fatura entra no vencimento', async () => {
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES
+      ('n3-a', 'n3-cartao-a', '2044-05-02', 480), ('n3-b', 'n3-cartao-b', '2044-05-20', 800)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id) VALUES
+      ('n3-1', '2044-05-02', 200, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Entrada', '2044-05-02', 'n3-cartao-a'),
+      ('n3-2', '2044-05-15', 300, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NB', 'Matheus', 'pagamento_fatura', 'Entrada', '2044-05-15', 'n3-cartao-b'),
+      ('n3-3', '2044-05-15', 300, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NB', 'Matheus', 'pagamento_fatura', 'Entrada', '2044-05-15', 'n3-cartao-b')`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista) VALUES
+      ('n3-4', '2044-05-26', 120, 'Parcelamento de Fatura', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Saída', '2044-05-02', 'n3-cartao-a', '2044-06')`);
+    const b = await queries.getProjecaoBase('casal', '2044-05-16');
+    // cartão A venceu em 02/05 (o resto foi parcelado): 0; cartão B: 800 − 300 (uma vez só)
+    expect(b.mesCorrente.faturaRestante).toBe(500);
+    // a parcela do parcelamento de fatura vence com a fatura de junho
+    expect(b.creditoPorVencimento['2044-06']).toBeCloseTo(120, 2);
+    // mês sem nenhuma fatura no histórico: indefinido (a previsão volta à conta antiga)
+    expect((await queries.getProjecaoBase('casal', '2045-05-16')).mesCorrente.faturaRestante).toBeUndefined();
+  });
+
+  it('N4: fatura = última fechada do histórico, com situação; o saldo devedor do cartão vira "limite usado"', async () => {
+    await pool.query(`INSERT INTO financas_faturas (id_conta, banco, responsavel, limite_total, limite_disponivel, valor_fatura_atual, data_vencimento) VALUES
+      ('n4-nu', 'Nubank', 'Ariane', 600, 190, 410, '2047-10-02'),
+      ('n4-neon', 'Neon', 'Ariane', 500, 200, 300, '2047-10-05'),
+      ('n4-sem', 'Inter', 'Matheus', 0, 0, 0, '2047-11-10')`);
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES
+      ('n4-h1', 'n4-nu', '2047-09-02', 150), ('n4-h2', 'n4-nu', '2047-10-02', 480),
+      ('n4-h3', 'n4-neon', '2047-10-05', 170)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id) VALUES
+      ('n4-1', '2047-10-02', 200, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2047-10-02', 'n4-nu'),
+      ('n4-2', '2047-10-02', 200, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2047-10-02', 'n4-nu'),
+      ('n4-3', '2047-10-02', 280, 'Crédito de parcelamento', 'Credit card payment', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2047-10-02', 'n4-nu'),
+      ('n4-4', '2047-10-02', 170, 'Pagamento Fatura', 'Credit card payment', 'Crédito', 'Neon', 'Ariane', 'pagamento_fatura', 'Entrada', '2047-10-02', 'n4-neon')`);
+    const fs = await queries.getFaturas('casal', '2047-10-13');
+    const nu = fs.find((f) => f.id === 'n4-nu')!;
+    expect(nu).toMatchObject({ usado: 410, limite: 600, ultima: { vencimento: '2047-10-02', total: 480, pago: 200, parcelado: 280, situacao: 'parcelada', falta: 0 } });
+    expect(fs.find((f) => f.id === 'n4-neon')!.ultima).toMatchObject({ vencimento: '2047-10-05', situacao: 'paga' });
+    expect(fs.find((f) => f.id === 'n4-sem')!.ultima).toBeNull();
+    // filtro por pessoa
+    expect((await queries.getFaturas('Matheus', '2047-10-13')).map((f) => f.id)).toEqual(['n4-sem']);
+  });
+
+  it('N9: compromissos parcelados separam os planos da mesma dívida; parcela atual vem do campo', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, parcela_numero, parcela_total) VALUES
+      ('n9-1', '2048-11-07', 800.5, 'Renegociação de pendências n9', 'Loans and financing', 'Crédito', 'N9', 'Matheus', 'despesa', 'Saída', '2026-10-05', 2, 3),
+      ('n9-2', '2048-12-06', 800.5, 'Renegociação de pendências n9', 'Loans and financing', 'Crédito', 'N9', 'Matheus', 'despesa', 'Saída', '2026-10-05', 3, 3),
+      ('n9-3', '2048-11-07', 350.5, 'Renegociação de pendências n9', 'Loans and financing', 'Crédito', 'N9', 'Matheus', 'despesa', 'Saída', '2026-10-05', 4, 8),
+      ('n9-4', '2048-12-06', 350.5, 'Renegociação de pendências n9', 'Loans and financing', 'Crédito', 'N9', 'Matheus', 'despesa', 'Saída', '2026-10-05', 5, 8)`);
+    const ps = (await queries.getCompromissosParcelados('casal')).filter((p) => p.banco === 'N9');
+    expect(ps.map((p) => [p.valorParcela, p.restantes, p.parcelaAtual, p.parcelaTotal]).sort()).toEqual([[350.5, 2, 4, 8], [800.5, 2, 2, 3]]);
+  });
+
+  // N10: conta da casa paga no crédito sai do caixa pela fatura; contada também como "casa", saía duas vezes
+  it('N10: casa paga no crédito não entra na casa (realizado, mês em andamento e média)', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n10-1', '2049-03-05', 100, 'TELEFONICA', 'Telecommunications', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2049-03-05'),
+      ('n10-2', '2049-03-06', 35, 'VIVO NO CARTAO', 'Telecommunications', 'Crédito', 'X', 'Ariane', 'despesa', 'Saída', '2049-03-06'),
+      ('n10-3', '2049-04-05', 100, 'TELEFONICA', 'Telecommunications', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2049-04-05'),
+      ('n10-4', '2049-04-06', 35, 'VIVO NO CARTAO', 'Telecommunications', 'Crédito', 'X', 'Ariane', 'despesa', 'Saída', '2049-04-06')`);
+    expect((await queries.getRealizado('2049-03')).casa).toBe(100);
+    const b = await queries.getProjecaoBase('casal', '2049-04-10');
+    expect(b.mesCorrente.casaNoMesPorCategoria.Telecommunications).toBe(100);
+  });
+
+  it('N12: travadas por categoria: o que já saiu no mês e a média de cada uma (a soma das médias = a média do travado)', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n12-1', '2050-04-02', 500, 'BOLETO CONSORCIO', 'Consortium', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2050-04-02'),
+      ('n12-2', '2050-03-02', 500, 'BOLETO CONSORCIO', 'Consortium', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2050-03-02'),
+      ('n12-3', '2050-03-03', 330, 'SUHAI', 'Insurance', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2050-03-03')`);
+    const b = await queries.getProjecaoBase('Ariane', '2050-04-10');
+    expect(b.mesCorrente.fixoPorCategoria?.Consortium?.pago).toBe(500);
+    expect(b.mesCorrente.fixoPorCategoria?.Insurance).toMatchObject({ pago: 0, ativa: true });
+    // em junho o seguro não aparece em maio: acabou
+    expect((await queries.getProjecaoBase('Ariane', '2050-06-10')).mesCorrente.fixoPorCategoria?.Insurance?.ativa ?? false).toBe(false);
+    const somaMedias = Object.values(b.mesCorrente.fixoPorCategoria ?? {}).reduce((s, c) => s + c.media, 0);
+    expect(somaMedias).toBeCloseTo(b.despesaFixaDebitoMedia ?? 0, 2);
+  });
+
+  it('N15: a foto do previsto (tirada no começo do mês) manda no previsto × real; fotografar não sobrescreve', async () => {
+    const foto = { receita: 1, debito: 2, casa: 3, fatura: 4, saldo: -8 };
+    await pool.query(`INSERT INTO financas_previsto_foto (resp, mes, componentes) VALUES ('casal', '2051-02', $1)`, [JSON.stringify(foto)]);
+    const [p] = await queries.getMesesPassados('casal', '2051-03-15', 1);
+    expect(p.previsto).toEqual(foto);
+    const a = await queries.fotografarPrevisto('casal', '2051-04');
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('n15-1', '2051-03-10', 900, 'salario', 'Salary', 'Débito', 'X', 'Ariane', 'receita', 'Entrada', '2051-03-10')`);
+    expect(await queries.fotografarPrevisto('casal', '2051-04')).toEqual(a);
+    expect((await pool.query(`SELECT count(*)::int AS n FROM financas_previsto_foto WHERE mes = '2051-04'`)).rows[0].n).toBe(1);
+  });
+
+  it('Onda 2: dados dos avisos — conta negativa, juros recentes, orçamento até ontem/anteontem e compra fora do padrão', async () => {
+    await pool.query(`INSERT INTO financas_saldos (id_conta, banco, responsavel, tipo, saldo) VALUES ('av-c1', 'AV', 'Ariane', 'CHECKING_ACCOUNT', -42.5)`);
+    await pool.query(`INSERT INTO financas_orcamento (item, emoji, categorias, teto) VALUES ('Delivery av', '🛵', '{"Food delivery"}', 600)`);
+    const ins = (id: string, data: string, valor: number, descricao: string, categoria: string, forma = 'Débito', classe = 'despesa') =>
+      pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
+        VALUES ($1, $2::date, $3, $4, $5, $6, 'AV', 'Matheus', $7, 'Saída', $2::date)`, [id, data, valor, descricao, categoria, forma, classe]);
+    await ins('av-1', '2052-05-14', 6.5, 'JUROS DE MORA', 'Late payment and overdraft costs', 'Crédito');
+    await ins('av-2', '2052-05-01', 9.99, 'JUROS DE MORA', 'Late payment and overdraft costs', 'Crédito'); // velho: fora
+    await ins('av-3', '2052-05-13', 400, 'IFD*X', 'Food delivery');
+    await ins('av-4', '2052-05-15', 100, 'IFD*Y', 'Food delivery');
+    for (let i = 1; i <= 6; i++) await ins(`av-m${i}`, `2052-04-${String(10 + i).padStart(2, '0')}`, 60, 'LOJA', 'Shopping');
+    await ins('av-5', '2052-05-15', 900, 'LOJA GRANDE', 'Shopping');
+    const d = await queries.getDadosAvisos('2052-05-16');
+    expect(d.saldos).toContainEqual({ banco: 'AV', responsavel: 'Ariane', saldo: -42.5 });
+    expect(d.encargos).toEqual([{ banco: 'AV', responsavel: 'Matheus', valor: 6.5 }]);
+    expect(d.orcamento.find((o) => o.item === 'Delivery av')).toMatchObject({ teto: 600, ateAnteontem: 400, ateOntem: 500 });
+    expect(d.foraDoPadrao).toEqual([{ descricao: 'LOJA GRANDE', valor: 900, categoria: 'Shopping', mediana: 60 }]);
+  });
+
   it('dados da trilha: reaproveitar a base do casal já carregada dá o mesmo resultado', async () => {
     const base = await queries.getProjecaoBase('casal', '2038-04-15');
     expect(await queries.getTrilhaDados('2038-04-15', base)).toEqual(await queries.getTrilhaDados('2038-04-15'));

@@ -9,6 +9,8 @@ CREATE TABLE financas_faturas (id_conta varchar PRIMARY KEY, banco varchar, resp
   atualizado_em timestamp DEFAULT now());
 CREATE TABLE financas_saldos (id_conta text PRIMARY KEY, banco text NOT NULL, responsavel text NOT NULL, tipo text,
   saldo numeric NOT NULL DEFAULT 0, atualizado_pluggy timestamp, atualizado_em timestamp NOT NULL DEFAULT now());
+CREATE TABLE financas_orcamento (item varchar PRIMARY KEY, emoji varchar DEFAULT '', categorias text[] NOT NULL,
+  teto numeric(10,2) NOT NULL, ativo boolean DEFAULT true);
 CREATE TABLE financas_investimentos (id_investimento varchar PRIMARY KEY, item_id varchar, nome varchar, tipo varchar,
   subtipo varchar, valor_investido numeric, valor_atual numeric, lucro_acumulado numeric, quantidade numeric,
   rentabilidade_anual numeric, data_vencimento date, banco varchar, responsavel varchar, status varchar,

@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
 import { currentDateSP } from '@/lib/format';
+import { totalAPagar } from '@/lib/faturas';
 import { getFaturas } from '@/lib/queries';
 
 export const dynamic = 'force-dynamic';
-const ddmm = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : null);
+const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
-/** Faturas para o bot. Vencimento já passado = última fatura fechada (a Pluggy segue mostrando): fora do "a vencer". */
+/** Faturas para o bot (N4): a última fatura fechada de cada cartão, com situação; total = o que falta pagar. */
 export async function GET() {
-  const hoje = currentDateSP();
-  const itens = (await getFaturas('casal')).map((f) => ({
-    banco: f.banco, pessoa: f.responsavel, valor: f.valor, vencimento: ddmm(f.vencimento),
-    paga: f.valor <= 0, vencida: f.vencimento !== null && f.vencimento < hoje,
+  const fs = (await getFaturas('casal', currentDateSP())).filter((f) => f.ultima);
+  const itens = fs.map((f) => ({
+    banco: f.banco, pessoa: f.responsavel, total: f.ultima!.total, vencimento: ddmm(f.ultima!.vencimento),
+    situacao: f.ultima!.situacao, falta: f.ultima!.falta,
   }));
-  const total = itens.filter((i) => !i.vencida && i.valor > 0).reduce((s, i) => s + i.valor, 0);
-  return NextResponse.json({ itens, total: Math.round(total * 100) / 100, link: '/faturas' });
+  return NextResponse.json({ itens, total: totalAPagar(itens), link: '/faturas' });
 }

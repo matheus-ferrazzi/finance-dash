@@ -51,4 +51,13 @@ describe('texto da meta', () => {
     expect(textoMetaAlvo(7000, 6000, 'out/27', brl)).toBe('No ritmo de hoje (R$ 6000/mês no débito) já sai do vermelho até out/27.');
     expect(textoMetaAlvo(null, 6000, 'out/27', brl)).toBe('Nem zerando o débito sai do vermelho até out/27.');
   });
+  // N16 (auditoria 13/10): "1.000 a menos que a média" quando o último mês já foi abaixo da meta parecia um corte por fazer
+  it('N16: com o último mês fechado, diz se ele já ficou dentro da meta', async () => {
+    const { textoMetaAlvo } = await import('../../src/lib/meta');
+    const brl = (v: number) => `R$ ${v}`;
+    expect(textoMetaAlvo(5000, 6000, 'out/27', brl, { label: 'set/26', valor: 4500 }))
+      .toBe('Para sair do vermelho até out/27: gastar até R$ 5000/mês no débito (R$ 1000 a menos que a média de hoje). Em set/26 foram R$ 4500: dentro da meta, é manter.');
+    expect(textoMetaAlvo(5000, 6000, 'out/27', brl, { label: 'set/26', valor: 5400 }))
+      .toBe('Para sair do vermelho até out/27: gastar até R$ 5000/mês no débito (R$ 1000 a menos que a média de hoje). Em set/26 foram R$ 5400.');
+  });
 });

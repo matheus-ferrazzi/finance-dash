@@ -4,12 +4,20 @@ import { montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude } fro
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 describe('ritmo', () => {
-  const p = { mesLabel: 'out/26', fechaCom: -100, diasRestantes: 10, ritmoSeguroDia: 50, ritmoAtualDia: 75, receitasAReceber: [{ valor: 300 }] };
-  it('acima do que cabe: % e o que entra', () => {
+  const p = { mesLabel: 'out/26', fechaCom: -100, diasRestantes: 10, ritmoSeguroDia: 50, ritmoAtualDia: 75, sobraParaODiaADia: 500, receitasAReceber: [{ valor: 300 }] };
+  // N8 (auditoria 13/10): "nesse ritmo fecha em" mostrava a projeção pela MÉDIA; no ritmo dito o mês fecharia
+  // bem pior. Agora cada número diz a sua base: média → fechaCom; ritmo atual → sobra − ritmo × dias.
+  it('acima do que cabe: % , pela média, no ritmo atual e o que entra', () => {
     expect(montarRitmo(p)).toBe([
       '🎯 *Ritmo de hoje*', '', `Da pra gastar *${brl(50)}* hoje.`, `Voce vem gastando ${brl(75)}/dia — *50% acima*.`, '',
-      `Nesse ritmo out/26 fecha em *${brl(-100)}*.`, `Faltam 10 dias e ainda entram ${brl(300)}.`,
+      `Pela media dos ultimos meses, out/26 fecha em *${brl(-100)}*.`,
+      `No ritmo atual, fecharia perto de *${brl(-250)}*.`,
+      `Faltam 10 dias e ainda entram ${brl(300)}.`,
     ].join('\n'));
+  });
+  it('sem a sobra na resposta (painel antigo): só a linha pela média', () => {
+    const { sobraParaODiaADia, ...sem } = p;
+    expect(montarRitmo(sem)).not.toContain('No ritmo atual');
   });
   it('dentro do que cabe, sem receita a entrar; último dia não manda nada', () => {
     const t = montarRitmo({ ...p, ritmoAtualDia: 40, receitasAReceber: [] })!;

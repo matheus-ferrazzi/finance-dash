@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getGastosDinheiro } from '@/lib/dinheiro';
-import { paraLancamentos } from '@/lib/dinheiroTela';
-import { getDespesas, getPorBanco, resolvePeriodo, Resp } from '@/lib/queries';
+import { paraLancamentos, porBanco } from '@/lib/dinheiroTela';
+import { getDespesas, resolvePeriodo, Resp } from '@/lib/queries';
 import { categoriaNoFiltro, GRUPOS_VALIDOS } from '@/lib/grupos';
 import { linkPara } from '@/lib/links';
 import { brl, traduzCategoria } from '@/lib/format';
@@ -15,17 +15,24 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Gastos({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string; grupo?: string; tipo?: string } }) {
+export default async function Gastos({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string; grupo?: string; tipo?: string; forma?: string } }) {
   const resp = resolveResp(searchParams.resp);
   const per = resolvePeriodo(searchParams.p, searchParams.mes);
 
-  const [doBanco, bancos, din] = await Promise.all([getDespesas(resp, per), getPorBanco(resp, per), getGastosDinheiro(resp, per.start, per.endExcl)]);
+  const [doBanco, din] = await Promise.all([getDespesas(resp, per), getGastosDinheiro(resp, per.start, per.endExcl)]);
   // E3: gasto em dinheiro vivo entra na lista e nos totais (com 💵), nunca nas contas do banco
   const todas: (typeof doBanco[number] & { dinheiroId?: number })[] = [...doBanco, ...paraLancamentos(din)];
-  // filtros da URL (links da home e do bot): ?grupo=Mercado, ?tipo=livre; valor desconhecido não filtra
-  const despesas = todas.filter((d) => categoriaNoFiltro(d.categoria, { grupo: searchParams.grupo, tipo: searchParams.tipo }));
-  const filtroAtivo = searchParams.grupo && GRUPOS_VALIDOS.includes(searchParams.grupo) ? searchParams.grupo
-    : searchParams.tipo === 'livre' ? 'Gasto livre (sem casa e dívidas)' : null;
+  // filtros da URL (links da home e do bot): ?grupo=Mercado, ?tipo=livre, ?forma=debito; valor desconhecido não filtra
+  const soDebito = searchParams.forma === 'debito';
+  const despesas = todas.filter((d) => categoriaNoFiltro(d.categoria, { grupo: searchParams.grupo, tipo: searchParams.tipo })
+    && (!soDebito || d.forma === 'Débito'));
+  const filtroAtivo = [
+    searchParams.grupo && GRUPOS_VALIDOS.includes(searchParams.grupo) ? searchParams.grupo : null,
+    searchParams.tipo === 'livre' ? 'Gasto livre (sem casa e dívidas)' : null,
+    soDebito ? 'Só débito e PIX' : null,
+  ].filter(Boolean).join(' · ') || null;
+  // N19: "Por banco" da própria lista (com filtro e com o dinheiro): as barras somam o total
+  const bancos = porBanco(despesas);
 
   const mapa = new Map<string, CatGroup>();
   for (const d of despesas) {

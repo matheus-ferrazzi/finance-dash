@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { lerParams } from '@/lib/botRotas';
+import { lerParams, linkDoPeriodo } from '@/lib/botRotas';
 import { currentDateSP } from '@/lib/format';
 import { getGastosDinheiro } from '@/lib/dinheiro';
 import { grupoDaCategoria } from '@/lib/grupos';
@@ -21,5 +21,5 @@ export async function GET(req: Request) {
     ...din.filter((g) => grupo === null || (grupoDaCategoria(g.categoria)?.nome ?? 'Resto') === grupo)
       .map((g) => ({ data: `${g.data.slice(8, 10)}/${g.data.slice(5, 7)}`, valor: g.valor, descricao: `💵 ${g.descricao}`, pessoa: g.pessoa })),
   ].sort((x, y) => y.valor - x.valor).slice(0, 10);
-  return NextResponse.json({ periodo: periodo.label, pessoa, grupo, itens, link: '/buscar' });
+  return NextResponse.json({ periodo: periodo.label, pessoa, grupo, itens, link: linkDoPeriodo(periodo, pessoa, grupo, currentDateSP().slice(0, 7)) });
 }

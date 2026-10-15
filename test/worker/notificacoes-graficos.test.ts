@@ -21,7 +21,20 @@ describe('gráfico do diário', () => {
     expect(limpo(s)).toBe(true);
   });
   it('dentro do que cabe: verde', () => {
-    expect(graficoDiario(dia({ serie: [{ dia: 1, acumulado: 10 }, { dia: 2, acumulado: 20 }] }))).toContain(`stroke="${VERDE}"`);
+    expect(graficoDiario(dia({ ritmoAtualDia: 40, serie: [{ dia: 1, acumulado: 10 }, { dia: 2, acumulado: 20 }] }))).toContain(`stroke="${VERDE}"`);
+  });
+  // N14 (auditoria 13/10): a reta saía do dia 1 (o que cabe no mês inteiro, linear) e o texto falava do que cabe
+  // daqui pra frente; a cor também usava outra régua. Agora: reta sai do gasto de hoje até o que cabe no fim do
+  // mês, e a cor é a mesma do texto (ritmo atual × dá pra gastar).
+  it('N14: reta do que cabe sai do ponto de hoje; cor pela mesma régua do texto', () => {
+    const s = graficoDiario(dia({ ritmoAtualDia: 40, ritmoSeguroDia: 50 }))!;
+    // gasto alto no começo do mês, mas o ritmo atual (40) está abaixo do que dá pra gastar (50): verde, como o texto
+    expect(s).toContain(`stroke="${VERDE}"`);
+    expect(s).not.toContain(`stroke="${VERM}"`);
+    // a reta tracejada cinza começa no dia 3 (x do ponto de hoje), não no dia 1
+    const reta = s.match(/<line x1="([\d.]+)" y1="[\d.]+" x2="[\d.]+" y2="[\d.]+" stroke="#[0-9A-Fa-f]+" stroke-width="3" stroke-dasharray="10 8"/)!;
+    const circulo = s.match(/<circle cx="([\d.]+)"/)!;
+    expect(reta[1]).toBe(circulo[1]);
   });
   it('dia 1 sem gasto e já estourado (cabe 0): sem NaN', () => {
     expect(limpo(graficoDiario(dia({ serie: [{ dia: 1, acumulado: 0 }], cabeNoMes: 0 }))!)).toBe(true);

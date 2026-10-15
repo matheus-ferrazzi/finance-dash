@@ -8,7 +8,7 @@ export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alg
 export const SEM_FERRAMENTA = '🤷 Ainda não sei responder isso. Anotei a pergunta.';
 export const SO_TEXTO = '🎧 Por enquanto só leio texto.';
 const RODADAS = 4;
-const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes']);
+const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes', 'investimentos']);
 
 /** O link do painel é do sistema, não do modelo: tira o que ele escreveu (relativo ou completo) e põe o certo no fim. */
 function comLink(texto: string, painelUrl: string, link: string | undefined): string {

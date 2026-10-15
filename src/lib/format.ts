@@ -1,3 +1,8 @@
+/** E2-M6: o texto digitado é literal no ILIKE ('%' e '_' não viram curinga; a barra é o escape padrão). */
+export function escaparLike(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 export function brl(v: number | string | null | undefined): string {
   const n = typeof v === 'string' ? Number(v) : v ?? 0;
   return (n ?? 0).toLocaleString('pt-BR', {
@@ -136,4 +141,9 @@ export function diasAte(d: string | Date | null | undefined): number | null {
   if (!ay || !am || !ad) return null;
   const [hy, hm, hd] = currentDateSP().split('-').map(Number);
   return Math.round((Date.UTC(ay, am - 1, ad) - Date.UTC(hy, hm - 1, hd)) / 86_400_000);
+}
+
+/** "falta 1 mês" / "faltam 7 meses" (N9: o rótulo dizia "mêses"). */
+export function faltamMeses(n: number): string {
+  return n === 1 ? 'falta 1 mês' : `faltam ${n} meses`;
 }

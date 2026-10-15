@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getDinheiroPorCategoriaEntre, somarMapas } from '@/lib/dinheiro';
-import { getGastoPorCategoriaEntre, getTrilhaDados } from '@/lib/queries';
+import { getFaturas, getGastoPorCategoriaEntre, getTrilhaDados } from '@/lib/queries';
+import { totalAPagar } from '@/lib/faturas';
 import { brl, currentDateSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
-import { gruposDaSemana, semanaAnterior, somaDias } from '@/lib/resumos';
+import { gruposDaSemana, semanaAnterior, somaDias, totaisLivres } from '@/lib/resumos';
 import { avaliarTrilha, partesDoTexto } from '@/lib/trilha';
 
 export const dynamic = 'force-dynamic';
@@ -35,11 +36,18 @@ export async function GET() {
     semana: Math.round((gs.find((g) => g.nome === nome)?.total ?? 0) * 100) / 100,
     media: Math.round(((ms.find((g) => g.nome === nome)?.total ?? 0) / 4) * 100) / 100,
   }));
+  // N7: título com o mesmo recorte do corpo (só gasto livre): aluguel/renegociação pagos uma vez no mês
+  // faziam a semana em que caem parecer "310% acima da média"
+  const livres = totaisLivres(agruparGastos(semana, 0), agruparGastos(antes, 0));
+  // S7: faturas fechadas ainda a pagar (o Bot 02 do Telegram trazia; N4: a fatura é a do histórico)
+  const ultimas = (await getFaturas('casal', hoje)).flatMap((f) => (f.ultima ? [f.ultima] : []));
+  const aVencer = ultimas.filter((u) => u.situacao === 'a_vencer').map((u) => u.vencimento).sort();
+  const faturas = { aPagar: totalAPagar(ultimas), proximoVencimento: aVencer[0] ? `${aVencer[0].slice(8, 10)}/${aVencer[0].slice(5, 7)}` : null };
   return NextResponse.json({
     semana: s,
-    total: soma(semana),
+    ...livres,
+    faturas,
     totalDinheiro: soma(dinSemana),
-    mediaTotal: Math.round((soma(antes) / 4) * 100) / 100,
     grupos: gruposDaSemana(agruparGastos(semana, 0), agruparGastos(antes, 0)),
     todosGrupos,
     // a mensagem é texto simples: o valor marcado do próximo passo vira R$ aqui

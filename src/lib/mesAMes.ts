@@ -105,7 +105,8 @@ export function detalheMesAtual(base: ProjecaoBase, m0: ProjecaoMes): { linhas: 
       { chave: 'entra', titulo: 'Entra', jaAconteceu: r2(soma(mc.recebidoPorFonte)), aindaFalta: r2(m0.receita) },
       { chave: 'casa', titulo: 'Casa e fixos', jaAconteceu: r2(soma(mc.casaNoMesPorCategoria)), aindaFalta: r2(m0.despesaManual + m0.despesaCasa) },
       { chave: 'debito', titulo: 'Débito', jaAconteceu: r2(mc.variavelJaGasto + (mc.fixoJaGasto ?? 0)), aindaFalta: r2(m0.despesaVariavel + m0.despesaFixa) },
-      { chave: 'cartao', titulo: 'Cartão', jaAconteceu: r2(mc.faturaJaPaga), aindaFalta: r2(m0.fatura) },
+      // + o cartão sem histórico (Bradesco) já pago no mês, que a previsão também conta como fatura
+      { chave: 'cartao', titulo: 'Cartão', jaAconteceu: r2(mc.faturaJaPaga + (base.cartaoSemFatura?.pagoNoMes ?? 0)), aindaFalta: r2(m0.fatura) },
     ],
     fechaCom: m0.saldoProjetado,
   };

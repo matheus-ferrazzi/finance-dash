@@ -3,7 +3,7 @@
 // já o mantém, e a troca para real não repete avisos nem dispara o histórico.
 import type { Canal } from './canal';
 import { montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude, type Bot } from './textos';
-import { montarDiario, montarMensal, montarSemanal, montarTecnico } from './textosD';
+import { montarDiario, montarAlertasMeta, montarMensal, montarMeta, montarSemanal, montarTecnico } from './textosD';
 import { graficoDiario, graficoMensal, graficoSemanal } from './graficos';
 import { paraPng } from './png';
 import { linkPara } from '../../lib/links';
@@ -30,7 +30,7 @@ export interface ResultadoNotif {
  */
 export function destinoDe(bot: Bot): 'grupo' | 'matheus' | 'telegram' {
   if (bot === 'tecnico') return 'matheus';
-  return bot === 'diario' || bot === 'semanal' || bot === 'mensal' ? 'grupo' : 'telegram';
+  return bot === 'diario' || bot === 'semanal' || bot === 'mensal' || bot === 'meta' || bot === 'alerta-meta' ? 'grupo' : 'telegram';
 }
 export interface Canais { grupo: Canal | null; matheus: Canal | null; telegram: Canal | null }
 
@@ -54,6 +54,9 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
     case 'mensal': return { texto: montarMensal(dados, url('previsao', dados?.mes)), estado: null, svg: seguro(() => graficoMensal(dados)) };
     case 'tecnico': return { texto: montarTecnico(dados), estado: null };
     case 'ritmo': return { texto: montarRitmo(dados), estado: null };
+    // 15/10: meta do débito — andamento (sem memória) e alertas (memória do mês no estado)
+    case 'meta': return { texto: montarMeta(dados, url('previsao')), estado: null };
+    case 'alerta-meta': return montarAlertasMeta(dados, estado, url('previsao'));
     case 'fatura': return montarFatura(dados ?? [], estado);
     case 'gasto': return montarGasto(dados ?? [], estado);
     case 'saude': return { texto: montarSaude(dados ?? {}), estado: null };

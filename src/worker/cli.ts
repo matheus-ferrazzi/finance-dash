@@ -24,6 +24,10 @@ export const AGENDA_NOTIF: readonly [string, Bot][] = [
   ['0 9 * * 1', 'semanal'],
   ['0 9 1 * *', 'mensal'],
   ['30 12 * * *', 'tecnico'],
+  // 15/10: meta do débito — andamento terça e sexta; alertas depois da ingestão da tarde e de manhã (nada às 23h)
+  ['0 9 * * 2,5', 'meta'],
+  ['50 16 * * *', 'alerta-meta'],
+  ['5 8 * * *', 'alerta-meta'],
 ];
 export type TarefaNotif = `notif-${Bot}`;
 const NOTIFS = new Set<string>(BOTS.map((b) => `notif-${b}`));

@@ -76,3 +76,20 @@ describe('cabeçalho igual em qualquer tela', () => {
     expect(renderToStaticMarkup(createElement(PrivacyToggle))).not.toContain('sm:');
   });
 });
+
+// pedido do Matheus (15/10): o painel na gaveta de apps do celular = PWA instalável ("Instalar app" do Chrome)
+describe('instalável como app (PWA)', () => {
+  it('manifesto com nome, tela cheia, cores do painel e ícones 192/512 (um "maskable")', () => {
+    const m = JSON.parse(readFileSync('public/manifest.webmanifest', 'utf8'));
+    expect(m).toMatchObject({ name: 'Finanças do Casal', short_name: 'Finanças', start_url: '/', display: 'standalone', background_color: '#0a0b0d' });
+    const tamanhos = m.icons.map((i: any) => i.sizes);
+    expect(tamanhos).toEqual(expect.arrayContaining(['192x192', '512x512']));
+    expect(m.icons.some((i: any) => i.purpose === 'maskable')).toBe(true);
+    for (const i of m.icons) expect(existsSync('public' + i.src)).toBe(true);
+  });
+  it('o link do manifesto manda o cookie (o painel fica atrás do Cloudflare Access)', () => {
+    const layout = readFileSync('src/app/layout.tsx', 'utf8');
+    expect(layout).toMatch(/rel="manifest"[^>]*crossOrigin="use-credentials"|crossOrigin="use-credentials"[^>]*rel="manifest"/);
+    expect(layout).toContain('apple-touch-icon');
+  });
+});

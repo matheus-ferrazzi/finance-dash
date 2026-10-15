@@ -23,6 +23,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   try { sync = await getSyncStatus(); } catch {}
   return (
     <html lang="pt-BR" className={fonte.variable}>
+      <head>
+        {/* instalável como app (15/10): o Chrome busca o manifesto sem cookie, e o painel fica atrás do Cloudflare
+            Access — sem use-credentials o manifesto viria a tela de login e o "Instalar app" não apareceria */}
+        <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="theme-color" content="#0a0b0d" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Finanças" />
+      </head>
       <body className="min-h-screen bg-base text-text antialiased">
         <script
           dangerouslySetInnerHTML={{

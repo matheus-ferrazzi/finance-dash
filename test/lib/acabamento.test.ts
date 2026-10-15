@@ -6,7 +6,7 @@ import Carregando from '../../src/app/loading';
 import NaoEncontrado from '../../src/app/not-found';
 import Erro from '../../src/app/error';
 import { SectionTitle } from '../../src/app/components/ui';
-import { MobileNav } from '../../src/app/components/Nav';
+import { MobileNav, NavTopo } from '../../src/app/components/Nav';
 import { SyncDot } from '../../src/app/components/SyncDot';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push() {} }), usePathname: () => '/', useSearchParams: () => new URLSearchParams() }));
@@ -44,22 +44,26 @@ describe('acabamento do painel', () => {
   });
 });
 
-// pedido do Matheus (15/10): o desktop igual ao celular — uma coluna, a barra de baixo, sem barra lateral
-describe('desktop igual ao celular', () => {
-  it('barra de baixo aparece em qualquer tela (sem md:hidden) e fica na coluna central', () => {
-    const h = renderToStaticMarkup(createElement(MobileNav));
-    expect(h).not.toContain('md:hidden');
-    expect(h).toContain('max-w-lg');
+// pedido do Matheus (15/10, corrigido): o desktop com o MESMO VISUAL do celular, mas responsivo — barra no topo,
+// largura cheia e blocos lado a lado (a 1ª versão virou uma coluna de celular no meio da tela, errado)
+describe('desktop responsivo', () => {
+  it('barra de baixo só no celular', () => {
+    expect(renderToStaticMarkup(createElement(MobileNav))).toContain('md:hidden');
   });
-  it('bolinha de sincronização em qualquer tela', () => {
-    expect(renderToStaticMarkup(createElement(SyncDot, { status: { oldestH: 3, conns: [{}] } }))).not.toContain('md:hidden');
+  it('barra do topo só no desktop, com os 4 lugares e o Mais', () => {
+    const h = renderToStaticMarkup(createElement(NavTopo));
+    expect(h).toContain('hidden');
+    expect(h).toContain('md:flex');
+    for (const t of ['Início', 'Contas', 'Gastos', 'Previsão', 'Mais']) expect(h).toContain(t);
+    expect(h).toContain('aria-current="page"');
   });
-  it('layout sem barra lateral e com a coluna central; páginas sem grade de 2 colunas que só liga no desktop', () => {
+  it('layout em largura cheia (não coluna de celular) e as 4 telas em 2 colunas no desktop', () => {
     const layout = readFileSync('src/app/layout.tsx', 'utf8');
-    expect(layout).not.toContain('<aside');
-    expect(layout).toContain('max-w-lg');
-    for (const p of ['src/app/faturas/page.tsx', 'src/app/investimentos/page.tsx', 'src/app/previsibilidade/page.tsx']) {
-      expect(readFileSync(p, 'utf8')).not.toMatch(/(md|lg):grid-cols-/);
+    expect(layout).not.toContain('max-w-lg');
+    expect(layout).toContain('max-w-6xl');
+    expect(layout).toContain('<NavTopo');
+    for (const p of ['src/app/gastos/page.tsx', 'src/app/faturas/page.tsx', 'src/app/contas/page.tsx', 'src/app/previsibilidade/page.tsx']) {
+      expect(readFileSync(p, 'utf8')).toMatch(/md:grid-cols-|lg:grid-cols-/);
     }
   });
 });

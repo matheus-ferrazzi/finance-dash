@@ -26,7 +26,7 @@ export default async function Investimentos({ searchParams }: { searchParams: { 
       <PageTitle title="Investimentos" subtitle="Posição atual da carteira — lucro = valor atual menos aportado." />
 
       {/* lucro e rentabilidade são o mesmo fato — o percentual vira o rodapé do card */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
         <KpiCard label="Valor atual" value={atual} icon={Wallet} />
         <KpiCard label="Aportado" value={investido} hint="custo" icon={PiggyBank} />
         <KpiCard
@@ -39,7 +39,7 @@ export default async function Investimentos({ searchParams }: { searchParams: { 
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <div className="card">
           <SectionTitle>Evolução do patrimônio</SectionTitle>
           {patrimonio.length >= 2 ? (

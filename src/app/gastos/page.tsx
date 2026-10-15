@@ -80,6 +80,18 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
       apoio={<><span className="money">{brl(gasto / dias)}</span>/dia</>} />;
   }
 
+  // dinheiro vivo e o elo do crédito: no celular depois dos grupos, no desktop embaixo da resposta
+  const rodape = (
+    <>
+      {totalDinheiro > 0 && <p className="mb-3 px-1 text-xs text-muted">Inclui <span className="money">{brl(totalDinheiro)}</span> em dinheiro vivo 💵</p>}
+      {credito > 0 && (
+        <Elo href={linkPara('faturas', { resp })} acao="ver faturas">
+          💳 <span className="money">{brl(credito)}</span> foram no crédito
+        </Elo>
+      )}
+    </>
+  );
+
   return (
     <div>
       {filtroAtivo && (
@@ -89,19 +101,19 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
         </div>
       )}
 
-      {topo}
-
-      <GruposGastos grupos={grupos} total={total} titulo={`Tudo que saiu · ${per.label.toLowerCase()}`}
-        hrefs={Object.fromEntries(grupos.map((g) => [g.nome, linkPara('gastos', { resp, mes: searchParams.mes, grupo: g.nome })]))}
-        periodo={<PeriodoGastos />} />
-
-      {totalDinheiro > 0 && <p className="mb-3 px-1 text-xs text-muted">Inclui <span className="money">{brl(totalDinheiro)}</span> em dinheiro vivo 💵</p>}
-
-      {credito > 0 && (
-        <Elo href={linkPara('faturas', { resp })} acao="ver faturas">
-          💳 <span className="money">{brl(credito)}</span> foram no crédito
-        </Elo>
-      )}
+      {/* desktop: a resposta e os elos à esquerda, os grupos à direita; no celular, um embaixo do outro */}
+      <div className="md:grid md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:items-start md:gap-4">
+        <div>
+          {topo}
+          <div className="hidden md:block">{rodape}</div>
+        </div>
+        <div>
+          <GruposGastos grupos={grupos} total={total} titulo={`Tudo que saiu · ${per.label.toLowerCase()}`}
+            hrefs={Object.fromEntries(grupos.map((g) => [g.nome, linkPara('gastos', { resp, mes: searchParams.mes, grupo: g.nome })]))}
+            periodo={<PeriodoGastos />} />
+          <div className="md:hidden">{rodape}</div>
+        </div>
+      </div>
     </div>
   );
 }

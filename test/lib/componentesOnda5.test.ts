@@ -159,11 +159,13 @@ describe('MetaDebito sem repetir o topo', () => {
 
 // pendência da Onda 5: num mês passado o botão "hoje" fazia o cabeçalho quebrar em 2 linhas no celular
 describe('cabeçalho num mês passado', () => {
-  it('"hoje" só aparece do sm para cima; no celular o rótulo do mês volta para o mês atual', () => {
+  it('o próprio mês (curto) é o atalho de volta para o mês atual; sem botão "hoje"', () => {
     nav.path = '/gastos'; nav.qs = 'mes=2026-01';
     const h = renderToStaticMarkup(createElement(PeriodPicker));
     nav.path = '/'; nav.qs = '';
-    expect(h).toMatch(/class="[^"]*hidden[^"]*sm:inline[^"]*"[^>]*>hoje</);
+    expect(h).not.toContain('>hoje<'); // 15/10: o desktop é igual ao celular — o próprio mês é o atalho, em qualquer tela
+    expect(h).not.toContain('sm:'); // nada muda pela largura da janela: a coluna tem sempre a largura do celular
+    expect(h).toContain('jan/26');
     expect(h).toContain('aria-label="Voltar para o mês atual"');
   });
 });

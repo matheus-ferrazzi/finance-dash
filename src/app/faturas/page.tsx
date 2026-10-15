@@ -69,10 +69,12 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   const aCobrar = vencs.filter((v) => v.situacao !== 'parcial');
   const proxima = aCobrar[0];
   const dd = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '');
-  const secao = 'mb-1.5 mt-4 px-1 text-[11px] uppercase tracking-wide text-faint';
+  const secao = 'mb-1.5 mt-4 px-1 text-xs font-medium text-muted';
 
+  // desktop: a resposta e a linha do tempo à esquerda, os cartões à direita; no celular, um embaixo do outro
   return (
-    <div>
+    <div className="md:grid md:grid-cols-2 md:items-start md:gap-4">
+      <div>
       {aPagar > 0 && proxima ? (
         <CardResposta pergunta="Próximo pagamento" valor={brl(aPagar)} tom={proxima.situacao === 'atrasada' ? 'ruim' : 'atencao'}
           apoio={`${proxima.banco} (${proxima.responsavel}) ${proxima.situacao === 'atrasada' ? 'venceu' : 'vence'} ${dd(proxima.vence)}`
@@ -84,14 +86,17 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
 
       <div className={secao}>Próximos vencimentos</div>
       <LinhaVencimentos itens={vencs} resp={resp} />
-
-      <div className={secao}>Cartões</div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {ordenadas.map(({ v, aberto }) => <FaturaCard key={v.id} f={v} abertoInicial={aberto} compacto />)}
       </div>
-      {views.length === 0 && (
-        <div className="card"><p className="text-sm text-muted">Nenhum cartão.</p></div>
-      )}
+
+      <div>
+        <div className={`${secao} md:mt-0`}>Cartões</div>
+        <div className="grid grid-cols-1 gap-3">
+          {ordenadas.map(({ v, aberto }) => <FaturaCard key={v.id} f={v} abertoInicial={aberto} compacto />)}
+        </div>
+        {views.length === 0 && (
+          <div className="card"><p className="text-sm text-muted">Nenhum cartão.</p></div>
+        )}
+      </div>
     </div>
   );
 }

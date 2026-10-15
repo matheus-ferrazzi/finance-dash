@@ -204,7 +204,7 @@ export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
       {pagas.length > 0 && (
         <>
           <button onClick={() => setVerPagas(!verPagas)} aria-expanded={verPagas}
-            className="mb-1.5 mt-3 flex min-h-[40px] items-center gap-1 px-1 text-[11px] uppercase tracking-wide text-faint">
+            className="mb-1.5 mt-3 flex min-h-[40px] items-center gap-1 px-1 text-xs font-medium text-muted">
             Pagas ({pagas.length}) <ChevronDown size={13} className={verPagas ? 'rotate-180' : ''} />
           </button>
           {verPagas && <div className="card divide-y divide-border/60">{pagas.map(linha)}</div>}

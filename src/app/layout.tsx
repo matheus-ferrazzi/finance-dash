@@ -1,15 +1,17 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { Manrope } from 'next/font/google';
 import './globals.css';
-import { NavLinks, RespToggle, MobileNav } from './components/Nav';
+import { MobileNav, NavTopo, RespToggle } from './components/Nav';
 import { PeriodPicker } from './components/PeriodPicker';
 import { PrivacyToggle } from './components/PrivacyToggle';
-import { SyncBadge } from './components/SyncBadge';
 import { SyncDot } from './components/SyncDot';
 import { getSyncStatus } from '@/lib/queries';
 import { lerVersao } from '@/lib/versao';
 import { VersaoAviso } from './components/VersaoAviso';
-import { Wallet } from 'lucide-react';
+
+// acabamento (15/10): fonte própria (antes a do sistema: Segoe no Windows, Roboto no Android), servida pelo próprio app
+const fonte = Manrope({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-sans', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Finanças · Casal',
@@ -20,50 +22,33 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let sync = { oldestH: 0, conns: [] as any[] };
   try { sync = await getSyncStatus(); } catch {}
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className={fonte.variable}>
       <body className="min-h-screen bg-base text-text antialiased">
         <script
           dangerouslySetInnerHTML={{
             __html: `try{if(localStorage.getItem('hideMoney')==='1'){document.documentElement.setAttribute('data-hide-money','')}}catch(e){}`,
           }}
         />
-        <div className="flex min-h-screen">
-          {/* sidebar desktop */}
-          <aside className="hidden md:flex w-60 shrink-0 flex-col gap-7 border-r border-border bg-surface/30 px-4 py-6">
-            <div className="flex items-center gap-2.5 px-2">
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-accent/15 text-accent">
-                <Wallet size={19} />
-              </div>
-              <div>
-                <div className="text-sm font-semibold leading-tight">Finanças</div>
-                <div className="text-xs text-muted">Matheus &amp; Ariane</div>
-              </div>
-            </div>
-            <Suspense fallback={<div className="h-48" />}>
-              <NavLinks />
+        {/* 15/10: o mesmo visual no celular e no desktop; no desktop a navegação sobe para o cabeçalho e o conteúdo usa a largura */}
+        <header className="sticky top-0 z-10 border-b border-border bg-base/85 backdrop-blur">
+          {/* Onda 5: uma linha — [desktop: lugares] · mês · pessoa · bolinha de sincronização · olho */}
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-1.5 px-3 py-2.5 md:gap-3 md:px-6">
+            <Suspense fallback={null}>
+              <NavTopo />
             </Suspense>
-          </aside>
-
-          <main className="flex-1 min-w-0 pb-20 md:pb-0">
-            <header className="sticky top-0 z-10 border-b border-border bg-base/85 backdrop-blur">
-              {/* Onda 5: uma linha no celular — mês · pessoa · bolinha de sincronização · olho */}
-              <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-1.5 px-3 py-2.5 md:gap-3 md:px-6 md:py-3">
-                <Suspense fallback={<div className="h-10 w-28" />}>
-                  <PeriodPicker />
-                </Suspense>
-                <div className="ml-auto flex items-center gap-1.5 md:gap-2">
-                  <SyncDot status={sync} />
-                  <div className="hidden md:block"><SyncBadge status={sync} /></div>
-                  <Suspense fallback={<div className="h-9 w-56" />}>
-                    <RespToggle />
-                  </Suspense>
-                  <PrivacyToggle />
-                </div>
-              </div>
-            </header>
-            <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">{children}</div>
-          </main>
-        </div>
+            <Suspense fallback={<div className="h-10 w-28" />}>
+              <PeriodPicker />
+            </Suspense>
+            <div className="ml-auto flex items-center gap-1.5">
+              <SyncDot status={sync} />
+              <Suspense fallback={<div className="h-9 w-40" />}>
+                <RespToggle />
+              </Suspense>
+              <PrivacyToggle />
+            </div>
+          </div>
+        </header>
+        <main className="mx-auto min-h-screen w-full max-w-6xl px-4 pb-24 pt-5 md:px-6 md:pb-10 md:pt-6">{children}</main>
         <Suspense>
           <MobileNav />
         </Suspense>

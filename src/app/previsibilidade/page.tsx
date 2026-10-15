@@ -70,40 +70,46 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
 
   return (
     <div>
-      {/* Onda 5: "Quando a gente sai do vermelho, e o que mudar pra isso?" */}
-      <CardResposta pergunta="Saindo do vermelho" dinheiro={false} tom={sai.provavel ? 'bom' : 'ruim'}
-        valor={sai.provavel ? `Sai em ${mesLabel(sai.provavel)}` : `Não sai em ${HORIZONTE_MAX} meses`}
-        apoio={<>
-          {textoMeta}
-          {calib && sai.piorCaso !== sai.provavel && <> Pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai em ${HORIZONTE_MAX} meses`}.</>}
-          {notaVisaoIndividual(resp) && <span className="mt-1 block text-[11px] text-faint">{notaVisaoIndividual(resp)}</span>}
-          {!calib && (
-            <span className="mt-1 block text-[11px] text-faint">
-              {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza: ela precisa de 6 meses da fase atual e de acertar entre 70% e 90% deles no teste contra o passado.'}
-            </span>
+      {/* desktop: o gráfico à esquerda; a meta, o mês a mês e o simulador à direita (no celular, a mesma ordem de cima para baixo) */}
+      <div className="md:grid md:grid-cols-2 md:items-start md:gap-4">
+        <div>
+          {/* Onda 5: "Quando a gente sai do vermelho, e o que mudar pra isso?" */}
+          <CardResposta pergunta="Saindo do vermelho" dinheiro={false} tom={sai.provavel ? 'bom' : 'ruim'}
+            valor={sai.provavel ? `Sai em ${mesLabel(sai.provavel)}` : `Não sai em ${HORIZONTE_MAX} meses`}
+            apoio={<>
+              {textoMeta}
+              {calib && sai.piorCaso !== sai.provavel && <> Pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai em ${HORIZONTE_MAX} meses`}.</>}
+              {notaVisaoIndividual(resp) && <span className="mt-1 block text-[11px] text-faint">{notaVisaoIndividual(resp)}</span>}
+              {!calib && (
+                <span className="mt-1 block text-[11px] text-faint">
+                  {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza: ela precisa de 6 meses da fase atual e de acertar entre 70% e 90% deles no teste contra o passado.'}
+                </span>
+              )}
+            </>}>
+            <GraficoSaida pontos={pontos} />
+          </CardResposta>
+        </div>
+        <div>
+          <div className="mb-3"><MetaDebito meta={meta} /></div>
+
+          {aberto ? (
+            <DetalheMes
+              tipo={aberto.tipo} mes={aberto.mes} resp={resp}
+              anterior={meses[i - 1] ?? null} seguinte={meses[i + 1] ?? null}
+              futuro={aberto.tipo === 'futuro' ? detalheMesFuturo(base, projecao[i - passados.length], parcelados) : undefined}
+              atual={aberto.tipo === 'atual' ? detalheMesAtual(base, projecao[0]) : undefined}
+              passado={aberto.tipo === 'passado' ? detalheMesPassado(passados[i]) : undefined}
+            />
+          ) : (
+            <details open={searchParams.todos === '1'} className="mb-3">
+              <summary className="card flex min-h-[44px] cursor-pointer items-center p-3.5 text-sm text-accent">Mês a mês ({linhas.length} meses) ›</summary>
+              <div className="mt-2"><ListaMeses linhas={linhas} resp={resp} mostrarTodos={searchParams.todos === '1'} /></div>
+            </details>
           )}
-        </>}>
-        <GraficoSaida pontos={pontos} />
-      </CardResposta>
 
-      <div className="mb-3"><MetaDebito meta={meta} /></div>
-
-      {aberto ? (
-        <DetalheMes
-          tipo={aberto.tipo} mes={aberto.mes} resp={resp}
-          anterior={meses[i - 1] ?? null} seguinte={meses[i + 1] ?? null}
-          futuro={aberto.tipo === 'futuro' ? detalheMesFuturo(base, projecao[i - passados.length], parcelados) : undefined}
-          atual={aberto.tipo === 'atual' ? detalheMesAtual(base, projecao[0]) : undefined}
-          passado={aberto.tipo === 'passado' ? detalheMesPassado(passados[i]) : undefined}
-        />
-      ) : (
-        <details open={searchParams.todos === '1'} className="mb-3">
-          <summary className="card flex min-h-[44px] cursor-pointer items-center p-3.5 text-sm text-accent">Mês a mês ({linhas.length} meses) ›</summary>
-          <div className="mt-2"><ListaMeses linhas={linhas} resp={resp} mostrarTodos={searchParams.todos === '1'} /></div>
-        </details>
-      )}
-
-      <Elo href={linkPara('simulador', { resp })} acao="simular">E se a gente se mudar, ou comprar algo grande?</Elo>
+          <Elo href={linkPara('simulador', { resp })} acao="simular">E se a gente se mudar, ou comprar algo grande?</Elo>
+        </div>
+      </div>
 
       <div className="mt-4">
         <PrevisibilidadeClient parcelados={parcelados} manuais={base.compromissosCadastrados}

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640">
+  <defs>
+    <radialGradient id="fundo" cx="50%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#16302a"/>
+      <stop offset="0.6" stop-color="#0d1513"/>
+      <stop offset="1" stop-color="#0a0b0d"/>
+    </radialGradient>
+    <linearGradient id="corpo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5fdcaa"/>
+      <stop offset="1" stop-color="#2fae80"/>
+    </linearGradient>
+    <linearGradient id="lingueta" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3fc192"/>
+      <stop offset="1" stop-color="#249066"/>
+    </linearGradient>
+    <linearGradient id="nota" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e7f8ef"/>
+      <stop offset="1" stop-color="#bfe9d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="640" fill="url(#fundo)"/>
+
+  <!-- notas aparecendo por cima da carteira -->
+  <g transform="rotate(-9 300 230)">
+    <rect x="178" y="168" width="250" height="120" rx="14" fill="url(#nota)"/>
+    <rect x="192" y="182" width="222" height="92" rx="9" fill="none" stroke="#7fcfa9" stroke-width="5"/>
+    <circle cx="303" cy="228" r="22" fill="none" stroke="#7fcfa9" stroke-width="5"/>
+  </g>
+  <g transform="rotate(5 340 230)">
+    <rect x="212" y="180" width="250" height="120" rx="14" fill="url(#nota)"/>
+    <rect x="226" y="194" width="222" height="92" rx="9" fill="none" stroke="#7fcfa9" stroke-width="5"/>
+    <circle cx="337" cy="240" r="22" fill="none" stroke="#7fcfa9" stroke-width="5"/>
+  </g>
+
+  <!-- corpo da carteira, com costura -->
+  <rect x="130" y="238" width="380" height="236" rx="44" fill="url(#corpo)"/>
+  <rect x="148" y="256" width="344" height="200" rx="32" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="5" stroke-dasharray="14 11"/>
+  <!-- borda de cima, um pouco mais clara (dá volume) -->
+  <clipPath id="noCorpo"><rect x="130" y="238" width="380" height="236" rx="44"/></clipPath>
+  <rect x="130" y="238" width="380" height="34" fill="#ffffff" opacity="0.10" clip-path="url(#noCorpo)"/>
+
+  <!-- lingueta com o fecho -->
+  <rect x="368" y="304" width="170" height="104" rx="40" fill="url(#lingueta)"/>
+  <rect x="368" y="304" width="170" height="104" rx="40" fill="none" stroke="#0d1513" stroke-opacity="0.25" stroke-width="4"/>
+  <!-- o fecho é o casal: laranja (Matheus) e rosa (Ariane), as cores do painel -->
+  <circle cx="452" cy="356" r="27" fill="#f0932b" stroke="#16302a" stroke-width="8"/>
+  <circle cx="492" cy="356" r="27" fill="#ec5f9e" stroke="#16302a" stroke-width="8"/>
+</svg>

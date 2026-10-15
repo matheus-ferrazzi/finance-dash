@@ -2,7 +2,7 @@
 
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { mesLabel, mesLongo } from '@/lib/format';
+import { mesLabel } from '@/lib/format';
 import { mesNoLimite, podeIrParaMesSeguinte, temSeletorDeMes } from '@/lib/links';
 
 function shift(mes: string, delta: number): string {
@@ -38,28 +38,23 @@ export function PeriodPicker() {
   const podeAvancar = shift(mes, 1) <= (podeIrParaMesSeguinte(path) ? shift(atual, 1) : atual);
   if (!temSeletorDeMes(path)) return null;
 
-  // Onda 5: os atalhos 7/15/30 dias moram na própria tela Gastos; aqui é só o mês (curto no celular)
+  // Onda 5: os atalhos 7/15/30 dias moram na própria tela Gastos; aqui é só o mês, curto (a coluna é sempre da largura do celular)
   return (
     <div className="flex items-center">
       <div className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
-        <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-6 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3 sm:w-7" aria-label="Mês anterior">
+        <button onClick={() => goMonth(shift(mes, -1))} className="grid h-7 w-6 place-items-center rounded-lg text-muted hover:text-text hover:bg-surface-3" aria-label="Mês anterior">
           <ChevronLeft size={16} />
         </button>
         {mes !== atual ? (
-          // fora do mês atual, o próprio mês é o atalho de volta (no celular não cabe o "hoje" ao lado)
+          // fora do mês atual, o próprio mês é o atalho de volta
           <button onClick={() => goMonth(atual)} aria-label="Voltar para o mês atual"
-            className="min-w-[3.2rem] text-center text-sm font-medium capitalize text-warn sm:min-w-[6.5rem] sm:text-text">
-            <span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span>
-          </button>
+            className="min-w-[3.2rem] text-center text-sm font-medium text-warn">{mesLabel(mes)}</button>
         ) : (
-          <span className="min-w-[3.2rem] text-center text-sm font-medium capitalize sm:min-w-[6.5rem]"><span className="sm:hidden">{mesLabel(mes)}</span><span className="hidden sm:inline">{mesLongo(mes)}</span></span>
+          <span className="min-w-[3.2rem] text-center text-sm font-medium">{mesLabel(mes)}</span>
         )}
-        <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-6 place-items-center rounded-lg text-muted sm:w-7 enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
+        <button onClick={() => podeAvancar && goMonth(shift(mes, 1))} disabled={!podeAvancar} className="grid h-7 w-6 place-items-center rounded-lg text-muted enabled:hover:text-text enabled:hover:bg-surface-3 disabled:opacity-30" aria-label="Próximo mês">
           <ChevronRight size={16} />
         </button>
-        {mes !== atual && (
-          <button onClick={() => goMonth(atual)} className="ml-0.5 hidden rounded-lg px-1.5 py-1 text-xs text-accent hover:bg-accent/10 sm:inline-block">hoje</button>
-        )}
       </div>
     </div>
   );

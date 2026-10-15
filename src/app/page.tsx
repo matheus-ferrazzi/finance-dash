@@ -61,7 +61,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
     <div>
       {trilhaDados && <FaixaTrilha trilha={avaliarTrilha(trilhaDados)} />}
       <LinhaDoMes serie={serie} faixa={calib && ritmo ? faixaMesCorrente(serie.fechamento, ritmo.diasRestantes, diasNoMes(mes), calib) : null} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre', forma: 'debito' }, atual)}
           valor={ritmo ? `${brl(ritmo.ritmoSeguroDia)}/dia` : '—'}
           detalhe={ritmo ? <>gastando <span className="money">{brl(ritmo.ritmoAtualDia)}</span>/dia</> : 'mês fechado'}

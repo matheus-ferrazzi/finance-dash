@@ -6,12 +6,12 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { qsNavegacao } from '@/lib/links';
 import {
   LayoutDashboard, Receipt, Target, CreditCard, TrendingUp, Home, Repeat, Search,
-  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck, Calculator, Flag, Tags,
+  Telescope, Stethoscope, MoreHorizontal, ClipboardCheck, Calculator, Flag, Tags, Wallet, ChevronDown,
 } from 'lucide-react';
 
 /**
- * Barra principal (F1): os 4 lugares de uso diário. O resto fica em "Mais" — no celular,
- * uma folha que sobe da barra; no computador, abaixo de um separador na barra lateral.
+ * Barra principal (F1): os 4 lugares de uso diário. O resto fica em "Mais", uma folha que sobe da barra
+ * No computador, os mesmos lugares numa barra no topo (NavTopo, 15/10).
  */
 const LINKS = [
   { href: '/', label: 'Início', short: 'Início', icon: LayoutDashboard },
@@ -34,35 +34,48 @@ const EXTRA = [
 ];
 
 const RESPS = [
-  { key: 'casal', label: 'Casal', dot: 'bg-accent' },
-  { key: 'Matheus', label: 'Matheus', dot: 'bg-matheus' },
-  { key: 'Ariane', label: 'Ariane', dot: 'bg-ariane' },
+  { key: 'casal', label: 'Casal' },
+  { key: 'Matheus', label: 'Matheus' },
+  { key: 'Ariane', label: 'Ariane' },
 ];
 
-export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+/** Desktop (15/10): o mesmo visual do celular, com os lugares numa barra no topo; o resto em "Mais ▾". */
+export function NavTopo() {
   const path = usePathname();
   const sp = useSearchParams();
   const qs = qsNavegacao(sp.toString());
+  const [mais, setMais] = useState(false);
+  const noMais = EXTRA.some((e) => e.href === path);
+  const comQs = (href: string) => href + (qs ? `?${qs}` : '');
+  const item = (ativo: boolean) => `flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors ${ativo ? 'bg-surface-2 text-text' : 'text-muted hover:bg-surface-2/50 hover:text-text'}`;
   return (
-    <nav className="flex flex-col gap-1">
-      {[...LINKS, null, ...EXTRA].map((l) => {
-        if (!l) return <div key="sep" className="my-2 border-t border-border" />;
-        const { href, label, icon: Icon } = l;
-        const active = path === href;
-        return (
-          <Link
-            key={href}
-            href={href + (qs ? `?${qs}` : '')}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
-              active ? 'bg-surface-2 text-text font-medium' : 'text-muted hover:text-text hover:bg-surface-2/50'
-            }`}
-          >
-            <Icon size={18} className={active ? 'text-accent' : 'text-faint'} />
-            {label}
-          </Link>
-        );
-      })}
+    <nav className="hidden items-center gap-1 md:flex" aria-label="Principal">
+      <Link href={comQs('/')} aria-label="Finanças: início" className="mr-2 grid h-9 w-9 place-items-center rounded-xl bg-accent/15 text-accent">
+        <Wallet size={18} />
+      </Link>
+      {LINKS.map(({ href, short, icon: Icon }) => (
+        <Link key={href} href={comQs(href)} aria-current={path === href ? 'page' : undefined} className={item(path === href)}>
+          <Icon size={16} className={path === href ? 'text-accent' : ''} />{short}
+        </Link>
+      ))}
+      <div className="relative">
+        <button onClick={() => setMais(!mais)} aria-expanded={mais} className={item(mais || noMais)}>
+          <MoreHorizontal size={16} className={noMais ? 'text-accent' : ''} />Mais<ChevronDown size={14} className={mais ? 'rotate-180' : ''} />
+        </button>
+        {mais && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMais(false)} aria-hidden />
+            <div className="fadein absolute left-0 top-full z-40 mt-2 w-56 rounded-xl border border-border bg-surface-2 p-1.5 shadow-card">
+              {EXTRA.map(({ href, label, icon: Icon }) => (
+                <Link key={href} href={comQs(href)} onClick={() => setMais(false)} aria-current={path === href ? 'page' : undefined}
+                  className={`flex min-h-[40px] items-center gap-2.5 rounded-lg px-2.5 text-sm ${path === href ? 'bg-surface-3 text-text' : 'text-muted hover:bg-surface-3/60 hover:text-text'}`}>
+                  <Icon size={16} className={path === href ? 'text-accent' : 'text-faint'} />{label}
+                </Link>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </nav>
   );
 }
@@ -125,12 +138,10 @@ export function RespToggle() {
         <button
           key={r.key}
           onClick={() => set(r.key)}
-          className={`flex items-center gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${
+          className={`flex items-center gap-1.5 px-1.5 py-1.5 rounded-lg text-xs transition-colors ${
             resp === r.key ? 'bg-surface-3 text-text' : 'text-muted hover:text-text'
           }`}
         >
-          {/* Onda 5: no celular sem a bolinha de cor, para o cabeçalho caber numa linha */}
-          <span className={`hidden h-2 w-2 rounded-full sm:inline-block ${r.dot}`} />
           {r.label}
         </button>
       ))}

@@ -33,11 +33,7 @@ export function avisosDoDia(d: DadosAvisos): Aviso[] {
   }
   for (const j of Array.from(juros.values())) out.push({ tipo: 'juros', ...j });
 
-  // cruzou o limiar ontem (antes abaixo, agora no limiar ou acima): avisa uma vez, o maior
-  for (const o of d.orcamento) {
-    const pct = ([100, 80] as const).find((p) => o.ateAnteontem < (o.teto * p) / 100 && o.ateOntem >= (o.teto * p) / 100);
-    if (pct) out.push({ tipo: 'orcamento', item: o.item, emoji: o.emoji, pct, gasto: r2(o.ateOntem), teto: o.teto });
-  }
+  // orçamento saiu daqui em 15/10/2026: virou alerta na hora (worker `alerta-meta`, uma vez por limite no mês)
 
   for (const f of [...d.foraDoPadrao].sort((a, b) => b.valor - a.valor).slice(0, 2)) out.push({ tipo: 'fora_do_padrao', ...f });
   return out;

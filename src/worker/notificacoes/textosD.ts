@@ -5,6 +5,7 @@ import type { Aviso } from '../../lib/avisos';
 import type { Desafio } from '../../lib/desafio';
 import { mesLabel } from '../../lib/format';
 import { seta } from '../../lib/seta';
+import { alertasDaMeta, type Alerta, type EstadoMeta, type MemoriaAlertas } from '../../lib/metaMes';
 
 // os mesmos JSON das rotas /api/resumo/* do painel (o worker não importa do painel)
 export interface ResumoDiario {
@@ -141,6 +142,44 @@ export function montarMensal(r: ResumoMensal, link: string): string {
     ...(linhasDesafio.length ? ['', ...linhasDesafio] : []),
     '', `👉 ${link}`,
   ].join('\n');
+}
+
+/** 15/10: andamento da meta do débito (terça e sexta 9h). Sem meta (nem zerando sai): nada. */
+export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, link: string): string | null {
+  const e = r.estado;
+  if (!e) return null;
+  const l = [`🎯 *Meta do débito em ${r.mesLabel}*`,
+    `💸 ${brl(e.gasto)} de ${brl(e.meta)} (${e.pct}%), faltam ${e.diasRestantes} dia${e.diasRestantes === 1 ? '' : 's'}`];
+  if (e.situacao === 'estourou') l.push(`🔴 Passaram da meta em ${brl(e.gasto - e.meta)}`);
+  else {
+    l.push(`🐢 Dá pra gastar ${brl(e.porDia)}/dia até o fim`);
+    l.push(e.acimaNoRitmo > 0
+      ? `📈 No ritmo atual fecha em ${brl(e.previstoFim)} 🔴 (${brl(e.acimaNoRitmo)} acima)`
+      : `✅ No ritmo atual fecha em ${brl(e.previstoFim)}, dentro da meta`);
+  }
+  l.push('', `👉 ${link}`);
+  return l.join('\n');
+}
+
+/**
+ * 15/10: alertas na hora (16h50 e 8h05): ritmo vai passar, 80%, estourou e tetos do Orçamento — cada um uma vez no
+ * mês (a memória vai no `estado` do registro). Nada novo: sem mensagem, só a memória atualizada.
+ */
+export function montarAlertasMeta(
+  r: { mes: string; mesLabel: string; estado: EstadoMeta | null; orcamento: { item: string; emoji: string; teto: number; gasto: number }[] },
+  anterior: MemoriaAlertas | null, link: string,
+): { texto: string | null; estado: MemoriaAlertas } {
+  const { alertas, memoria } = alertasDaMeta(r.estado, r.orcamento ?? [], anterior, r.mes);
+  const linha = (a: Alerta) => {
+    switch (a.tipo) {
+      case '80': return `🟡 Já foram 80% da meta do débito: ${brl(a.gasto)} de ${brl(a.meta)}, faltam ${a.diasRestantes} dia${a.diasRestantes === 1 ? '' : 's'}`;
+      case '100': return `🔴 Passaram da meta do débito de ${r.mesLabel}: ${brl(a.gasto)} de ${brl(a.meta)}`;
+      case 'ritmo': return `⚠️ No ritmo atual, o débito de ${r.mesLabel} fecha em ${brl(a.previstoFim)}: ${brl(a.acima)} acima da meta. Dá pra gastar ${brl(a.porDia)}/dia até o fim`;
+      case 'orcamento': return `${a.emoji || '🧾'} ${a.item} passou de ${a.pct}% do teto: ${brl(a.gasto)} de ${brl(a.teto)}`;
+    }
+  };
+  if (!alertas.length) return { texto: null, estado: memoria };
+  return { texto: [...alertas.map(linha), '', `👉 ${link}`].join('\n'), estado: memoria };
 }
 
 /** Só quando algo quebrou; null quando está tudo bem. */

@@ -17,11 +17,9 @@ describe('avisos do dia', () => {
     expect(avisosDoDia({ ...vazio, encargos: [{ banco: 'B1', responsavel: 'Matheus', valor: 6.5 }, { banco: 'B1', responsavel: 'Matheus', valor: 12 }] }))
       .toEqual([{ tipo: 'juros', banco: 'B1', responsavel: 'Matheus', valor: 18.5 }]);
   });
-  it('orçamento: avisa só no dia em que cruza 80% ou 100% (o maior cruzado)', () => {
+  it('orçamento saiu do diário (15/10): virou o alerta na hora do Zeca, uma vez por limite no mês', () => {
     const o = (ateAnteontem: number, ateOntem: number) => ({ item: 'Delivery', emoji: '🛵', teto: 600, ateAnteontem, ateOntem });
-    expect(avisosDoDia({ ...vazio, orcamento: [o(400, 500)] })).toEqual([{ tipo: 'orcamento', item: 'Delivery', emoji: '🛵', pct: 80, gasto: 500, teto: 600 }]);
-    expect(avisosDoDia({ ...vazio, orcamento: [o(400, 650)] })).toEqual([{ tipo: 'orcamento', item: 'Delivery', emoji: '🛵', pct: 100, gasto: 650, teto: 600 }]);
-    expect(avisosDoDia({ ...vazio, orcamento: [o(500, 550)] })).toEqual([]); // já estava acima de 80%: não repete
+    expect(avisosDoDia({ ...vazio, orcamento: [o(400, 500), o(400, 650)] })).toEqual([]);
   });
   it('fora do padrão: no máximo 2, maiores primeiro', () => {
     const f = (descricao: string, valor: number) => ({ descricao, valor, categoria: 'Shopping', mediana: 50 });

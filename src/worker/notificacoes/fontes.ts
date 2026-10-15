@@ -77,6 +77,8 @@ export function criarFontes(
     diario: () => painel('/api/resumo/diario'),
     semanal: () => painel('/api/resumo/semanal'),
     mensal: () => painel('/api/resumo/mensal'),
+    meta: () => painel('/api/resumo/meta'),
+    'alerta-meta': () => painel('/api/resumo/meta'),
     tecnico: async () => ({
       saude: await um(SQL_SAUDE, 'saude'),
       backup: await um(SQL_BACKUP, 'st'),

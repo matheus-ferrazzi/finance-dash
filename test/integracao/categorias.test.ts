@@ -45,7 +45,7 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     await ins('c2', 'Loja do Bicho 2', 'Groceries', null);
     await ins('c3', 'OUTRA LOJA', 'Shopping', null);
     const pedido = { tipo: 'texto' as const, idTransacao: 'c1', texto: 'loja do bicho', categoria: 'Pet supplies and vet' };
-    expect(await queries.previaRegra(pedido)).toEqual({ afetados: 2, porCategoria: { Shopping: 1, Groceries: 1 } });
+    expect(await queries.previaRegra(pedido)).toEqual({ afetados: 2, porCategoria: { Shopping: 1, Groceries: 1 }, mudancasDeClasse: [] });
     expect(await queries.salvarRegra(pedido)).toMatchObject({ afetados: 2 });
     const { rows } = await pool.query(`SELECT id_transacao, categoria, categoria_banco FROM financas_lancamentos WHERE id_transacao IN ('c1','c2','c3') ORDER BY 1`);
     expect(rows.map((r) => r.categoria)).toEqual(['Pet supplies and vet', 'Pet supplies and vet', 'Shopping']);
@@ -122,5 +122,22 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     expect(await queries.apagarMeta('meses_reserva')).toBe(true);
     expect((await queries.getMetasTrilha()).mesesReserva).toBe(6);
     await queries.apagarMeta('meta_patrimonio');
+  });
+
+  // F4 (pendência): a prévia não dizia quando a regra muda a CLASSE de uma entrada (receita vira estorno etc.)
+  it('F4: prévia conta as mudanças de classe', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, categoria_banco, classe, tipo_movimento, forma_pagamento, banco, responsavel)
+      VALUES ('f4cl', '2046-06-01', 80, 'PIX RECEBIDO F4 CLASSE', 'Transfer - PIX', 'Transfer - PIX', 'receita', 'Entrada', 'Débito', 'B', 'X')`);
+    const p = await queries.previaRegra({ tipo: 'lancamento', idTransacao: 'f4cl', categoria: 'Groceries' });
+    expect(p).toMatchObject({ afetados: 1, mudancasDeClasse: [{ de: 'receita', para: 'estorno', n: 1 }] });
+  });
+
+  // F4 (pendência): "Agora:" mostrava a categoria crua; as telas usam categoria_efetiva (regras antigas nas vagas)
+  it('F4: "Agora:" com a categoria que as telas mostram (regra antiga numa categoria vaga)', async () => {
+    await pool.query(readFileSync('db/migrations/005_regras_por_documento.sql', 'utf8'));
+    await pool.query(`INSERT INTO financas_regras_categoria (padrao, contraparte_doc, categoria) VALUES ('PADARIA DO ZE F4', NULL, 'Groceries')`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, classe, banco, responsavel)
+      VALUES ('f4ag', '2046-05-01', 12, 'PIX PADARIA DO ZE F4', 'Transfer - PIX', 'despesa', 'B', 'X')`);
+    expect((await queries.getLancamentoParaCorrigir('f4ag'))!.categoria).toBe('Groceries');
   });
 });

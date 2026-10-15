@@ -21,7 +21,7 @@ Escopo dividido: **E2** = mudar categoria + conta avulsa + a mecânica de propos
 
 1. Pergunta chega pelo filtro do E1 (grupo, membro, chamado).
 2. **Antes do agente**, o worker olha se a mensagem é resposta a uma proposta:
-   - existe proposta **pendente** da mesma pessoa, criada há ≤ 5 min, e o texto (sem o "bot", sem pontuação, minúsculo) é `sim | s | confirma | pode | ok` → **executa**;
+   - existe proposta **pendente** da mesma pessoa, criada há ≤ 5 min, e o texto (sem o "bot", sem pontuação, minúsculo) é `sim | confirma | confirmo` → **executa** (decisão da revisão: "s", "pode" e "ok" casuais não confirmam — atualizado na auditoria de 13/10);
    - `não | nao | n | cancela` → **cancela** ("❌ Cancelado.");
    - `desfaz | desfazer` (com "bot") → **desfaz** a última ação `feita` da pessoa nas últimas 24 h;
    - um número `1`–`5` quando a última resposta do bot à pessoa foi uma lista de candidatos (≤ 5 min) → vira a escolha e volta ao agente com o contexto.
@@ -54,13 +54,13 @@ Escopo dividido: **E2** = mudar categoria + conta avulsa + a mecânica de propos
 
 - `POST /api/bot/executar { id }`: lê a proposta em `financas_bot_acoes`; só executa se `estado = 'confirmada'` (o worker marca `confirmada` ao ler o "sim", na mesma transação de leitura); executa e grava `estado = 'feita'`, `resultado`.
   - Categoria: antes de `salvarRegra`, guarda a regra que já existia para a mesma chave (`tipo`, `chave`, `categoria`) ou `null`. **Desfazer**: se existia, regrava a categoria anterior; se não, `apagarRegra(id)`.
-  - Conta avulsa: `criarMarca({ mes, contaId: null, responsavel, nome, valor, pago: false })`; desfazer = `apagarMarca(id)`.
+  - Conta avulsa: `criarMarca({ mes, contaId: null, responsavel, nome, valor, pago: true })` (a tabela exige `pago` em avulsa: fica "a confirmar" até o banco achar o pagamento — atualizado em 13/10); desfazer = `apagarMarca(id)`.
 - `POST /api/bot/desfazer { id }`: só ação `feita` há ≤ 24 h; grava `estado = 'desfeita'`.
 - As rotas usam o `writerPool` (`dash_writer`) como as telas; recusam qualquer outra coisa (`400`).
 
 ## Registro
 
-Migração `010_bot_acoes.sql`: `financas_bot_acoes` (`id`, `criado_em`, `pessoa`, `tipo` ∈ `categoria|avulsa`, `params jsonb`, `resumo text`, `estado` ∈ `pendente|confirmada|feita|cancelada|expirada|substituida|desfeita|erro`, `resultado jsonb`, `atualizado_em`). `pluggy_worker`: SELECT/INSERT/UPDATE; `dash_writer`: SELECT/UPDATE; `bot_readonly`: SELECT. Sem telefone/JID. Pendentes com mais de 5 min viram `expirada` (na leitura). Mantém 1 ano.
+Migração `010_bot_acoes.sql`: `financas_bot_acoes` (`id`, `criado_em`, `pessoa`, `params jsonb`, `resumo text`, `tipo` ∈ `categoria|avulsa|dinheiro` (011), `estado` ∈ `pendente|confirmada|executando|feita|cancelada|expirada|substituida|desfeita|erro` (`executando` = reivindicada para gravar), `resultado jsonb`, `atualizado_em`). `pluggy_worker`: SELECT/INSERT/UPDATE; `dash_writer`: SELECT/UPDATE; `bot_readonly`: SELECT. Sem telefone/JID. Pendentes com mais de 5 min viram `expirada` (na leitura e na limpeza diária do worker); registros com mais de 1 ano saem (migração 014).
 
 ## Segurança
 

@@ -24,7 +24,12 @@ export function ehAtraso(descricao: string, categoria: string | null): boolean {
   return PALAVRAS_ATRASO.some((p) => d.includes(p));
 }
 
-export interface LancDivida { descricao: string; categoria: string | null; banco: string; forma: string; data: string; valor: number; parcelaTotal?: number | null }
+export interface LancDivida {
+  descricao: string; categoria: string | null; banco: string; forma: string; data: string; valor: number;
+  parcelaTotal?: number | null;
+  /** F3 (a): a parcela n de m — sem as futuras lançadas, n < m ainda é dívida aberta */
+  parcelaNumero?: number | null;
+}
 /** `plano` = nº de parcelas do plano (N9): a mesma dívida pode ter dois planos com a mesma descrição */
 export interface DividaAtiva { chave: string; nome: string; banco: string; plano: number | null; valorParcela: number; restantes: number | null; fim: string | null }
 /** Correções do casal (F4b): grupos marcados "não é dívida" saem; "é dívida" entram mesmo sem a regra pegar. */
@@ -44,7 +49,11 @@ export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: Marcas
   const grupos = new Map<string, LancDivida[]>();
   for (const l of lancs) {
     const k = chaveDivida(l.descricao, l.banco);
-    if (marcas.nao.has(k) || !(ehDivida(l.descricao, l.categoria) || marcas.sim.has(k))) continue;
+    // F4b: a marca pode ser do plano (chave#parcelas): vale só para aquele parcelamento
+    const kp = l.parcelaTotal ? `${k}#${l.parcelaTotal}` : null;
+    const nao = marcas.nao.has(k) || (kp !== null && marcas.nao.has(kp));
+    const sim = marcas.sim.has(k) || (kp !== null && marcas.sim.has(kp));
+    if (nao || !(ehDivida(l.descricao, l.categoria) || sim)) continue;
     const g = `${k}#${l.parcelaTotal ?? ''}`;
     grupos.set(g, [...(grupos.get(g) ?? []), l]);
   }
@@ -54,9 +63,14 @@ export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: Marcas
     const [nome, banco] = k.split('|');
     const plano = p ? Number(p) : null;
     const futuras = ls.filter((l) => l.data > hoje).sort((a, b) => a.data.localeCompare(b.data));
+    // F3 (a): a última parcela vista (n de m) — se faltam parcelas além das já lançadas, a dívida segue aberta
+    const ultVista = [...ls].sort((a, b) => a.data.localeCompare(b.data))[ls.length - 1];
+    const faltamDepois = plano && ultVista.parcelaNumero ? plano - ultVista.parcelaNumero : 0;
     if (futuras.length > 0) {
       const ult = futuras[futuras.length - 1];
       out.push({ chave: k, nome, banco, plano, valorParcela: ult.valor, restantes: futuras.length, fim: ult.data.slice(0, 7) });
+    } else if (faltamDepois > 0) {
+      out.push({ chave: k, nome, banco, plano, valorParcela: ultVista.valor, restantes: faltamDepois, fim: addMonths(ultVista.data.slice(0, 7), faltamDepois) });
     } else if (ls.some((l) => l.forma === 'Débito')) {
       const ult = [...ls].sort((a, b) => a.data.localeCompare(b.data))[ls.length - 1];
       out.push({ chave: k, nome, banco, plano, valorParcela: ult.valor, restantes: null, fim: null });
@@ -163,11 +177,19 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
 
   // 2. fazer sobrar
   const meses = d.passados.slice(-MESES_SOBRA);
-  const cumpridos = meses.filter((m) => m.sobra >= 0).length;
+  // F3 (b): mês sem dado nenhum (nada entrou) não é mês em que sobrou
+  const sobrou = (m: { sobra: number; receita?: number }) => m.sobra >= 0 && (m.receita === undefined || m.receita > 0);
+  const cumpridos = meses.filter(sobrou).length;
   const f2ok = meses.length >= MESES_SOBRA && cumpridos === MESES_SOBRA;
+  // F3 (c): a sequência começa nos meses fechados que já sobraram (antes só olhava a previsão e atrasava)
+  const seq = [...meses.map((m) => ({ mes: m.mes, ok: sobrou(m), previsto: false })),
+    ...d.sobraPrevista.map((m) => ({ mes: m.mes, ok: m.sobra >= 0, previsto: true }))];
   let q2 = 'pela previsão, não acontece em 24 meses';
-  for (let i = 0; i + MESES_SOBRA <= d.sobraPrevista.length; i++) {
-    if (d.sobraPrevista.slice(i, i + MESES_SOBRA).every((m) => m.sobra >= 0)) { q2 = mesLabel(d.sobraPrevista[i + MESES_SOBRA - 1].mes); break; }
+  for (let j = MESES_SOBRA - 1; j < seq.length; j++) {
+    const janela = seq.slice(j - MESES_SOBRA + 1, j + 1);
+    // meses seguidos (sem buraco entre o último fechado e o primeiro previsto)
+    const seguidos = janela.every((m, k) => k === 0 || m.mes === addMonths(janela[k - 1].mes, 1));
+    if (seq[j].previsto && seguidos && janela.every((m) => m.ok)) { q2 = mesLabel(seq[j].mes); break; }
   }
 
   // 3. reserva
@@ -197,7 +219,8 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
       { n: 1, titulo: 'Sair das dívidas', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
       { n: 2, titulo: 'Fazer sobrar', status: st(2, f2ok), quando: f2ok ? null : q2, proximoPasso: d.textoMeta },
       { n: 3, titulo: 'Reserva de emergência', status: st(3, f3ok), quando: q3, proximoPasso: p3 },
-      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Aplicar ${Math.round(metas.metaPatrimonio * 1000) / 10}% do que entra (${marcaDinheiro(receitaMedia * metas.metaPatrimonio)}/mês).` },
+      // F3 (d): o passo diz o % de hoje (a faixa do topo só mostra o passo)
+      { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Hoje: ${Math.round(pct * 100)}% do que entra vai para aplicação. Aplicar ${Math.round(metas.metaPatrimonio * 1000) / 10}% do que entra (${marcaDinheiro(receitaMedia * metas.metaPatrimonio)}/mês).` },
     ],
     reserva: { meta, aplicado: d.aplicado, ritmo, meses: metas.mesesReserva },
     patrimonio: { pct, meta: metas.metaPatrimonio },

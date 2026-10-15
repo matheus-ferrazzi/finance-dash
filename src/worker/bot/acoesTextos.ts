@@ -34,7 +34,7 @@ export function textoPropostaAvulsa(d: { nome: string; valor: number; mes: strin
 }
 
 export function textoFeito(resumo: string, link: string, painelUrl: string): string {
-  return `✅ Feito: ${resumo}.\n↩️ Errado? *bot desfaz*\n\n👉 ${painelUrl.replace(/\/+$/, '')}${link}`;
+  return `✅ Feito: ${resumo}.\n↩️ Errado? *Zeca, desfaz*\n\n👉 ${painelUrl.replace(/\/+$/, '')}${link}`;
 }
 
 export function textoDesfeito(resumo: string): string {

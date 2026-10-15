@@ -35,7 +35,8 @@ describe.skipIf(!url)('registro do bot (integração)', () => {
     await reg.gravar({ ...base, pessoa: 'Matheus', pergunta: 'p1', resposta: 'r1', erro: null });
     await reg.gravar({ ...base, pessoa: 'Ariane', pergunta: 'p2', resposta: 'r2', erro: null });
     await reg.gravar({ ...base, pessoa: 'Ariane', pergunta: 'p3', resposta: null, erro: 'Groq fora' });
-    expect(await reg.contexto(30, 3)).toEqual([{ pergunta: 'p1', resposta: 'r1' }, { pergunta: 'p2', resposta: 'r2' }]);
+    // E1-M3: com quem perguntou
+    expect(await reg.contexto(30, 3)).toEqual([{ pessoa: 'Matheus', pergunta: 'p1', resposta: 'r1' }, { pessoa: 'Ariane', pergunta: 'p2', resposta: 'r2' }]);
     expect(await reg.falhas24h()).toBe(1);
     await pool.query(`UPDATE financas_bot_conversas SET criado_em = now() - interval '91 days' WHERE pergunta = 'p1'`);
     expect(await reg.limpar(90)).toBe(1);

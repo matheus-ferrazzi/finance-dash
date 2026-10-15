@@ -17,7 +17,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
   const [busca, setBusca] = useState('');
   const [tipo, setTipo] = useState<Tipo>('lancamento');
   const [texto, setTexto] = useState(lanc.sugestaoTexto);
-  const [previa, setPrevia] = useState<{ afetados: number; porCategoria: Record<string, number> } | null>(null);
+  const [previa, setPrevia] = useState<{ afetados: number; porCategoria: Record<string, number>; mudancasDeClasse?: { de: string; para: string; n: number }[] } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [divida, setDivida] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
         <div className="mt-1 text-xs text-faint">{`Agora: ${traduzCategoria(lanc.categoria)} (${ORIGEM[lanc.origem]})`}</div>
       </div>
 
-      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar categoria" aria-label="Buscar categoria"
+      <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar categoria" aria-label="Buscar categoria"
         className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent/50" />
       <div className="max-h-56 space-y-2 overflow-y-auto">
         {grupos.map((g) => (
@@ -95,7 +95,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
             <div className="mt-1 flex flex-wrap gap-1.5">
               {g.cats.map((c) => (
                 <button key={`${g.nome}-${c}`} type="button" onClick={() => setCategoria(c)}
-                  className={`min-h-[36px] rounded-lg px-2.5 text-xs ${categoria === c ? 'bg-accent text-base' : 'bg-surface-2 text-muted'}`}>
+                  className={`min-h-[44px] rounded-lg px-2.5 text-xs ${categoria === c ? 'bg-accent text-base' : 'bg-surface-2 text-muted'}`}>
                   {traduzCategoria(c)}
                 </button>
               ))}
@@ -119,6 +119,7 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
           {`Muda ${previa.afetados} lançamento${previa.afetados === 1 ? '' : 's'}`
             + (previa.afetados > 0 ? ` (${Object.entries(previa.porCategoria).map(([c, n]) => `${n} de ${traduzCategoria(c)}`).join(', ')})` : '')
             + ` → ${traduzCategoria(categoria)}`}
+          {textoMudancaClasse(previa.mudancasDeClasse ?? []) && <span className="block text-warn">{textoMudancaClasse(previa.mudancasDeClasse ?? [])}</span>}
         </p>
       )}
       {erro && <p className="text-xs text-despesa">{erro}</p>}
@@ -132,6 +133,19 @@ export function FormCategoria({ lanc, onSalvo }: { lanc: LancCorrigir; onSalvo: 
     </div>
   );
 }
+
+const NOME_CLASSE: Record<string, string> = {
+  receita: 'receita', despesa: 'gasto', estorno: 'estorno', pagamento_fatura: 'pagamento de fatura',
+  transferencia_interna: 'transferência entre contas', aporte: 'aplicação',
+};
+/** F4 (pendência): a prévia diz quando a categoria nova muda a classe (o que conta como receita/gasto). */
+export function textoMudancaClasse(ms: readonly { de: string; para: string; n: number }[]): string | null {
+  if (!ms.length) return null;
+  return ms.map(({ de, para, n }) => `${n} ${n === 1 ? 'deixa' : 'deixam'} de contar como ${NOME_CLASSE[de] ?? de} e ${n === 1 ? 'passa' : 'passam'} a contar como ${NOME_CLASSE[para] ?? para}.`).join(' ');
+}
+
+/** F4 (pendência): Esc fecha a folha. */
+export const fecharComEsc = (fechar: () => void) => (e: Pick<KeyboardEvent, 'key'>) => { if (e.key === 'Escape') fechar(); };
 
 /** Folha que sobe do rodapé no celular (janela no computador): busca o lançamento e mostra o formulário. */
 export function FolhaCategoria({ id, onFechar: fechar }: { id: string; onFechar: () => void }) {
@@ -151,6 +165,12 @@ export function FolhaCategoria({ id, onFechar: fechar }: { id: string; onFechar:
   // (com ela, o "Feito · Desfazer")
   const [mudou, setMudou] = useState(false);
   const onFechar = () => { if (mudou) router.refresh(); fechar(); };
+  useEffect(() => {
+    const h = fecharComEsc(onFechar);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mudou]);
 
   // desfazer apaga a regra recém-criada (se ela substituiu outra da mesma chave, não restaura a antiga)
   async function desfazer() {
@@ -163,7 +183,8 @@ export function FolhaCategoria({ id, onFechar: fechar }: { id: string; onFechar:
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 md:items-center" onClick={onFechar}>
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-surface p-4 md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Mudar categoria"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-surface p-4 md:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between">
           <b className="text-sm">Mudar categoria</b>
           <button type="button" onClick={onFechar} aria-label="Fechar" className="grid h-11 w-11 place-items-center text-faint"><X size={18} /></button>

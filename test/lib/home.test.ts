@@ -13,8 +13,8 @@ describe('blocos da home', () => {
     const f = (banco: string, usado: number, limite: number, disponivel: number, ultima: any) =>
       ({ id: banco, banco, responsavel: 'Ariane', usado, limite, disponivel, fechamento: null, ultima });
     expect(cartaoDestaque([f('X', 100, 1000, 900, ult('a_vencer', 70)), f('Y', 160, 200, 40, ult('parcelada', 0))]))
-      .toEqual({ banco: 'Y', usoPct: 80, aPagar: 70 });
-    expect(cartaoDestaque([f('Z', 10, 0, 0, null)])).toEqual({ banco: 'Z', usoPct: 0, aPagar: 0 });
+      .toEqual({ banco: 'Y', responsavel: 'Ariane', usoPct: 80, aPagar: 70 });
+    expect(cartaoDestaque([f('Z', 10, 0, 0, null)])).toEqual({ banco: 'Z', responsavel: 'Ariane', usoPct: 0, aPagar: 0 });
     expect(cartaoDestaque([])).toBeNull();
   });
 

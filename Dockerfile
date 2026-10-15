@@ -1,8 +1,9 @@
 # ---- deps ----
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+# D2-M11: versões travadas pelo lockfile (antes cada build resolvia as faixas do package.json de novo)
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 # ---- builder ----
 FROM node:20-alpine AS builder

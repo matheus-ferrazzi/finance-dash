@@ -130,3 +130,12 @@ export function detalheMesPassado(p: MesPassado): { linhas: LinhaPassado[]; sald
     },
   };
 }
+
+/**
+ * F2b+ (pendência): na visão de uma pessoa, o "fecha em" usa o saldo e o ritmo dela; o gasto do dia a dia é
+ * do casal e se divide de um jeito que muda todo mês — os dois "fecha em" somados não dão o do casal.
+ */
+export function notaVisaoIndividual(resp: 'casal' | 'Matheus' | 'Ariane'): string | null {
+  if (resp === 'casal') return null;
+  return 'Na visão de uma pessoa, o "fecha em" usa as contas e o ritmo dela: somado ao da outra pessoa, não soma o do casal (o dia a dia é dividido de um jeito que muda todo mês). Para decidir, use a visão do casal.';
+}

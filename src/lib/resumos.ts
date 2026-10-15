@@ -47,6 +47,11 @@ export function faturasDoDia(faturas: Fatura[], hoje: string, caderno: ItemConta
   return out.sort((a, b) => (a.quando === b.quando ? 0 : a.quando === 'hoje' ? -1 : 1));
 }
 
+/** E3-M4: o dinheiro vivo entra na comparação com a média só se o histórico dele cobre as 4 semanas da média. */
+export function dinheiroCobreMedia(primeiroDinheiro: string | null, inicioSemana: string): boolean {
+  return primeiroDinheiro !== null && primeiroDinheiro <= somaDias(inicioSemana, -28);
+}
+
 /** N7: total da semana e média das 4 anteriores (÷4) só do gasto livre — o mesmo recorte da lista de grupos. */
 export function totaisLivres(semana: GrupoGasto[], antes4: GrupoGasto[]): { total: number; mediaTotal: number } {
   const soma = (gs: GrupoGasto[]) => gs.filter((g) => !g.travado).reduce((s, g) => s + g.total, 0);

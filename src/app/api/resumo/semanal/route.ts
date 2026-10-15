@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getDinheiroPorCategoriaEntre, somarMapas } from '@/lib/dinheiro';
+import { getDinheiroPorCategoriaEntre, primeiroDinheiro, somarMapas } from '@/lib/dinheiro';
 import { getFaturas, getGastoPorCategoriaEntre, getTrilhaDados } from '@/lib/queries';
 import { totalAPagar } from '@/lib/faturas';
 import { brl, currentDateSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
-import { gruposDaSemana, semanaAnterior, somaDias, totaisLivres } from '@/lib/resumos';
+import { dinheiroCobreMedia, gruposDaSemana, semanaAnterior, somaDias, totaisLivres } from '@/lib/resumos';
 import { avaliarTrilha, partesDoTexto } from '@/lib/trilha';
+import { getDesafioComAndamento } from '@/lib/desafioDados';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,13 +40,21 @@ export async function GET() {
   // N7: título com o mesmo recorte do corpo (só gasto livre): aluguel/renegociação pagos uma vez no mês
   // faziam a semana em que caem parecer "310% acima da média"
   const livres = totaisLivres(agruparGastos(semana, 0), agruparGastos(antes, 0));
+  // E3-M4: sem 4 semanas de histórico do dinheiro, a média não tem dinheiro — o % compara só o banco
+  const cobre = dinheiroCobreMedia(await primeiroDinheiro(), s.inicio);
+  const soBanco = totaisLivres(agruparGastos(semanaBanco, 0), agruparGastos(antesBanco, 0));
+  const comparacao = cobre ? {} : { mediaTotal: soBanco.mediaTotal, totalComparado: soBanco.total };
   // S7: faturas fechadas ainda a pagar (o Bot 02 do Telegram trazia; N4: a fatura é a do histórico)
   const ultimas = (await getFaturas('casal', hoje)).flatMap((f) => (f.ultima ? [f.ultima] : []));
   const aVencer = ultimas.filter((u) => u.situacao === 'a_vencer').map((u) => u.vencimento).sort();
   const faturas = { aPagar: totalAPagar(ultimas), proximoVencimento: aVencer[0] ? `${aVencer[0].slice(8, 10)}/${aVencer[0].slice(5, 7)}` : null };
+  // P7: andamento do desafio do mês de hoje (de 1º até ontem); falha não derruba a mensagem
+  const desafio = await getDesafioComAndamento(hoje.slice(0, 7), hoje).catch(() => null);
   return NextResponse.json({
+    ...(desafio ? { desafio } : {}),
     semana: s,
     ...livres,
+    ...comparacao,
     faturas,
     totalDinheiro: soma(dinSemana),
     grupos: gruposDaSemana(agruparGastos(semana, 0), agruparGastos(antes, 0)),

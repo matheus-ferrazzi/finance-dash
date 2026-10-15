@@ -30,3 +30,14 @@ describe('revisão final F2a: simulador com uma mensagem só', () => {
     expect(h).not.toMatch(/Fica no vermelho em|Não fica no vermelho/);
   });
 });
+
+// F1 (pendência): os pedaços da barra "Para onde vai" não eram links (só os nomes)
+describe('barra dos grupos da home', () => {
+  it('cada pedaço é um link para o grupo, com rótulo acessível', async () => {
+    const { BarraGrupos } = await import('../../src/app/components/BarraGrupos');
+    const h = renderToStaticMarkup(createElement(BarraGrupos, { grupos: [{ nome: 'Mercado', pct: 60, href: '/gastos?grupo=Mercado' }, { nome: 'Lazer', pct: 40, href: '/gastos?grupo=Lazer' }] }));
+    expect(h.match(/<a /g)).toHaveLength(2);
+    expect(h).toContain('href="/gastos?grupo=Mercado"');
+    expect(h).toContain('aria-label="Mercado, 60%"');
+  });
+});

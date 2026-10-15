@@ -19,6 +19,8 @@ export interface FaturaView {
   limite: number; disponivel: number; fechamento: string | null;
   cicloLabel: string; soma: number; items: FaturaItem[];
   proxSoma: number; proxLabel: string;
+  /** P3: a lista é da fatura que já fechou (link com ciclo), não do ciclo em curso */
+  cicloFechado?: boolean;
 }
 
 const TOM_SITUACAO: Record<UltimaFatura['situacao'], string> = {
@@ -72,7 +74,7 @@ export function FaturaCard({ f, abertoInicial = false }: { f: FaturaView; aberto
         onClick={() => setOpen(!open)}
         className="mt-4 flex w-full items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted hover:text-text hover:bg-surface-3 transition-colors"
       >
-        <span>Ver compras do ciclo atual{f.items.length ? ` (${f.items.length})` : ''}</span>
+        <span>Ver compras {f.cicloFechado ? 'da fatura fechada' : 'do ciclo atual'}{f.items.length ? ` (${f.items.length})` : ''}</span>
         <ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 

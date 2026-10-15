@@ -23,7 +23,7 @@ const LINKS = [
 const EXTRA = [
   { href: '/trilha', label: 'Trilha', short: 'Trilha', icon: Flag },
   { href: '/faturas', label: 'Faturas', short: 'Faturas', icon: CreditCard },
-  { href: '/simulador', label: 'Simulador de compra', short: 'Simular', icon: Calculator },
+  { href: '/simulador', label: 'Simulador', short: 'Simular', icon: Calculator },
   { href: '/diagnostico', label: 'Diagnóstico', short: 'Diagnóst.', icon: Stethoscope },
   { href: '/assinaturas', label: 'Assinaturas', short: 'Assin.', icon: Repeat },
   { href: '/investimentos', label: 'Investimentos', short: 'Invest.', icon: TrendingUp },

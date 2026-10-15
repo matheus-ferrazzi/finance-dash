@@ -3,6 +3,7 @@ import { diasNoMes, fotografarPrevisto, getMesesPassados, getPrevisaoResumo, get
 import { currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths } from '@/lib/previsao';
 import { historicoDe } from '@/lib/resumos';
+import { getDesafio, getDesafioComAndamento } from '@/lib/desafioDados';
 import { avaliarTrilha } from '@/lib/trilha';
 
 export const dynamic = 'force-dynamic';
@@ -13,12 +14,15 @@ export async function GET() {
   const fechado = addMonths(hoje.slice(0, 7), -1);
   const anterior = addMonths(fechado, -1);
   // "mudou de fase": a trilha hoje × no fim do mês anterior ao que fechou (início do mês fechado)
-  const [passados, agora, antes, p] = await Promise.all([
+  const [passados, agora, antes, p, desafioAnterior, desafioNovo] = await Promise.all([
     // 6 meses para o gráfico; se algum mês antigo falhar, volta aos 3 de antes (a mensagem não se perde)
     getMesesPassados('casal', hoje, 6).catch(() => getMesesPassados('casal', hoje)),
     getTrilhaDados(hoje),
     getTrilhaDados(`${anterior}-${String(diasNoMes(anterior)).padStart(2, '0')}`),
     getPrevisaoResumo('casal'),
+    // P7: o desafio do mês que fechou, com o mês inteiro, e o do mês que começa; falha não derruba a mensagem
+    getDesafioComAndamento(fechado, `${hoje.slice(0, 7)}-01`).catch(() => null),
+    getDesafio(hoje.slice(0, 7)).catch(() => null),
   ]);
   // N15: dia 1 — foto da previsão do mês que começa (o "previsto" dele no fechamento do mês que vem)
   await Promise.all((['casal', 'Matheus', 'Ariane'] as const).map((r) => fotografarPrevisto(r, hoje.slice(0, 7))))
@@ -37,5 +41,6 @@ export async function GET() {
     investimentos: { total: agora.aplicado, aplicadoNoMes: agora.aplicacaoMensal.find((a) => a.mes === m.mes)?.valor ?? 0 },
     mesNovo: { mesLabel: p.mesLabel, fechaCom: p.fechaCom },
     historico: historicoDe(passados),
+    desafio: { anterior: desafioAnterior, novo: desafioNovo },
   });
 }

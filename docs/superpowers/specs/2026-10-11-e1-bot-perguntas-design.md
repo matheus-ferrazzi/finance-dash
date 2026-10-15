@@ -76,7 +76,7 @@ Migração `009_bot.sql`: tabela `financas_bot_conversas` (`id`, `criado_em`, `p
 ## Segredos e scripts (Matheus roda; Claude não vê valores)
 
 - `scripts/e1-bot-env.sh`: pede a chave da Groq (`read -s`), gera o token do webhook, grava `/root/n8n-docker/.env.worker-bot` (600: `GROQ_API_KEY`, `BOT_TOKEN`, `GROQ_MODELOS`).
-- `scripts/e1-bot-membros.sh`: lista os participantes do `WA_GRUPO` (nome do contato quando houver + final do número), pergunta quem é Matheus e quem é Ariane, grava `BOT_MEMBROS` e `BOT_JID` (o JID do número conectado) em `.env.worker-bot`.
+- `scripts/e1-bot-membros.sh`: lista os participantes do `WA_GRUPO` (nome do contato quando houver + final do número), pergunta quem é Matheus e quem é Ariane, grava `BOT_MEMBROS` e `BOT_JIDS` (os JIDs do número conectado, separados por |; nome atualizado em 13/10) em `.env.worker-bot`.
 - `scripts/e1-bot-webhook.sh --ligar | --desligar | --estado`: configura o webhook da instância (`POST /webhook/set/financas`, só `MESSAGES_UPSERT`, URL interna com token) ou desliga (`enabled: false`).
 - Compose do worker: `env_file` opcional `.env.worker-bot`; nenhuma porta publicada (a Evolution alcança `finance-worker:8090` pela rede `n8n_network`).
 

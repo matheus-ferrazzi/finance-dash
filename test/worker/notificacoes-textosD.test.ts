@@ -89,6 +89,12 @@ describe('semanal', () => {
     expect(t.indexOf('💳')).toBeLessThan(t.indexOf('🧭'));
     expect(montarSemanal({ ...sem, faturas: { aPagar: 0, proximoVencimento: null } }, { gastos: 'G', trilha: 'T' })).not.toContain('💳');
   });
+  // E3-M4: sem 4 semanas de histórico do dinheiro, o % compara só o banco (a média não tem dinheiro)
+  it('E3-M4: % pela base comparável quando o painel manda (total mostrado continua com o dinheiro)', () => {
+    const t = montarSemanal({ ...sem, total: 1100, totalComparado: 1000, mediaTotal: 1000, totalDinheiro: 100 }, { gastos: 'G', trilha: 'T' });
+    expect(t).toContain(`💰 No dia a dia gastaram ${brl(1100)}.`);
+    expect(t).not.toContain('acima');
+  });
   it('igual à média: ➖', () => {
     expect(montarSemanal({ ...sem, grupos: [{ nome: 'Lazer', emoji: '🎮', semana: 250, media: 250 }] }, { gastos: 'G', trilha: 'T' })).toContain('➖');
   });
@@ -145,6 +151,11 @@ describe('técnico', () => {
       '🔴 Consentimento do B2 (R) na Pluggy venceu',
     ].join('\n'));
   });
+  it('D-M3: consentimento que vence hoje ou amanhã diz isso (não "em 0 dias")', () => {
+    const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [{ banco: 'B1', responsavel: 'R', dias: 0 }, { banco: 'B2', responsavel: 'R', dias: 1 }] })!;
+    expect(t).toContain('🟡 Consentimento do B1 (R) na Pluggy vence hoje');
+    expect(t).toContain('🟡 Consentimento do B2 (R) na Pluggy vence amanhã');
+  });
   it('S2: conexão da Pluggy parada há mais de 30 h vira linha 🔴 com o que fazer', () => {
     const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], conexoes: [{ banco: 'B1', responsavel: 'R', horas: 94.5 }, { banco: 'B2', responsavel: 'R', horas: 37 }] })!;
     expect(t).toContain('🔴 Conexão B1 (R) sem atualizar há 3 dias: reconectar no Meu Pluggy');
@@ -170,5 +181,38 @@ describe('semanal com dinheiro (E3)', () => {
     const t = montarSemanal({ ...sem, totalDinheiro: 70 }, { gastos: 'G', trilha: 'T' });
     expect(t.split('\n')[2]).toBe(`💵 dos quais ${brl(70)} em dinheiro vivo`);
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('dinheiro vivo');
+  });
+});
+
+// P7 (decisão de 13/10): desafio do mês simples — anuncia no mensal, andamento no semanal, fecha no mensal seguinte
+describe('desafio do mês', () => {
+  const novo = { mes: '2026-10', grupo: 'Mercado', emoji: '🛒', media: 1500, meta: 1350 };
+  it('mensal: fecha o desafio do mês que acabou e anuncia o do mês novo, depois do mês novo', () => {
+    const t = montarMensal({ ...mes, desafio: {
+      anterior: { mes: '2026-09', grupo: 'Comer fora', emoji: '🍔', media: 800, meta: 720, gasto: 650.4, cumpriu: true },
+      novo,
+    } }, 'L');
+    const l = t.split('\n');
+    const i = l.indexOf(`🔮 out/26 começa fechando em ${brl(-1700.4)}`);
+    expect(l.slice(i + 1, i + 4)).toEqual([
+      '',
+      `🏅 Desafio de set/26 cumprido: Comer fora ficou em ${brl(650.4)} (meta ${brl(720)})`,
+      `🎯 Desafio de out/26: 🛒 Mercado até ${brl(1350)} (a média é ${brl(1500)})`,
+    ]);
+    const nao = montarMensal({ ...mes, desafio: { anterior: { mes: '2026-09', grupo: 'Comer fora', emoji: '🍔', media: 800, meta: 720, gasto: 900, cumpriu: false }, novo: null } }, 'L');
+    expect(nao).toContain(`😬 Desafio de set/26 não deu: Comer fora ficou em ${brl(900)} (meta ${brl(720)})`);
+    expect(nao).not.toContain('🎯');
+  });
+  it('mensal sem desafio (painel antigo ou sem dado): nada muda', () => {
+    expect(montarMensal(mes, 'L')).not.toContain('Desafio');
+  });
+  it('semanal: andamento do desafio do mês antes da trilha', () => {
+    const t = montarSemanal({ ...sem, desafio: { ...novo, gasto: 675, pct: 50 } }, { gastos: 'G', trilha: 'T' });
+    const l = t.split('\n');
+    const i = l.findIndex((x) => x.startsWith('🧭'));
+    expect(l.slice(i - 2, i)).toEqual([`🎯 Desafio de out/26: 🛒 Mercado em ${brl(675)} de ${brl(1350)} (50%)`, '']);
+    expect(montarSemanal({ ...sem, desafio: { ...novo, gasto: 1400, pct: 104 } }, { gastos: 'G', trilha: 'T' }))
+      .toContain(`🎯 Desafio de out/26: 🛒 Mercado em ${brl(1400)} de ${brl(1350)} (104%), passou da meta 🔴`);
+    expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('🎯');
   });
 });

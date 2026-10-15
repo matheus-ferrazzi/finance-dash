@@ -17,7 +17,7 @@ export async function paraPng(svg: string, fontes: string[] = fontesPadrao()): P
   const Resvg: typeof import('@resvg/resvg-js').Resvg = m.Resvg ?? m.default?.Resvg; // pacote CommonJS
   const r = new Resvg(svg, {
     font: { fontFiles: fontes, loadSystemFonts: false, defaultFontFamily: 'DejaVu Sans' },
-    fitTo: { mode: 'width', value: 800 },
+    fitTo: { mode: 'width', value: 1600 }, // D2-M7: 800 ficava borrado no celular
     background: '#FFFFFF',
   });
   return Buffer.from(r.render().asPng());

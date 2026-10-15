@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calibrar, doRegime, faixaMes, faixaMesCorrente, percentil } from '../../src/lib/faixa';
+import { calibrar, calibrarValidada, coberturaAnteriores, doRegime, faixaMes, faixaMesCorrente, percentil } from '../../src/lib/faixa';
 
 describe('faixa', () => {
   it('percentil com interpolação linear', () => {
@@ -9,6 +9,21 @@ describe('faixa', () => {
   it('calibrar: menos de 6 erros = sem faixa', () => {
     expect(calibrar([1, 2, 3, 4, 5], '2026-10-10')).toBeNull();
     expect(calibrar([0, 0, 0, 0, 0, 100, -100], '2026-10-10')).toMatchObject({ n: 7 });
+  });
+  // P2 (auditoria 13/10): a spec do F2a pedia "só ligar a faixa se ela acertar 70–90% dos meses" — fora da amostra
+  it('P2: cobertura testa cada mês com a faixa dos meses ANTERIORES (mínimo 6), em ordem', () => {
+    // 7º (0) cai dentro da faixa dos 6 anteriores; 8º (999) fora
+    expect(coberturaAnteriores([10, -10, 20, -20, 5, -5, 0, 999])).toEqual({ dentro: 1, total: 2 });
+    expect(coberturaAnteriores([1, 2, 3, 4, 5, 6])).toEqual({ dentro: 0, total: 0 });
+  });
+  it('P2: faixa da tela só liga com 70–90% de acerto fora da amostra; com 6 meses ainda não há teste', () => {
+    const estavel = [10, -10, 20, -20, 5, -5, 0, 3, -3, 8, 30, -2];
+    const { dentro, total } = coberturaAnteriores(estavel);
+    expect(dentro / total).toBeGreaterThanOrEqual(0.7);
+    expect(dentro / total).toBeLessThanOrEqual(0.9);
+    expect(calibrarValidada(estavel, 'x')).toMatchObject({ n: 12, cobertura: Math.round((dentro / total) * 100) / 100 });
+    expect(calibrarValidada([10, -10, 20, -20, 5, -5], 'x')).toBeNull();          // 6 meses: nada para testar
+    expect(calibrarValidada([1, 2, 3, 4, 5, 6, 700, 800, 900, 1000], 'x')).toBeNull(); // tendência: a faixa não acerta
   });
   it('mês k: pior caso = projetado − p90·√k; melhor = projetado − p10·√k', () => {
     const c = { p10: -200, p90: 300, n: 12, calculadaEm: 'x' };

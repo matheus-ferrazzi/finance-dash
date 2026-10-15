@@ -55,7 +55,7 @@ O worker precisa de `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID`. **Claude não man
 
 - Unitários: cada `montarX` com os cenários do n8n (incluindo nulos); estado do gasto grande (primeira execução sem alerta, só novos depois) e das faturas (uma vez por ciclo); modo sombra/real; canal falso.
 - Integração: consultas com dados sintéticos; registro e leitura do estado; worker em `--dry-run` não grava nem envia.
-- Produção: migração 008; worker em sombra; 2 dias de comparação registrada; troca bot a bot com a primeira mensagem real conferida.
+- Produção: migração 008; worker em sombra; 2 dias de comparação registrada; troca bot a bot com a primeira mensagem real conferida. **Atualizado em 13/10 (auditoria):** a comparação de 2 dias foi feita (texto idêntico ao do n8n); a troca bot a bot foi substituída pelo D — os bots do C2 saem junto com o Telegram na virada do chip.
 
 ## Fora do C2
 

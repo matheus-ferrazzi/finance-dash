@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { graficoDiario, graficoMensal, graficoSemanal } from '../../src/worker/notificacoes/graficos';
+import { graficoBarras, graficoDiario, graficoMensal, graficoSemanal } from '../../src/worker/notificacoes/graficos';
 import { paraPng } from '../../src/worker/notificacoes/png';
 
 const VERM = '#E24B4A', VERDE = '#1D9E75';
@@ -93,7 +93,7 @@ describe('gráfico do mensal', () => {
 });
 
 describe('PNG', () => {
-  it('cada gráfico vira PNG 800×480 com a fonte do pacote', async () => {
+  it('cada gráfico vira PNG 1600×960 (nítido no celular, D2-M7) com a fonte do pacote', async () => {
     const svgs = [
       graficoDiario(dia())!,
       graficoSemanal(sem([{ nome: 'Mercado', emoji: '🛒', semana: 10, media: 5 }]))!,
@@ -102,8 +102,8 @@ describe('PNG', () => {
     for (const s of svgs) {
       const png = await paraPng(s);
       expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
-      expect(png.readUInt32BE(16)).toBe(800);
-      expect(png.readUInt32BE(20)).toBe(480);
+      expect(png.readUInt32BE(16)).toBe(1600);
+      expect(png.readUInt32BE(20)).toBe(960);
     }
   });
 });
@@ -132,5 +132,31 @@ describe('rótulos (revisão D2)', () => {
     const yCabe = Number(s.match(/<text x="[\d.]+" y="([\d.]+)"[^>]*>o que cabe/)![1]);
     const yFimReta = Number(s.match(/stroke-dasharray="10 8"/) && s.match(/<line x1="[\d.]+" y1="[\d.]+" x2="[\d.]+" y2="([\d.]+)" stroke="#888780"/)![1]);
     expect(yCabe).toBeGreaterThan(yFimReta);
+  });
+});
+
+// D2-M6: rótulo comprido saía cortado no meio, sem "…"
+describe('rótulo das barras', () => {
+  it('nome comprido vira 15 letras + "…"; curto fica inteiro', () => {
+    const s = graficoBarras('t', [{ nome: 'Assinaturas e serviços digitais', valor: 10 }, { nome: 'Mercado', valor: 5 }])!;
+    expect(s).toContain('>Assinaturas e s…<');
+    expect(s).not.toContain('serviços digitais');
+    expect(s).toContain('>Mercado<');
+  });
+});
+
+// visto no PNG de 14/10: os rótulos "gasto" e "o que cabe" caíam em cima das retas tracejadas
+describe('rótulos do diário fora das retas', () => {
+  const num = (s: string, re: RegExp) => Number(s.match(re)![1]);
+  it('"o que cabe" fica abaixo da reta quando o ritmo vai além (e acima quando não); "gasto" abaixo do ponto', () => {
+    const d = { mesLabel: 'out/26', fechaCom: -500, diasRestantes: 17, ritmoSeguroDia: 100, ritmoAtualDia: 180, contas: [],
+      serie: [{ dia: 1, acumulado: 0 }, { dia: 14, acumulado: 2500 }], cabeNoMes: 4200, diasNoMes: 31 };
+    const s = graficoDiario(d)!;
+    const reta = s.match(/<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#[0-9A-Fa-f]+" stroke-width="3" stroke-dasharray="10 8"/)!.slice(1).map(Number);
+    const xr = num(s, /<text x="([\d.]+)" y="[\d.]+"[^>]*>o que cabe</), yr = num(s, /<text x="[\d.]+" y="([\d.]+)"[^>]*>o que cabe</);
+    const yLinha = reta[1] + ((reta[3] - reta[1]) * (xr + 75 - reta[0])) / (reta[2] - reta[0]);
+    expect(yr).toBeGreaterThan(yLinha + 20); // abaixo da reta (o ritmo projetado passa por cima)
+    const yPonto = num(s, /<circle cx="[\d.]+" cy="([\d.]+)"/);
+    expect(num(s, /<text x="[\d.]+" y="([\d.]+)"[^>]*>gasto /)).toBeGreaterThan(yPonto + 20);
   });
 });

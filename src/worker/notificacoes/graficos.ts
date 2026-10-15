@@ -38,16 +38,23 @@ export function graficoDiario(r: ResumoDiario): string | null {
     // N14: o que cabe DAQUI PRA FRENTE: do gasto de hoje até o total que não fecha no vermelho (inclinação =
     // o "dá pra gastar" do texto), não uma reta do dia 1 que ignora o começo do mês mais pesado
     `<line x1="${f(X(hoje.dia))}" y1="${f(Y(hoje.acumulado))}" x2="${f(X(dias))}" y2="${f(Y(r.cabeNoMes))}" stroke="${CINZA}" stroke-width="3" stroke-dasharray="10 8"/>`,
-    texto(X(dias) - 150, Y(r.cabeNoMes) + (r.cabeNoMes >= projFim ? -14 : 30), 'o que cabe', 20, SUAVE),
+    // rótulo na altura da reta naquele ponto (antes: na altura do fim, e caía em cima da linha); do lado
+    // oposto ao do ritmo projetado — abaixo quando o ritmo passa por cima
+    (() => {
+      const xl = X(dias) - 150, meio = xl + 75;
+      const yLinha = Y(hoje.acumulado) + ((Y(r.cabeNoMes) - Y(hoje.acumulado)) * (meio - X(hoje.dia))) / Math.max(1, X(dias) - X(hoje.dia));
+      return texto(xl, yLinha + (r.cabeNoMes >= projFim ? -16 : 38), 'o que cabe', 20, SUAVE);
+    })(),
     hoje.dia < dias
       ? `<line x1="${f(X(hoje.dia))}" y1="${f(Y(hoje.acumulado))}" x2="${f(X(dias))}" y2="${f(Y(projFim))}" stroke="${cor}" stroke-width="3" stroke-dasharray="4 8" stroke-opacity="0.6"/>`
       : '',
     `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`,
     `<circle cx="${f(X(hoje.dia))}" cy="${f(Y(hoje.acumulado))}" r="10" fill="${cor}"/>`,
-    // perto da borda direita o rótulo vai para a esquerda do ponto (não sai da imagem)
+    // abaixo do ponto (as retas daqui pra frente sobem: em cima, o rótulo cruzava as duas); perto da borda
+    // direita vai para a esquerda do ponto (não sai da imagem)
     X(hoje.dia) > W - 220
-      ? texto(X(hoje.dia) - 16, Y(hoje.acumulado) - 14, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor, ' text-anchor="end"')
-      : texto(X(hoje.dia) + 16, Y(hoje.acumulado) - 14, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor),
+      ? texto(X(hoje.dia) - 16, Y(hoje.acumulado) + 40, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor, ' text-anchor="end"')
+      : texto(X(hoje.dia) + 16, Y(hoje.acumulado) + 40, `gasto ${brlCurto(hoje.acumulado)}`, 20, cor),
     texto(x0, y0 + 34, 'dia 1', 18, SUAVE),
     texto(x1 - 70, y0 + 34, `dia ${dias}`, 18, SUAVE),
   ]);
@@ -72,7 +79,8 @@ export function graficoBarras(titulo: string, itens: { nome: string; valor: numb
   gs.forEach((g, i) => {
     const y = topo + i * alt, cor = g.ref === undefined ? CINZA : g.valor > g.ref ? VERM : VERDE;
     corpo.push(
-      texto(40, y + alt / 2 + 8, g.nome, 22, TEXTO),
+      // D2-M6: a área do rótulo cabe ~16 letras; o resto vira "…" (antes saía cortado no meio)
+      texto(40, y + alt / 2 + 8, g.nome.length > 16 ? `${g.nome.slice(0, 15)}…` : g.nome, 22, TEXTO),
       `<rect class="barra" x="${xb}" y="${f(y + 10)}" width="${f(Math.max(4, L(g.valor)))}" height="${f(alt - 20)}" rx="8" fill="${cor}"/>`,
       g.ref === undefined ? '' : `<line class="media" x1="${f(xb + L(g.ref))}" y1="${f(y + 2)}" x2="${f(xb + L(g.ref))}" y2="${f(y + alt - 2)}" stroke="${TEXTO}" stroke-width="4"/>`,
       texto(W - 30, y + alt / 2 + 8, brlCurto(g.valor), 20, SUAVE, ' text-anchor="end"'),

@@ -15,6 +15,17 @@ export class PgAcoes {
     return Number(r.rows[0].id);
   }
 
+  /**
+   * E2-M4: limpeza diária — pendente com mais de 5 min vira 'expirada' (ninguém mais pode confirmar) e
+   * registro com mais de 1 ano sai (retenção da spec do E2).
+   */
+  async limpar(): Promise<{ expiradas: number; apagadas: number }> {
+    const e = await this.pool.query(`UPDATE financas_bot_acoes SET estado = 'expirada', atualizado_em = now()
+      WHERE estado = 'pendente' AND criado_em <= now() - ${JANELA}`);
+    const a = await this.pool.query(`DELETE FROM financas_bot_acoes WHERE criado_em < now() - interval '1 year'`);
+    return { expiradas: e.rowCount ?? 0, apagadas: a.rowCount ?? 0 };
+  }
+
   /** A proposta pendente mais recente da pessoa nos últimos 30 min; `expirada` se passou de 5 min. */
   async pendente(pessoa: string) {
     const r = await this.pool.query(

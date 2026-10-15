@@ -21,6 +21,9 @@ describe('linkPara', () => {
   });
   it('ordem fixa dos parâmetros e só os conhecidos', () => {
     expect(linkPara('faturas', { cartao: 'Nubank', resp: 'Matheus', valor: 10 } as any)).toBe('/faturas?resp=Matheus&cartao=Nubank');
+    expect(linkPara('faturas', { cartao: 'Nubank:Ariane', ciclo: '2026-10' })).toBe('/faturas?cartao=Nubank%3AAriane&ciclo=2026-10');
+    expect(linkPara('faturas', { ciclo: '2026-1' })).toBe('/faturas');
+    expect(linkPara('faturas', { ciclo: 'fechada' })).toBe('/faturas?ciclo=fechada');
   });
   it('mês inválido é ignorado', () => {
     expect(linkPara('contas', { mes: '2026-13' }, '2026-10')).toBe('/contas');

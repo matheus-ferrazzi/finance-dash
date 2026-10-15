@@ -24,7 +24,7 @@ export interface RespostaBot {
 }
 
 const SISTEMA = (quem: string, hoje: string) => [
-  'Você é o assistente financeiro do casal Matheus e Ariane, num grupo de WhatsApp.',
+  'Você é o Zeca, o assistente financeiro do casal Matheus e Ariane, num grupo de WhatsApp. Chamam você por "Zeca" ou "bot".',
   `Quem perguntou: ${quem}. Hoje é ${hoje} (horário de São Paulo).`,
   'Use SEMPRE as ferramentas para qualquer número. Nunca some, subtraia, calcule percentual ou invente valor: copie os valores das ferramentas.',
   'Se nenhuma ferramenta serve, diga que ainda não sabe responder. Não chute.',
@@ -38,7 +38,8 @@ const SISTEMA = (quem: string, hoje: string) => [
 
 export async function responder(p: Pergunta, d: {
   groq: Pick<ClienteGroq, 'chat'>; painel: (caminho: string) => Promise<{ ok: boolean; dados: any }>;
-  contexto: { pergunta: string; resposta: string }[]; hoje: string; painelUrl: string;
+  /** E1-M3: com quem perguntou (um "e eu?" de outra pessoa não vira a pessoa errada) */
+  contexto: { pessoa?: string; pergunta: string; resposta: string }[]; hoje: string; painelUrl: string;
   /** E2: ferramentas que rodam no worker (busca com refs, propostas) */
   locais?: Record<string, (args: any) => Promise<{ ok: boolean; dados: any }>>;
 }): Promise<RespostaBot> {
@@ -46,13 +47,24 @@ export async function responder(p: Pergunta, d: {
   const ferramentas: RespostaBot['ferramentas'] = [];
   const resultados: unknown[] = [];
   let ultima: { nome: string; dados: any } | null = null;
+  // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
+  // mostra todas, com um link só (o da última), em vez de só a última
+  const respondidas = new Map<string, any>();
+  const montadoDeTodas = () => {
+    const partes = Array.from(respondidas, ([nome, dados]) => formatar(nome, dados, d.painelUrl));
+    if (!partes.length) return ultima ? formatar(ultima.nome, ultima.dados, d.painelUrl) : FALHA;
+    const semLink = (t: string) => t.replace(/\n\n👉 \S+$/, '');
+    return [...partes.slice(0, -1).map(semLink), partes[partes.length - 1]].join('\n\n');
+  };
   // E2: a proposta criada nesta conversa sempre é mostrada (uma proposta escondida seria confirmada às cegas)
   let proposta: string | null = null;
   // E3: motivo da última proposta recusada (data futura, valor fora…) — vira a resposta se o modelo não explicar
   let recusa: string | null = null;
   const msgs: MsgChat[] = [
     { role: 'system', content: SISTEMA(p.pessoa, d.hoje) },
-    ...d.contexto.flatMap((c): MsgChat[] => [{ role: 'user', content: c.pergunta }, { role: 'assistant', content: c.resposta }]),
+    ...d.contexto.flatMap((c): MsgChat[] => [
+      { role: 'user', content: c.pessoa ? `${c.pessoa}: ${c.pergunta}` : c.pergunta }, { role: 'assistant', content: c.resposta },
+    ]),
     { role: 'user', content: p.texto },
   ];
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
@@ -71,10 +83,10 @@ export async function responder(p: Pergunta, d: {
         if (proposta) return fimCom(proposta, { modelo, svg: null });
         if (ultima?.dados?.lista) return fimCom(ultima.dados.lista, { modelo, svg: null });
         // decisão (simular) e listas que o modelo resumia mal (faturas, contas): sempre o texto montado
-        if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo });
+        if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(montadoDeTodas(), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
-          if (ultima) return fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: !!texto });
+          if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
           if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
           return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
@@ -98,7 +110,10 @@ export async function responder(p: Pergunta, d: {
           res = caminho ? await d.painel(caminho).catch((e) => ({ ok: false, dados: { erro: String(e) } })) : { ok: false, dados: { erro: 'ferramenta ou argumentos inválidos' } };
         }
         ferramentas.push({ nome: t.nome, args, ok: res.ok });
-        if (res.ok) { resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados }; }
+        if (res.ok) {
+          resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados };
+          if (!d.locais?.[t.nome]) { respondidas.delete(t.nome); respondidas.set(t.nome, res.dados); }
+        }
         if (res.ok && res.dados?.proposta) proposta = res.dados.proposta;
         if (!res.ok && t.nome.startsWith('propor_') && typeof res.dados?.erro === 'string') recusa = res.dados.erro;
         msgs.push({ role: 'tool', tool_call_id: t.id, content: JSON.stringify(res.dados) });
@@ -106,7 +121,9 @@ export async function responder(p: Pergunta, d: {
     }
     // rodadas esgotadas: responde com o que já tem (proposta primeiro)
     if (proposta) return fimCom(proposta, { modelo, svg: null });
-    return ultima ? fimCom(formatar(ultima.nome, ultima.dados, d.painelUrl), { modelo, trava: true }) : fimCom(FALHA, { modelo, erro: 'rodadas esgotadas sem dados' });
+    // E1-M5: não é "trava" (o modelo não escreveu texto para conferir): só o dado montado
+    if (ultima?.dados?.lista) return fimCom(ultima.dados.lista, { modelo, svg: null });
+    return respondidas.size ? fimCom(montadoDeTodas(), { modelo }) : fimCom(FALHA, { modelo, erro: 'rodadas esgotadas sem dados' });
   } catch (e) {
     return fimCom(FALHA, { modelo, erro: e instanceof Error ? e.message : String(e), svg: null });
   }

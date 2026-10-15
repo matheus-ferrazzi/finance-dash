@@ -61,9 +61,13 @@ async function main() {
   const groqKey = process.env.GROQ_API_KEY;
   const groq = groqKey ? new ClienteGroq(groqKey, (process.env.GROQ_MODELOS ?? 'openai/gpt-oss-120b').split(',').map((s) => s.trim()).filter(Boolean)) : null;
   const registroBot = new PgRegistroBot(pool);
+  // auditoria 13/10: rotas /api/bot/* e /api/resumo/* do painel exigem este token quando ele está configurado
+  const tokenInterno = process.env.PAINEL_TOKEN_INTERNO || undefined;
+  const cabInterno: Record<string, string> = tokenInterno ? { 'x-interno': tokenInterno } : {};
   const notif = {
     fontes: criarFontes(pool, process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000', undefined,
-      groq ? async () => ({ falhas24h: await registroBot.falhas24h(), modelosSumidos: await groq.modelosSumidos() }) : undefined),
+      groq ? async () => ({ falhas24h: await registroBot.falhas24h(), modelosSumidos: await groq.modelosSumidos() }) : undefined,
+      tokenInterno),
     registro: new PgRegistroNotif(pool), canais, painelUrl: process.env.PAINEL_URL ?? '',
   };
   const notificar = async (bot: Bot, dryRun: boolean) => {
@@ -96,6 +100,9 @@ async function main() {
     new Cron('20 4 * * *', { timezone: TZ, protect: true }, async () => {
       const n = await registroBot.limpar(90).catch(() => 0);
       if (n) log(`bot: ${n} conversa(s) com mais de 90 dias apagada(s)`);
+      // E2-M4: propostas paradas expiram; registro de ação com mais de 1 ano sai
+      const l = await new PgAcoes(pool).limpar().catch(() => ({ expiradas: 0, apagadas: 0 }));
+      if (l.expiradas || l.apagadas) log(`bot: ${l.expiradas} proposta(s) expirada(s), ${l.apagadas} ação(ões) com mais de 1 ano apagada(s)`);
     });
     // S1 (auditoria 13/10): sessão do WhatsApp caiu → aviso pelo Telegram (o técnico sai pelo próprio WhatsApp)
     if (waKey && process.env.WA_GRUPO) {
@@ -113,12 +120,12 @@ async function main() {
         cfg: { grupo: process.env.WA_GRUPO!, membros: lerMembros(process.env.BOT_MEMBROS!), botJids: process.env.BOT_JIDS!.split('|').filter(Boolean) },
         groq: groq!, registro: registroBot, wa, renderizar: (s) => paraPng(s), hoje: currentDateSP, painelUrl: notif.painelUrl, log,
         painel: async (c) => {
-          const r = await fetch(`${painelBase}${c}`, { signal: AbortSignal.timeout(30000) });
+          const r = await fetch(`${painelBase}${c}`, { headers: cabInterno, signal: AbortSignal.timeout(30000) });
           return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
         },
         // E2: escrita só pelas rotas /api/bot/{previa,executar,desfazer}, depois do "sim" lido pelo código
         painelPost: async (c, corpo) => {
-          const r = await fetch(`${painelBase}${c}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });
+          const r = await fetch(`${painelBase}${c}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...cabInterno }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });
           return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
         },
         acoes: new PgAcoes(pool),

@@ -28,7 +28,7 @@ describe('textos das ações', () => {
       .toBe(`🟡 Pôr a conta avulsa *Dentista ${brl(150)}* em out/26 (Ariane)?\n👉 Responde *sim* ou *não*.`);
   });
   it('feito, cancelado, desfeito', () => {
-    expect(textoFeito('3 lançamento(s) → Mercado', '/gastos', 'https://p')).toBe('✅ Feito: 3 lançamento(s) → Mercado.\n↩️ Errado? *bot desfaz*\n\n👉 https://p/gastos');
+    expect(textoFeito('3 lançamento(s) → Mercado', '/gastos', 'https://p')).toBe('✅ Feito: 3 lançamento(s) → Mercado.\n↩️ Errado? *Zeca, desfaz*\n\n👉 https://p/gastos');
     expect(CANCELADO).toBe('❌ Cancelado.');
     expect(textoDesfeito('Dentista R$ 150,00')).toBe('↩️ Desfeito: Dentista R$ 150,00.');
   });

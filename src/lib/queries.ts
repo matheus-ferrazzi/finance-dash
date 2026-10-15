@@ -11,7 +11,7 @@ import { agruparGastos, FIXO_DEBITO_CATS, grupoDaCategoria, type GrupoGasto } fr
 import { montarMes, padraoDe, type ResumoMes } from './contas';
 import { estimarDebito, REGRA_DEBITO, type MesDebito, type RegraDebito } from './debito';
 import { componentesPrevistos, type Componentes } from './backtest';
-import { calibrar, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
+import { calibrarValidada, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
 import { situacaoFatura, type UltimaFatura } from './faturas';
 import { periodoDaSemana } from './periodos';
@@ -448,12 +448,14 @@ export async function getContasDoMes(resp: Resp, mes: string): Promise<ResumoMes
 }
 
 /** Grava um ✓, um "tirar do mês" ou uma avulsa. Na conta fixa há uma marcação por mês: a nova troca a anterior. */
-export async function criarMarca(m: MarcaInput): Promise<number> {
+/** `cli`: cliente de uma transação (E3-M2: o bot grava e marca a ação juntos); sem ele, o pool de escrita. */
+export async function criarMarca(m: MarcaInput, cli?: { query: (t: string, p: unknown[]) => Promise<{ rows: any[] }> }): Promise<number> {
+  const run = async (sql: string, p: unknown[]) => (cli ? (await cli.query(sql, p)).rows : await qw<any>(sql, p));
   if (m.contaId !== null) {
-    const ja = await qw<any>(`UPDATE financas_contas_marcas SET pago = $3 WHERE mes = $1 AND conta_id = $2 RETURNING id`, [m.mes, m.contaId, m.pago]);
+    const ja = await run(`UPDATE financas_contas_marcas SET pago = $3 WHERE mes = $1 AND conta_id = $2 RETURNING id`, [m.mes, m.contaId, m.pago]);
     if (ja.length) return Number(ja[0].id);
   }
-  const rows = await qw<any>(
+  const rows = await run(
     `INSERT INTO financas_contas_marcas (mes, conta_id, responsavel, nome, valor, pago) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
     [m.mes, m.contaId, m.responsavel, m.nome, m.valor, m.pago],
   );
@@ -780,7 +782,7 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
     if (real.receita === 0 && real.debito === 0) return null; // mês sem dado não calibra
     return componentesPrevistos(computeProjecao(base, 1, vesp)[1]).saldo - real.saldo;
   }));
-  return calibrar(erros.filter((e): e is number => e !== null), hoje);
+  return calibrarValidada(erros.filter((e): e is number => e !== null), hoje);
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
@@ -1121,6 +1123,19 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     if (x.mes === addMonths(hoje.slice(0, 7), -1)) c.ativa = true;
   }
 
+  // F1: receita já agendada no mês (data futura, conhecida em hoje), por dia — a linha do mês da home a põe no dia
+  const rra = rf(resp, 2);
+  const agendRows = await q<any>(
+    `SELECT EXTRACT(day FROM data_lancamento)::int AS dia, SUM(valor)::float8 AS valor
+       FROM financas_lancamentos
+      WHERE classe = 'receita' AND data_lancamento > $1::date
+        AND data_lancamento < date_trunc('month', $1::date) + interval '1 month'
+        AND criado_em::date <= $1::date${rra.sql}
+      GROUP BY 1 ORDER BY 1`,
+    [hoje, ...rra.p],
+  );
+  const receitasAgendadas = agendRows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.valor) * 100) / 100 }));
+
   const casaNoMesPorCategoria = await getCasaNoMes(resp, hoje);
   // visão individual: o que o casal já pagou da casa, para abater os compromissos do casal
   const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : await getCasaNoMes('casal', hoje);
@@ -1132,6 +1147,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     mesCorrente: {
       recebidoPorFonte,
       receitaAgendada: Number(mesRows[0]?.receita_agendada ?? 0),
+      receitasAgendadas,
       receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
       fixoJaGasto: Number(mesRows[0]?.fixo_gasto ?? 0),
@@ -1333,7 +1349,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     // lançamentos da janela e parcelas futuras já conhecidas em hoje: dívidas e juros saem daqui
     q<any>(
       `SELECT descricao, categoria, COALESCE(banco,'—') AS banco, forma_pagamento AS forma,
-              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, parcela_total AS "parcelaTotal"
+              to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, parcela_total AS "parcelaTotal", parcela_numero AS "parcelaNumero"
        FROM financas_lancamentos
        WHERE ${SEM_ESPELHO}
          -- parcelamento de fatura e encargos do cartão o classificador grava como pagamento_fatura:
@@ -1438,14 +1454,20 @@ async function gravarMudancas(c: Cli, muda: { r: any; novo: { categoria: string;
   }
 }
 
-export async function previaRegra(p: PedidoRegra): Promise<{ afetados: number; porCategoria: Record<string, number> } | { erro: string }> {
+export async function previaRegra(p: PedidoRegra): Promise<{
+  afetados: number; porCategoria: Record<string, number>; mudancasDeClasse: { de: string; para: string; n: number }[];
+} | { erro: string }> {
   const alvo = await resolver(writerPool, p);
   if ('erro' in alvo) return alvo;
   const outras = (await regrasDoPainel(writerPool)).filter((r) => !(r.tipo === alvo.tipo && r.chave === alvo.chave));
   const muda = await planejar(writerPool, alvo.tipo, alvo.chave, [...outras, { id: Number.MAX_SAFE_INTEGER, tipo: alvo.tipo, chave: alvo.chave, categoria: p.categoria }]);
   const porCategoria: Record<string, number> = {};
   for (const { r } of muda) porCategoria[r.categoria] = (porCategoria[r.categoria] ?? 0) + 1;
-  return { afetados: muda.length, porCategoria };
+  // F4 (pendência): mudar a categoria pode mudar a classe (uma entrada "receita" vira "estorno"): a prévia diz
+  const classes = new Map<string, number>();
+  for (const { r, novo } of muda) if (novo.classe !== r.classe) classes.set(`${r.classe}|${novo.classe}`, (classes.get(`${r.classe}|${novo.classe}`) ?? 0) + 1);
+  const mudancasDeClasse = Array.from(classes, ([k, n]) => { const [de, para] = k.split('|'); return { de, para, n }; });
+  return { afetados: muda.length, porCategoria, mudancasDeClasse };
 }
 
 export async function salvarRegra(p: PedidoRegra): Promise<{ id: number; afetados: number } | { erro: string }> {
@@ -1514,7 +1536,9 @@ export async function getLancamentoParaCorrigir(id: string): Promise<LancCorrigi
   const leitor: Cli = { query: (t, p) => q<any>(t, p).then((rows) => ({ rows })) };
   const [rows, regras, usadas] = await Promise.all([
     q<any>(
-      `SELECT id_transacao, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao, categoria,
+      // F4 (pendência): "Agora:" com a categoria que as telas mostram (categoria_efetiva aplica as regras antigas nas vagas)
+      `SELECT id_transacao, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao,
+              categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
               COALESCE(categoria_banco, categoria) AS categoria_banco, contraparte_doc, contraparte_nome
        FROM financas_lancamentos WHERE id_transacao = $1`,
       [id],
@@ -1565,15 +1589,17 @@ export async function marcarDivida(
   let nome: string;
   if (p.tipo === 'divida') {
     const [l] = await q<any>(
-      `SELECT descricao, COALESCE(banco,'—') AS banco, classe, forma_pagamento, tipo_movimento FROM financas_lancamentos WHERE id_transacao = $1`,
+      `SELECT descricao, COALESCE(banco,'—') AS banco, classe, forma_pagamento, tipo_movimento, parcela_total FROM financas_lancamentos WHERE id_transacao = $1`,
       [p.idTransacao],
     );
     if (!l) return { erro: 'Lançamento não encontrado.' };
     // a mesma seleção da trilha (getTrilhaDados): receita ou pagamento de fatura pela conta nunca entram
     const entra = l.classe === 'despesa' || (l.classe === 'pagamento_fatura' && l.forma_pagamento === 'Crédito' && l.tipo_movimento === 'Saída');
     if (!entra) return { erro: 'Só despesa ou parcela no cartão entra na trilha.' };
-    chave = chaveDivida(l.descricao ?? '', l.banco);
-    nome = chave.split('|')[0];
+    // F4b: parcelamento marca só aquele plano (antes marcava todos de mesma descrição no banco)
+    const base = chaveDivida(l.descricao ?? '', l.banco);
+    chave = Number(l.parcela_total) > 1 ? `${base}#${Number(l.parcela_total)}` : base;
+    nome = base.split('|')[0];
   } else {
     if (!p.chave || !p.chave.includes('|')) return { erro: 'Dívida inválida.' };
     chave = p.chave;

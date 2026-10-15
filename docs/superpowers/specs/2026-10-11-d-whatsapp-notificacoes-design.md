@@ -41,7 +41,7 @@ Cada mensagem é montada por uma função pura no worker (como no C2) a partir d
 - **Sem conta vencendo** no diário: a parte de contas some (não "nenhuma conta").
 - **Valores** pelo `brl` do painel; o texto final em tom contido, sem gíria de TI.
 - **Links**: `linkPara(tela, filtros)` com a base pública do painel (`PAINEL_URL`, variável do worker), sempre o casal.
-- As rotas `/api/resumo/*` respondem só na rede interna do Docker (o acesso público ao painel já passa pelo Cloudflare Access).
+- As rotas `/api/resumo/*` respondem só na rede interna do Docker (o acesso público ao painel já passa pelo Cloudflare Access). **Atualizado em 13/10:** além disso, `/api/bot/*` e `/api/resumo/*` exigem o cabeçalho `x-interno` quando `PAINEL_TOKEN_INTERNO` está configurado (middleware).
 
 ## 3. Motor, registro e virada
 

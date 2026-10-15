@@ -13,5 +13,6 @@ export async function GET() {
     banco: f.banco, pessoa: f.responsavel, total: f.ultima!.total, vencimento: ddmm(f.ultima!.vencimento),
     situacao: f.ultima!.situacao, falta: f.ultima!.falta,
   }));
-  return NextResponse.json({ itens, total: totalAPagar(itens), link: '/faturas' });
+  // P3: o link abre as compras das faturas fechadas (as listadas aqui), não as do ciclo em curso
+  return NextResponse.json({ itens, total: totalAPagar(itens), link: '/faturas?ciclo=fechada' });
 }

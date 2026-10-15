@@ -147,6 +147,31 @@ describe('canal Telegram', () => {
     const msg = await quebrado.enviar('oi').catch((e) => String(e));
     expect(msg).not.toContain('TOKEN-FALSO');
   });
+  // D-M8: nome com _ ou * (grupo, conta) fazia o Telegram recusar a mensagem inteira
+  it('D-M8: 400 "can\'t parse entities" reenvia sem Markdown; outro 400 não', async () => {
+    const enviados: any[] = [];
+    const tg = new CanalTelegram('T', '1', (async (_u: string, init: any) => {
+      const b = JSON.parse(init.body); enviados.push(b);
+      return b.parse_mode ? { ok: false, status: 400, json: async () => ({ description: "Bad Request: can't parse entities: Can't find end of the entity" }) } : { ok: true, json: async () => ({}) };
+    }) as any);
+    await tg.enviar('conta_com_traço *x');
+    expect(enviados.map((b) => b.parse_mode ?? null)).toEqual(['Markdown', null]);
+    const outro = new CanalTelegram('T', '1', (async () => ({ ok: false, status: 400, json: async () => ({ description: 'Bad Request: chat not found' }) })) as any);
+    await expect(outro.enviar('oi')).rejects.toThrow('chat not found');
+  });
+});
+
+describe('trava entre manual e agendado (C2)', () => {
+  it('já saiu de verdade há pouco: não envia de novo e registra o motivo', async () => {
+    const { reg, linhas } = registroFake();
+    (reg as any).enviadoRecente = async () => true;
+    const textos: string[] = [];
+    const r = await rodarNotificacao('ritmo', { fontes: fontes({}), registro: reg, canais: { grupo: null, matheus: null, telegram: { enviar: async (t: string) => { textos.push(t); } } }, modo: 'real' });
+    expect(textos).toEqual([]);
+    expect(r.enviado).toBe(false);
+    expect(r.erro).toMatch(/já enviado/);
+    expect(linhas.at(-1)).toMatchObject({ enviado: false, erro: r.erro, estado: null });
+  });
 });
 
 function canalComImagem(falhaImagem = false) {
@@ -177,6 +202,37 @@ describe('imagem (D2)', () => {
     expect(r.enviado).toBe(true);
     expect(r.erro).toMatch(/^imagem: WhatsApp HTTP 400/);
     expect(linhas.at(-1)!.erro).toMatch(/^imagem:/);
+  });
+  // D2 (spec l.52) / D2-M1: tempo esgotado no sendMedia — o texto vai (perder o diário é pior que uma duplicata rara)
+  it('D2-M1: sendMedia com tempo esgotado: o texto vai e o erro registra "imagem: … timeout"', async () => {
+    const { reg } = registroFake();
+    const textos: string[] = [];
+    const canal = { enviar: async (t: string) => { textos.push(t); }, enviarImagem: async () => { throw new Error('WhatsApp: The operation was aborted due to timeout'); } };
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(textos).toHaveLength(1);
+    expect(r.enviado).toBe(true);
+    expect(r.erro).toMatch(/^imagem: .*timeout/);
+  });
+  // D2-M2: legenda longa demais — antes ia a imagem sem legenda e depois o texto; o texto falhando, sobrava
+  // uma imagem órfã. Agora o texto (o que importa) vai primeiro e a imagem depois, opcional.
+  it('D2-M2: texto longo: texto primeiro, imagem depois; imagem falhando não derruba o envio', async () => {
+    const { reg } = registroFake(); const ordem: string[] = [];
+    const longo = async () => ({ ...(await diarioComSerie()), contas: Array.from({ length: 40 }, (_, i) => ({ nome: `Conta ${i} com nome comprido`, valor: 10, quando: 'hoje' as const })) });
+    const canal = { enviar: async () => { ordem.push('texto'); }, enviarImagem: async (_p: Buffer, l: string) => { ordem.push(`imagem:${l}`); throw new Error('falhou'); } };
+    const r = await rodarNotificacao('diario', { fontes: fontes({ diario: longo }), registro: reg, canais: { grupo: canal, matheus: null, telegram: null }, modo: 'real', renderizar: png });
+    expect(ordem).toEqual(['texto', 'imagem:']);
+    expect(r.enviado).toBe(true);
+    expect(r.erro).toBe('imagem: falhou');
+  });
+  // D2-M8: em sombra o PNG nunca era gerado — um gráfico quebrado só apareceria no primeiro envio real
+  it('D2-M8: sombra também gera o PNG (sem enviar) e registra a falha como "imagem: …"', async () => {
+    const { reg, linhas } = registroFake(); let gerou = 0;
+    await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: reg, canais: { grupo: null, matheus: null, telegram: null }, modo: 'sombra', renderizar: () => { gerou++; return Buffer.from('P'); } });
+    expect(gerou).toBe(1);
+    expect(linhas.at(-1)!.erro).toBeNull();
+    const r2 = registroFake();
+    await rodarNotificacao('diario', { fontes: fontes({ diario: diarioComSerie }), registro: r2.reg, canais: { grupo: null, matheus: null, telegram: null }, modo: 'sombra', renderizar: () => { throw new Error('resvg'); } });
+    expect(r2.linhas.at(-1)).toMatchObject({ modo: 'sombra', enviado: false, erro: 'imagem: resvg' });
   });
   it('gerar o PNG falhou: vai o texto', async () => {
     const c = canalComImagem(); const { reg } = registroFake();

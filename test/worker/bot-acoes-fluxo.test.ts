@@ -42,7 +42,7 @@ describe('fluxo das ações (E2)', () => {
     await espera();
     expect(m.log).toEqual(['confirmar 5']);
     expect(m.posts).toEqual([['/api/bot/executar', { id: 5 }]]);
-    expect(m.enviados[0]).toBe('✅ Feito: 3 lançamento(s) → Mercado.\n↩️ Errado? *bot desfaz*\n\n👉 https://p/gastos');
+    expect(m.enviados[0]).toBe('✅ Feito: 3 lançamento(s) → Mercado.\n↩️ Errado? *Zeca, desfaz*\n\n👉 https://p/gastos');
   });
   it('segundo "sim" (confirmar devolve false): não executa de novo', async () => {
     const m = montar({ pend, confirma: false });
@@ -75,6 +75,12 @@ describe('fluxo das ações (E2)', () => {
     v.bot.receber(ev('bot desfaz'));
     await espera();
     expect(v.enviados).toEqual(['🤷 Nada para desfazer nas últimas 24 h.']);
+  });
+  it('"Zeca, desfaz" (nome do bot, 14/10) desfaz como "bot desfaz"', async () => {
+    const m = montar({ feita: { id: 9, pessoa: 'Matheus', resumo: 'Dentista R$ 150,00', tipo: 'avulsa' } });
+    m.bot.receber(ev('Zeca, desfaz'));
+    await espera();
+    expect(m.posts).toEqual([['/api/bot/desfazer', { id: 9, pessoa: 'Matheus' }]]);
   });
   it('"sim" e "2" soltos sem nada pendente: ignorados; "bot sim" sem pendência vira pergunta', async () => {
     const m = montar();

@@ -14,6 +14,8 @@ export interface LinhaNotif {
 export interface RegistroNotif {
   ultimoEstado(bot: Bot): Promise<unknown | null>;
   gravar(l: LinhaNotif): Promise<void>;
+  /** C2: houve envio real com sucesso deste bot nos últimos `minutos` (trava entre comando manual e agendado) */
+  enviadoRecente?(bot: Bot, minutos: number): Promise<boolean>;
 }
 export type Fontes = { [b in Bot]: () => Promise<unknown> };
 export interface ResultadoNotif {
@@ -67,14 +69,19 @@ type Renderizar = (svg: string) => Buffer | Promise<Buffer>;
 /** Imagem + legenda quando dá; qualquer falha da imagem cai para o texto (a mensagem não se perde pelo gráfico). */
 async function entregar(canal: Canal, texto: string, svg: string | null | undefined, renderizar: Renderizar): Promise<string | null> {
   if (svg && canal.enviarImagem) {
-    try {
-      const png = await renderizar(svg);
-      if (texto.length <= LIMITE_LEGENDA) { await canal.enviarImagem(png, texto); return null; }
-      await canal.enviarImagem(png, '');
-    } catch (e) {
-      await canal.enviar(texto);
-      return `imagem: ${msg(e)}`;
+    if (texto.length <= LIMITE_LEGENDA) {
+      try {
+        await canal.enviarImagem(await renderizar(svg), texto);
+        return null;
+      } catch (e) {
+        // inclusive tempo esgotado depois de entregar (D2-M1): uma duplicata rara é melhor que perder a mensagem
+        await canal.enviar(texto);
+        return `imagem: ${msg(e)}`;
+      }
     }
+    // D2-M2: legenda longa demais — o texto primeiro (o que importa), a imagem depois e opcional (sem imagem órfã)
+    await canal.enviar(texto);
+    try { await canal.enviarImagem(await renderizar(svg), ''); return null; } catch (e) { return `imagem: ${msg(e)}`; }
   }
   await canal.enviar(texto);
   return null;
@@ -116,6 +123,12 @@ export async function rodarNotificacao(
   }
   let enviado = false;
   let erro: string | null = null;
+  // C2: o comando manual e o agendado no mesmo intervalo mandariam duas vezes
+  if (modo === 'real' && (await d.registro.enviadoRecente?.(bot, 10))) {
+    erro = 'já enviado nos últimos 10 min (comando manual e agendado juntos): não reenviado';
+    await d.registro.gravar({ bot, modo, texto: m.texto, enviado: false, erro, estado: null });
+    return { bot, modo, texto: m.texto, enviado: false, erro };
+  }
   if (modo === 'real') {
     try {
       erro = await entregar(canal!, m.texto, m.svg, d.renderizar ?? ((s) => paraPng(s)));
@@ -123,6 +136,9 @@ export async function rodarNotificacao(
     } catch (e) {
       erro = msg(e);
     }
+  } else if (m.svg) {
+    // D2-M8: sombra também gera o PNG (sem enviar), para um gráfico quebrado aparecer antes do envio real
+    try { await (d.renderizar ?? ((s) => paraPng(s)))(m.svg); } catch (e) { erro = `imagem: ${msg(e)}`; }
   }
   // envio que falhou não avança o estado: a próxima execução tenta o mesmo aviso de novo (um gasto grande
   // ou uma fatura não pode se perder por uma falha passageira do Telegram). Aviso só da imagem ("imagem: …")

@@ -2,6 +2,8 @@
 // Tom contido, Markdown do WhatsApp (*negrito*), um emoji por linha (D2), link na última linha. Funções puras.
 import { linhasBackup, linhasSaude, type BackupDados, type SaudeDados } from './textos';
 import type { Aviso } from '../../lib/avisos';
+import type { Desafio } from '../../lib/desafio';
+import { mesLabel } from '../../lib/format';
 
 // os mesmos JSON das rotas /api/resumo/* do painel (o worker não importa do painel)
 export interface ResumoDiario {
@@ -19,8 +21,12 @@ export interface ResumoSemanal {
   /** E3: quanto do total da semana foi em dinheiro vivo */
   totalDinheiro?: number;
   todosGrupos?: { nome: string; emoji: string; semana: number; media: number }[];
+  /** E3-M4: total na mesma base da média (sem dinheiro se ainda não há 4 semanas dele); ausente = total */
+  totalComparado?: number;
   /** S7: faturas fechadas a pagar (a vencer + em atraso) e o próximo vencimento (dd/mm) */
   faturas?: { aPagar: number; proximoVencimento: string | null };
+  /** P7: andamento do desafio do mês (gasto do grupo no mês até agora) */
+  desafio?: Desafio & { gasto: number; pct: number };
 }
 export interface ResumoMensal {
   mes: string; mesLabel: string; sobraReal: number; sobraPrevista: number; saldoFim: number;
@@ -29,6 +35,8 @@ export interface ResumoMensal {
   investimentos?: { total: number; aplicadoNoMes: number };
   mesNovo: { mesLabel: string; fechaCom: number };
   historico?: { mes: string; mesLabel: string; sobra: number }[];
+  /** P7: o desafio do mês que fechou (com o resultado) e o do mês novo */
+  desafio?: { anterior: (Desafio & { gasto: number; cumpriu: boolean }) | null; novo: Desafio | null };
 }
 export interface DadosTecnico {
   saude: SaudeDados; backup: BackupDados; consentimentos: { banco: string; responsavel: string; dias: number }[];
@@ -88,15 +96,21 @@ function seta(semana: number, media: number): string {
 
 export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha: string }): string {
   const l = [`📊 *Semana de ${ddmm(r.semana.inicio)} a ${ddmm(r.semana.fim)}*`];
+  // E3-M4: o % usa a base comparável com a média (sem o dinheiro enquanto não há 4 semanas dele)
+  const base = r.totalComparado ?? r.total;
   if (r.total <= 0) l.push('💤 Nenhum gasto registrado na semana.');
-  else if (r.mediaTotal > 0 && r.total !== r.mediaTotal) {
-    const pct = Math.round((Math.abs(r.total - r.mediaTotal) / r.mediaTotal) * 100);
-    l.push(`💰 No dia a dia gastaram ${brl(r.total)}, ${r.total > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
+  else if (r.mediaTotal > 0 && base !== r.mediaTotal) {
+    const pct = Math.round((Math.abs(base - r.mediaTotal) / r.mediaTotal) * 100);
+    l.push(`💰 No dia a dia gastaram ${brl(r.total)}, ${base > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
   } else l.push(`💰 No dia a dia gastaram ${brl(r.total)}.`);
   if ((r.totalDinheiro ?? 0) > 0) l.push(`💵 dos quais ${brl(r.totalDinheiro)} em dinheiro vivo`);
   if (r.grupos.length) l.push('', ...r.grupos.map((g) => `${g.emoji} ${g.nome}: ${brl(g.semana)} ${seta(g.semana, g.media)} (média ${brl(g.media)})`));
   if ((r.faturas?.aPagar ?? 0) > 0) {
     l.push('', `💳 Faturas a pagar: ${brl(r.faturas!.aPagar)}${r.faturas!.proximoVencimento ? ` (próximo vencimento ${r.faturas!.proximoVencimento})` : ''}`);
+  }
+  const d = r.desafio;
+  if (d) {
+    l.push('', `🎯 Desafio de ${mesLabel(d.mes)}: ${d.emoji} ${d.grupo} em ${brl(d.gasto)} de ${brl(d.meta)} (${d.pct}%)${d.gasto > d.meta ? ', passou da meta 🔴' : ''}`);
   }
   l.push('', `🧭 *Trilha* ${barraTrilha(r.trilha.fase)} fase ${r.trilha.fase}: ${r.trilha.titulo}`, `➡️ ${r.trilha.proximoPasso}`,
     '', `👉 ${links.gastos}`, `👉 ${links.trilha}`);
@@ -116,6 +130,14 @@ export function montarMensal(r: ResumoMensal, link: string): string {
     ? [`💼 Investimentos: ${brl(inv.total)}${inv.aplicadoNoMes > 0 ? ` (no mês, aplicaram ${brl(inv.aplicadoNoMes)})`
       : inv.aplicadoNoMes < 0 ? ` (no mês, resgataram ${brl(-inv.aplicadoNoMes)})` : ''}`]
     : [];
+  // P7: fecha o desafio do mês que acabou e anuncia o do mês novo
+  const a = r.desafio?.anterior, n = r.desafio?.novo;
+  const linhasDesafio = [
+    ...(a ? [a.cumpriu
+      ? `🏅 Desafio de ${mesLabel(a.mes)} cumprido: ${a.grupo} ficou em ${brl(a.gasto)} (meta ${brl(a.meta)})`
+      : `😬 Desafio de ${mesLabel(a.mes)} não deu: ${a.grupo} ficou em ${brl(a.gasto)} (meta ${brl(a.meta)})`] : []),
+    ...(n ? [`🎯 Desafio de ${mesLabel(n.mes)}: ${n.emoji} ${n.grupo} até ${brl(n.meta)} (a média é ${brl(n.media)})`] : []),
+  ];
   return [
     `📅 *${r.mesLabel} fechou*${r.sobraReal >= 0 ? ' 🎉' : ''}`,
     sobra,
@@ -123,6 +145,7 @@ export function montarMensal(r: ResumoMensal, link: string): string {
     ...linhaInv,
     '', trilha,
     '', `🔮 ${r.mesNovo.mesLabel} começa fechando em ${brl(r.mesNovo.fechaCom)}`,
+    ...(linhasDesafio.length ? ['', ...linhasDesafio] : []),
     '', `👉 ${link}`,
   ].join('\n');
 }
@@ -133,7 +156,7 @@ export function montarTecnico(d: DadosTecnico): string | null {
     ...[...linhasSaude(d.saude), ...linhasBackup(d.backup)].map((x) => `🔴 ${x.replace(/^• /, '')}`),
     ...d.consentimentos.map((c) => (c.dias < 0
       ? `🔴 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy venceu`
-      : `🟡 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy vence em ${c.dias} dias`)),
+      : `🟡 Consentimento do ${c.banco} (${c.responsavel}) na Pluggy vence ${c.dias === 0 ? 'hoje' : c.dias === 1 ? 'amanhã' : `em ${c.dias} dias`}`)),
   ];
   for (const c of d.conexoes ?? []) {
     const quanto = c.horas >= 48 ? `${Math.floor(c.horas / 24)} dias` : `${Math.round(c.horas)} h`;

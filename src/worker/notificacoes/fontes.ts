@@ -3,7 +3,7 @@
 import type { Pool } from 'pg';
 import type { Fontes } from './motor';
 
-type Fetcher = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status?: number; json: () => Promise<any> }>;
+type Fetcher = (url: string, init?: { signal?: AbortSignal; headers?: Record<string, string> }) => Promise<{ ok: boolean; status?: number; json: () => Promise<any> }>;
 
 const SQL_FATURA = `SELECT COALESCE(json_agg(f ORDER BY f.dias), '[]') AS faturas FROM (
   SELECT COALESCE(banco,'Cartão') AS banco, COALESCE(responsavel,'—') AS responsavel,
@@ -48,7 +48,8 @@ const SQL_BACKUP = `SELECT json_build_object(
 ) AS st`;
 
 const SQL_CONSENT = `SELECT banco, responsavel,
-         (consent_expires_at::date - (now() AT TIME ZONE 'America/Sao_Paulo')::date)::int AS dias
+         -- D-M3: as duas datas em SP (consent_expires_at::date usava o fuso da sessão, UTC: um dia de erro à noite)
+         ((consent_expires_at AT TIME ZONE 'America/Sao_Paulo')::date - (now() AT TIME ZONE 'America/Sao_Paulo')::date)::int AS dias
   FROM pluggy_itens
   WHERE consent_expires_at IS NOT NULL AND consent_expires_at < now() + interval '30 days'
   ORDER BY consent_expires_at`;
@@ -62,10 +63,12 @@ export function criarFontes(
   pool: Pool, urlPainel = 'http://finance-dashboard:3000', fetcher: Fetcher = fetch as unknown as Fetcher,
   /** E1: falhas do bot e modelos da lista que sumiram da Groq (para o aviso técnico) */
   bot?: () => Promise<{ falhas24h: number; modelosSumidos: string[] }>,
+  /** auditoria 13/10: token das rotas internas do painel (/api/resumo/*); sem ele, sem cabeçalho */
+  tokenInterno?: string,
 ): Fontes {
   const um = async (sql: string, campo: string) => (await pool.query(sql)).rows[0]?.[campo];
   const painel = async (caminho: string) => {
-    const r = await fetcher(`${urlPainel}${caminho}`, { signal: AbortSignal.timeout(30000) });
+    const r = await fetcher(`${urlPainel}${caminho}`, { signal: AbortSignal.timeout(30000), headers: tokenInterno ? { 'x-interno': tokenInterno } : {} });
     if (!r.ok) throw new Error(`painel HTTP ${r.status}`);
     return r.json();
   };

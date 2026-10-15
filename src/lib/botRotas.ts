@@ -57,3 +57,12 @@ export function linkDoPeriodo(p: { inicio: string; fimExcl: string }, pessoa: Re
   if (p.inicio.endsWith('-01') && n >= 28 && n <= 31) return linkPara('gastos', { resp, grupo: g, mes: p.inicio.slice(0, 7) }, mesAtual);
   return linkPara('gastos', { resp, grupo: g }, mesAtual);
 }
+
+/** E1-M8: parâmetros do simular — valor finito (Infinity passava em "> 0") até 1 milhão; parcelas 1..48. */
+export function lerSimulacao(sp: URLSearchParams): { ok: true; valorTotal: number; parcelas: number } | { ok: false; erro: string } {
+  const valorTotal = Number(sp.get('valor_total')), parcelas = Number(sp.get('parcelas') ?? '1');
+  if (!Number.isFinite(valorTotal) || valorTotal <= 0 || valorTotal > 1_000_000 || !Number.isInteger(parcelas) || parcelas < 1 || parcelas > 48) {
+    return { ok: false, erro: 'use valor_total entre 0 e 1.000.000 e parcelas inteiro de 1 a 48' };
+  }
+  return { ok: true, valorTotal, parcelas };
+}

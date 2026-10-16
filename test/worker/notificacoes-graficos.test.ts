@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { graficoBarras, graficoDiario, graficoMensal, graficoSemanal } from '../../src/worker/notificacoes/graficos';
+import { graficoBarras, graficoDiario, graficoMensal, graficoMeta, graficoOrcamento, graficoSemanal } from '../../src/worker/notificacoes/graficos';
+import { estadoMeta } from '../../src/lib/metaMes';
 import { paraPng } from '../../src/worker/notificacoes/png';
 
-const VERM = '#E24B4A', VERDE = '#1D9E75';
+// 16/10: tema escuro, com as cores do painel
+const VERM = '#ff6b6b', VERDE = '#4fd6a4';
 const limpo = (s: string) => !/NaN|Infinity|undefined/.test(s);
 
 const dia = (p: object = {}) => ({
@@ -130,7 +132,7 @@ describe('rótulos (revisão D2)', () => {
   it('diário: "o que cabe" fica do lado oposto do gasto (abaixo da reta quando o gasto está acima)', () => {
     const s = graficoDiario(dia())!; // acima do que cabe
     const yCabe = Number(s.match(/<text x="[\d.]+" y="([\d.]+)"[^>]*>o que cabe/)![1]);
-    const yFimReta = Number(s.match(/stroke-dasharray="10 8"/) && s.match(/<line x1="[\d.]+" y1="[\d.]+" x2="[\d.]+" y2="([\d.]+)" stroke="#888780"/)![1]);
+    const yFimReta = Number(s.match(/stroke-dasharray="10 8"/) && s.match(/<line x1="[\d.]+" y1="[\d.]+" x2="[\d.]+" y2="([\d.]+)" stroke="#8b93a1"/)![1]);
     expect(yCabe).toBeGreaterThan(yFimReta);
   });
 });
@@ -158,5 +160,46 @@ describe('rótulos do diário fora das retas', () => {
     expect(yr).toBeGreaterThan(yLinha + 20); // abaixo da reta (o ritmo projetado passa por cima)
     const yPonto = num(s, /<circle cx="[\d.]+" cy="([\d.]+)"/);
     expect(num(s, /<text x="[\d.]+" y="([\d.]+)"[^>]*>gasto /)).toBeGreaterThan(yPonto + 20);
+  });
+});
+
+// 16/10 (pedido do Matheus): todos os gráficos em tema escuro; gráfico na meta e nos alertas
+describe('tema escuro', () => {
+  const sem = { semana: { inicio: '2026-10-05', fim: '2026-10-11' }, total: 100, mediaTotal: 80, grupos: [], trilha: { fase: 1, titulo: 't', proximoPasso: 'p' },
+    todosGrupos: [{ nome: 'Mercado', emoji: '🛒', semana: 120, media: 80 }] };
+  const mes = { mes: '2026-09', mesLabel: 'set/26', sobraReal: 10, sobraPrevista: 0, saldoFim: 0, trilha: { fase: 1, titulo: 't', mudou: false, faseAntes: 1 },
+    mesNovo: { mesLabel: 'out/26', fechaCom: 0 }, historico: [{ mes: '2026-08', mesLabel: 'ago/26', sobra: -100 }, { mes: '2026-09', mesLabel: 'set/26', sobra: 10 }] };
+  it('fundo do painel em todos (nada de fundo branco)', () => {
+    for (const s of [graficoDiario(dia()), graficoSemanal(sem as any), graficoMensal(mes as any), graficoBarras('t', [{ nome: 'A', valor: 10, ref: 5 }])]) {
+      expect(s).toContain('fill="#121418"');
+      expect(s).not.toMatch(/fill="#(FFFFFF|ffffff|fff)"/);
+    }
+  });
+});
+
+describe('gráfico da meta do débito', () => {
+  const est = (gasto: number, previstoFim: number) => estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 3, diasNoMes: 30 });
+  const r = (gasto: number, previstoFim: number) => ({ mesLabel: 'out/26', estado: est(gasto, previstoFim), diasNoMes: 30,
+    serie: [{ dia: 1, acumulado: gasto * 0.5 }, { dia: 2, acumulado: gasto * 0.8 }, { dia: 3, acumulado: gasto }] });
+  it('linha do débito acumulado, ritmo tracejado até o fim e a meta como linha horizontal com rótulo', async () => {
+    const s = graficoMeta(r(1500, 4500))!;
+    expect(s).toContain('<polyline');
+    expect(s).toContain('stroke-dasharray');
+    expect(s).toContain('meta R$ 4.000');
+    expect(s).toContain(`stroke="${VERM}"`); // ritmo passa da meta
+    expect(limpo(s)).toBe(true);
+    expect((await paraPng(s)).length).toBeGreaterThan(1000);
+  });
+  it('dentro da meta: verde; sem meta ou sem série: sem gráfico', () => {
+    expect(graficoMeta(r(1000, 3500))).toContain(`stroke="${VERDE}"`);
+    expect(graficoMeta({ ...r(1000, 3500), estado: null })).toBeNull();
+    expect(graficoMeta({ ...r(1000, 3500), serie: [] })).toBeNull();
+  });
+  it('orçamento: barra por item com traço no teto; acima do teto em vermelho', () => {
+    const s = graficoOrcamento([{ item: 'Restaurante', emoji: '', teto: 600, gasto: 693 }, { item: 'Mercado', emoji: '', teto: 1000, gasto: 500 }])!;
+    expect(s).toContain('Restaurante');
+    expect(s).toContain(`fill="${VERM}"`);
+    expect(s).toContain(`fill="${VERDE}"`);
+    expect(graficoOrcamento([])).toBeNull();
   });
 });

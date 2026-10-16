@@ -4,7 +4,7 @@
 import type { Canal } from './canal';
 import { montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude, type Bot } from './textos';
 import { montarDiario, montarAlertasMeta, montarMensal, montarMeta, montarSemanal, montarTecnico } from './textosD';
-import { graficoDiario, graficoMensal, graficoSemanal } from './graficos';
+import { graficoDiario, graficoMensal, graficoMeta, graficoOrcamento, graficoSemanal } from './graficos';
 import { paraPng } from './png';
 import { linkPara } from '../../lib/links';
 
@@ -55,8 +55,11 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
     case 'tecnico': return { texto: montarTecnico(dados), estado: null };
     case 'ritmo': return { texto: montarRitmo(dados), estado: null };
     // 15/10: meta do débito — andamento (sem memória) e alertas (memória do mês no estado)
-    case 'meta': return { texto: montarMeta(dados, url('previsao')), estado: null };
-    case 'alerta-meta': return montarAlertasMeta(dados, estado, url('previsao'));
+    case 'meta': return { texto: montarMeta(dados, url('previsao')), estado: null, svg: seguro(() => graficoMeta(dados)) };
+    case 'alerta-meta': {
+      const a = montarAlertasMeta(dados, estado, url('previsao'));
+      return { texto: a.texto, estado: a.estado, svg: a.texto ? seguro(() => (a.temMeta ? graficoMeta(dados) : graficoOrcamento(dados?.orcamento ?? []))) : null };
+    }
     case 'fatura': return montarFatura(dados ?? [], estado);
     case 'gasto': return montarGasto(dados ?? [], estado);
     case 'saude': return { texto: montarSaude(dados ?? {}), estado: null };

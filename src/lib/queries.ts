@@ -801,6 +801,18 @@ export async function getDebitoMesAte(hoje: string = currentDateSP()): Promise<n
   return Math.round(Number(r.v) * 100) / 100;
 }
 
+/** 16/10: o mesmo débito de getDebitoMesAte, por dia do mês (o gráfico da meta na mensagem do Zeca). */
+export async function getDebitoPorDia(hoje: string = currentDateSP()): Promise<{ dia: number; valor: number }[]> {
+  const rows = await q<any>(
+    `SELECT EXTRACT(DAY FROM data_lancamento)::int AS dia, SUM(valor)::float8 AS v FROM financas_lancamentos
+      WHERE classe = 'despesa' AND forma_pagamento = 'Débito' AND NOT (categoria = ANY($3::text[])) AND ${SEM_ESPELHO}
+        AND data_lancamento >= $1::date AND data_lancamento <= $2::date
+      GROUP BY 1 ORDER BY 1`,
+    [`${hoje.slice(0, 7)}-01`, hoje, CASA_CATS],
+  );
+  return rows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.v) * 100) / 100 }));
+}
+
 /** Tetos do Orçamento e o gasto do mês até hoje em cada um (débito e crédito: é gasto da categoria). */
 export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{ item: string; emoji: string; teto: number; gasto: number }[]> {
   const rows = await q<any>(
@@ -820,14 +832,20 @@ export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{
  */
 export async function getMetaMes(hoje: string = currentDateSP()) {
   const mes = hoje.slice(0, 7);
-  const [base, gasto, orcamento] = await Promise.all([getProjecaoBase('casal', hoje), getDebitoMesAte(hoje), getOrcamentoMes(hoje)]);
+  const [base, gasto, orcamento, porDia] = await Promise.all([getProjecaoBase('casal', hoje), getDebitoMesAte(hoje), getOrcamentoMes(hoje), getDebitoPorDia(hoje)]);
   const atual = computeProjecao(base, 1, hoje)[0];
   const meta = debitoParaSairAte(base, hoje, addMonths(mes, 12));
   const estado = estadoMeta({
     meta, gasto, previstoFim: gasto + atual.despesaVariavel + atual.despesaFixa,
     diaHoje: Number(hoje.slice(8, 10)), diasNoMes: diasNoMes(mes),
   });
-  return { mes, mesLabel: mesLabel(mes), estado, orcamento };
+  // série acumulada dia a dia até hoje (16/10: o gráfico da meta); dia sem débito repete o acumulado
+  const serie: { dia: number; acumulado: number }[] = [];
+  for (let d = 1, soma = 0; d <= Number(hoje.slice(8, 10)); d++) {
+    soma += porDia.filter((p) => p.dia === d).reduce((t, p) => t + p.valor, 0);
+    serie.push({ dia: d, acumulado: Math.round(soma * 100) / 100 });
+  }
+  return { mes, mesLabel: mesLabel(mes), estado, orcamento, serie, diasNoMes: diasNoMes(mes) };
 }
 
 export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<Componentes> {

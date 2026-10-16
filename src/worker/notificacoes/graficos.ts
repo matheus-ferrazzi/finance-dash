@@ -1,9 +1,12 @@
 // D2: gráficos das mensagens como SVG puro (800×480), no estilo do painel. Sem emoji (não há fonte de emoji).
 // null = sem dado para desenhar (a mensagem vai só com texto).
+// 16/10 (pedido do Matheus): tema escuro em todos, com as cores do painel (menta, coral, âmbar sobre #121418).
+import type { EstadoMeta } from '../../lib/metaMes';
 import type { ResumoDiario, ResumoMensal, ResumoSemanal } from './textosD';
 
 const W = 800, H = 480;
-const VERM = '#E24B4A', VERDE = '#1D9E75', CINZA = '#888780', TEXTO = '#2C2C2A', SUAVE = '#5F5E5A', GRADE = '#E5E3DC';
+const VERM = '#ff6b6b', VERDE = '#4fd6a4', AMBAR = '#f5b642', CINZA = '#8b93a1', TEXTO = '#e9ecf1', SUAVE = '#8b93a1', GRADE = '#2f353e';
+const FUNDO = '#121418';
 const f = (n: number) => (Number.isFinite(n) ? n.toFixed(1) : '0');
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const brlCurto = (v: number) => `${v < 0 ? '-' : ''}R$ ${Math.round(Math.abs(v)).toLocaleString('pt-BR')}`;
@@ -11,7 +14,8 @@ const brlCurto = (v: number) => `${v < 0 ? '-' : ''}R$ ${Math.round(Math.abs(v))
 function svg(corpo: string[]): string {
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="DejaVu Sans">`,
-    `<rect x="0" y="0" width="${W}" height="${H}" rx="24" fill="#FFFFFF"/>`,
+    // sem canto arredondado: no PNG o canto ficaria transparente (branco ou preto, conforme o tema do WhatsApp)
+    `<rect x="0" y="0" width="${W}" height="${H}" fill="${FUNDO}"/>`,
     ...corpo, '</svg>',
   ].join('');
 }
@@ -108,4 +112,43 @@ export function graficoMensal(r: ResumoMensal): string | null {
     );
   });
   return svg(corpo);
+}
+
+/**
+ * 16/10: meta do débito no mês — débito acumulado dia a dia (cheia), o ritmo até o fim (tracejado, do ponto de hoje
+ * até onde a previsão fecha) e a meta como linha horizontal. Cor pela situação: verde dentro, âmbar a partir de 80%,
+ * vermelho se o ritmo passa ou estourou. Sem meta ou sem dado do mês: sem gráfico.
+ */
+export function graficoMeta(r: { mesLabel: string; estado: EstadoMeta | null; serie: { dia: number; acumulado: number }[]; diasNoMes: number }): string | null {
+  const e = r.estado, s = r.serie ?? [];
+  if (!e || !s.length || !r.diasNoMes) return null;
+  const dias = r.diasNoMes, hoje = s[s.length - 1];
+  const max = Math.max(e.meta, e.previstoFim, hoje.acumulado, 1) * 1.12;
+  const x0 = 70, x1 = W - 40, y0 = H - 60, y1 = 140;
+  const X = (d: number) => x0 + ((x1 - x0) * d) / dias;
+  const Y = (v: number) => y0 - ((y0 - y1) * v) / max;
+  const cor = e.situacao === 'estourou' || e.situacao === 'ritmo_passa' || e.acimaNoRitmo > 0 ? VERM : e.situacao === 'passou_80' ? AMBAR : VERDE;
+  const pts = [{ dia: 0, acumulado: 0 }, ...s].map((p) => `${f(X(p.dia))},${f(Y(p.acumulado))}`).join(' ');
+  return svg([
+    texto(40, 56, `meta do débito · ${r.mesLabel}`, 24, SUAVE),
+    texto(40, 106, `${brlCurto(e.gasto)} de ${brlCurto(e.meta)} (${e.pct}%)`, 40, TEXTO, ' font-weight="bold"'),
+    `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="${GRADE}" stroke-width="2"/>`,
+    // a meta: linha horizontal tracejada, com o rótulo em cima, do lado esquerdo (o ritmo sobe pela direita)
+    `<line x1="${x0}" y1="${f(Y(e.meta))}" x2="${x1}" y2="${f(Y(e.meta))}" stroke="${CINZA}" stroke-width="3" stroke-dasharray="10 8"/>`,
+    texto(x0, Y(e.meta) - 12, `meta ${brlCurto(e.meta)}`, 20, SUAVE),
+    hoje.dia < dias
+      ? `<line x1="${f(X(hoje.dia))}" y1="${f(Y(hoje.acumulado))}" x2="${f(X(dias))}" y2="${f(Y(e.previstoFim))}" stroke="${cor}" stroke-width="3" stroke-dasharray="4 8" stroke-opacity="0.7"/>`
+      : '',
+    hoje.dia < dias ? texto(X(dias), Y(e.previstoFim) + (e.previstoFim >= e.meta ? -14 : 30), `ritmo ${brlCurto(e.previstoFim)}`, 20, cor, ' text-anchor="end"') : '',
+    `<polyline points="${pts}" fill="none" stroke="${cor}" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>`,
+    `<circle cx="${f(X(hoje.dia))}" cy="${f(Y(hoje.acumulado))}" r="10" fill="${cor}"/>`,
+    texto(x0, y0 + 34, 'dia 1', 18, SUAVE),
+    texto(x1 - 70, y0 + 34, `dia ${dias}`, 18, SUAVE),
+  ]);
+}
+
+/** 16/10: tetos do Orçamento — barra do gasto no mês e traço no teto; acima do teto em vermelho. */
+export function graficoOrcamento(itens: { item: string; emoji: string; teto: number; gasto: number }[]): string | null {
+  const gs = [...itens].filter((o) => o.teto > 0).sort((a, b) => b.gasto / b.teto - a.gasto / a.teto);
+  return graficoBarras('gasto no mês × teto (traço)', gs.map((o) => ({ nome: o.item, valor: o.gasto, ref: o.teto })));
 }

@@ -244,7 +244,10 @@ describe('meta do débito', () => {
       `🛒 Mercado passou de 80% do teto: ${brl(820)} de ${brl(1000)}`,
       '', '👉 L',
     ].join('\n'));
-    expect(montarAlertasMeta(d, r.estado, 'L')).toEqual({ texto: null, estado: r.estado });
+    expect(r.temMeta).toBe(true);
+    expect(montarAlertasMeta(d, r.estado, 'L')).toEqual({ texto: null, estado: r.estado, temMeta: false });
+    // 16/10: só teto do orçamento → o gráfico é o das barras, não a linha da meta
+    expect(montarAlertasMeta({ ...d, estado: null }, null, 'L').temMeta).toBe(false);
     expect(montarAlertasMeta({ ...d, estado: est(4100, 4400) }, r.estado, 'L').texto).toContain(`🔴 Passaram da meta do débito de out/26: ${brl(4100)} de ${brl(4000)}`);
   });
 });

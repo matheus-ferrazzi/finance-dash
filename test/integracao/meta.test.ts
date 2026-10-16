@@ -41,4 +41,7 @@ describe.skipIf(!url)('meta do débito (integração)', () => {
   it('orçamento do mês até hoje: crédito conta (é gasto da categoria), futuro não', async () => {
     expect(await queries.getOrcamentoMes('2031-03-15')).toEqual([{ item: 'Mercado', emoji: '🛒', teto: 500, gasto: 400 }]);
   });
+  it('série diária: por dia, só até hoje e no recorte da meta (o gráfico da mensagem)', async () => {
+    expect(await queries.getDebitoPorDia('2031-03-15')).toEqual([{ dia: 2, valor: 100 }, { dia: 10, valor: 50.5 }]);
+  });
 });

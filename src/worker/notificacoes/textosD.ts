@@ -168,7 +168,7 @@ export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, l
 export function montarAlertasMeta(
   r: { mes: string; mesLabel: string; estado: EstadoMeta | null; orcamento: { item: string; emoji: string; teto: number; gasto: number }[] },
   anterior: MemoriaAlertas | null, link: string,
-): { texto: string | null; estado: MemoriaAlertas } {
+): { texto: string | null; estado: MemoriaAlertas; temMeta: boolean } {
   const { alertas, memoria } = alertasDaMeta(r.estado, r.orcamento ?? [], anterior, r.mes);
   const linha = (a: Alerta) => {
     switch (a.tipo) {
@@ -178,8 +178,10 @@ export function montarAlertasMeta(
       case 'orcamento': return `${a.emoji || '🧾'} ${a.item} passou de ${a.pct}% do teto: ${brl(a.gasto)} de ${brl(a.teto)}`;
     }
   };
-  if (!alertas.length) return { texto: null, estado: memoria };
-  return { texto: [...alertas.map(linha), '', `👉 ${link}`].join('\n'), estado: memoria };
+  // 16/10: com aviso da meta, o gráfico é a linha do mês; só teto do orçamento, as barras
+  const temMeta = alertas.some((a) => a.tipo !== 'orcamento');
+  if (!alertas.length) return { texto: null, estado: memoria, temMeta };
+  return { texto: [...alertas.map(linha), '', `👉 ${link}`].join('\n'), estado: memoria, temMeta };
 }
 
 /** Só quando algo quebrou; null quando está tudo bem. */

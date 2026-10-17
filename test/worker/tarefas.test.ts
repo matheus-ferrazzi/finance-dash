@@ -152,18 +152,3 @@ describe('itens', () => {
   });
 });
 
-describe('atualizar-itens', () => {
-  it('pede atualização só em modo real e só para item parado sem auto-sync', async () => {
-    const parado = { id: 'item-1', nextAutoSyncAt: null, lastUpdatedAt: '2026-09-16T00:11:00Z' };
-    const sombra = ctx('sombra');
-    sombra.pluggy.itens.set('item-1', parado);
-    const ex = await TAREFAS['atualizar-itens'](sombra, {});
-    expect(sombra.pluggy.atualizados).toEqual([]);
-    expect(ex.contagens.pedidos).toEqual(['Nubank/Matheus']);
-
-    const real = ctx('real');
-    real.pluggy.itens.set('item-1', parado);
-    await TAREFAS['atualizar-itens'](real, {});
-    expect(real.pluggy.atualizados).toEqual(['item-1']);
-  });
-});

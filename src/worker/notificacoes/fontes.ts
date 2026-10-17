@@ -33,8 +33,14 @@ const SQL_SAUDE = `SELECT json_build_object(
   'h_faturas', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(atualizado_em)))/3600,1) FROM financas_faturas),
   'h_worker_ok', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(fim)))/3600,1) FROM pluggy_execucoes WHERE tarefa='transacoes' AND modo='real' AND ok),
   'worker_falhas_24h', (SELECT COUNT(*) FROM pluggy_execucoes WHERE modo='real' AND NOT ok AND inicio > NOW() - INTERVAL '24 hours'),
-  'ultimo_lancamento', (SELECT TO_CHAR(MAX(data_lancamento),'DD/MM/YYYY') FROM financas_lancamentos WHERE status_pluggy='POSTED')
-) AS saude`;
+  'ultimo_lancamento', (SELECT TO_CHAR(MAX(data_lancamento),'DD/MM/YYYY') FROM financas_lancamentos WHERE status_pluggy='POSTED'),
+  -- S2 (13/10) e 17/10: conexão parada, pela Pluggy. Fora da atualização automática (sem next_auto_sync_at) e
+  -- parada há 20 h já é aviso (cada conexão atualiza 1x/dia); com ela ligada, só depois de 30 h
+  'conexoes', (SELECT json_agg(json_build_object('banco', banco, 'responsavel', responsavel,
+                 'horas', ROUND(EXTRACT(EPOCH FROM (now() - last_updated_at)) / 3600, 1)) ORDER BY last_updated_at)
+               FROM pluggy_itens
+               WHERE last_updated_at < now() - CASE WHEN next_auto_sync_at IS NULL THEN interval '20 hours' ELSE interval '30 hours' END)
+) AS saude`
 
 const SQL_BACKUP = `SELECT json_build_object(
   'h_desde_ok',      (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(feito_em)))/3600,1) FROM financas_backup WHERE ok),
@@ -54,9 +60,6 @@ const SQL_CONSENT = `SELECT banco, responsavel,
   WHERE consent_expires_at IS NOT NULL AND consent_expires_at < now() + interval '30 days'
   ORDER BY consent_expires_at`;
 
-// S2 (auditoria 13/10): o selo do painel mostrava "há 4 dias" (Inter) e nenhum alerta citava a conexão
-const SQL_CONEXOES = `SELECT banco, responsavel, ROUND(EXTRACT(EPOCH FROM (now() - last_sync)) / 3600, 1) AS horas
-  FROM financas_sync WHERE last_sync < now() - interval '30 hours' ORDER BY last_sync`;
 
 /** `urlPainel`: base interna do painel (rede do Docker); os resumos do D e o ritmo vêm de lá. */
 export function criarFontes(
@@ -83,7 +86,6 @@ export function criarFontes(
       saude: await um(SQL_SAUDE, 'saude'),
       backup: await um(SQL_BACKUP, 'st'),
       consentimentos: (await pool.query(SQL_CONSENT)).rows.map((x) => ({ banco: x.banco, responsavel: x.responsavel, dias: Number(x.dias) })),
-      conexoes: (await pool.query(SQL_CONEXOES)).rows.map((x) => ({ banco: x.banco, responsavel: x.responsavel, horas: Number(x.horas) })),
       // checar o bot nunca derruba o aviso técnico
       bot: bot ? await bot().catch(() => ({ falhas24h: 0, modelosSumidos: [] })) : undefined,
     }),

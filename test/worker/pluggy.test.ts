@@ -95,25 +95,23 @@ describe('PluggyClient', () => {
     expect(f.auths()).toBe(2);
   });
 
-  it('documentoTitular devolve só dígitos; atualizarItem usa PATCH', async () => {
-    const f = fetchFalso([{ status: 200, body: { document: '123.456.789-00' } }, { status: 200, body: {} }]);
+  it('documentoTitular devolve só dígitos', async () => {
+    const f = fetchFalso([{ status: 200, body: { document: '123.456.789-00' } }]);
     const c = new PluggyClient(creds, f.fn, semEspera);
     expect(await c.documentoTitular('item-1')).toBe('12345678900');
-    await c.atualizarItem('item-1');
-    expect(f.chamadas[2]).toBe('PATCH /items/item-1');
   });
 });
 
-// Onda 2 / S2 (auditoria 13/10): o PATCH do Inter dava 400 todo dia e o log não dizia por quê
+// Onda 2 / S2 (auditoria 13/10): o 400 da Pluggy não dizia por quê (era o PATCH do Inter, que saiu em 17/10)
 describe('erro da Pluggy com o motivo', () => {
   it('400 traz o code/message do corpo (curto), sem repetir', async () => {
-    const f = fetchFalso([{ status: 400, body: { code: 400, message: 'Item is in an invalid state to update', codeDescription: 'ITEM_UPDATE_ERROR' } }]);
+    const f = fetchFalso([{ status: 400, body: { code: 400, message: 'Item is in an invalid state', codeDescription: 'ITEM_ERROR' } }]);
     const c = new PluggyClient(creds, f.fn, semEspera);
-    await expect(c.atualizarItem('item-1')).rejects.toThrow('Pluggy HTTP 400 em /items/item-1: ITEM_UPDATE_ERROR Item is in an invalid state to update');
+    await expect(c.item('item-1')).rejects.toThrow('Pluggy HTTP 400 em /items/item-1: ITEM_ERROR Item is in an invalid state');
   });
   it('corpo sem JSON: só o status', async () => {
     const f = fetchFalso([{ status: 400 }]);
     const c = new PluggyClient(creds, f.fn, semEspera);
-    await expect(c.atualizarItem('item-1')).rejects.toThrow(/^Pluggy HTTP 400 em \/items\/item-1$/);
+    await expect(c.item('item-1')).rejects.toThrow(/^Pluggy HTTP 400 em \/items\/item-1$/);
   });
 });

@@ -18,7 +18,6 @@ export class PluggyFake implements PluggyApi {
   txs = new Map<string, PluggyTransacao[] | Error>();
   itens = new Map<string, PluggyItem>();
   contasPorItem = new Map<string, PluggyConta[]>();
-  atualizados: string[] = [];
   async conta(id: string): Promise<PluggyConta> { return { id, itemId: 'item-1', type: 'CREDIT', balance: -50, creditData: { creditLimit: 100, availableCreditLimit: 50 } }; }
   async contasDoItem(itemId: string) { return this.contasPorItem.get(itemId) ?? []; }
   async transacoes(accountId: string) {
@@ -30,7 +29,6 @@ export class PluggyFake implements PluggyApi {
   async investimentos(itemId: string) { return [{ id: `inv-${itemId}`, itemId, balance: 10 }]; }
   async item(itemId: string) { return this.itens.get(itemId) ?? { id: itemId, lastUpdatedAt: '2026-10-09T00:00:00Z', nextAutoSyncAt: '2026-10-10T00:00:00Z' }; }
   async documentoTitular() { return '11111111111'; }
-  async atualizarItem(itemId: string) { this.atualizados.push(itemId); }
 }
 
 export class RepoFake implements Repo {

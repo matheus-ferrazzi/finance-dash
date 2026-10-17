@@ -64,6 +64,12 @@ describe('saúde', () => {
     expect(t).toBe('⚠️ *Alerta de sincronização*\n\nAlgo pode ter parado de atualizar:\n• Faturas: sem atualizar há 40h\n• Ingestão (worker): última rodada completa há 20h\n• Ingestão (worker): 2 rodada(s) com falha nas últimas 24h\n\nÚltimo lançamento: 10/10/2026');
     expect(montarSaude({ ...ok, h_worker_ok: null })).toContain('última rodada completa há —h');
   });
+  it('17/10: conexão que a Pluggy tirou da atualização automática vira linha com o banco e o que fazer', () => {
+    const t = montarSaude({ ...ok, conexoes: [{ banco: 'Inter', responsavel: 'Matheus', horas: 77.5 }, { banco: 'Neon', responsavel: 'Ariane', horas: 21 }] })!;
+    expect(t).toContain('• Inter (Matheus): sem atualizar há 3 dias, abrir o Meu Pluggy e atualizar a conexão');
+    expect(t).toContain('• Neon (Ariane): sem atualizar há 21 h, abrir o Meu Pluggy e atualizar a conexão');
+    expect(montarSaude({ ...ok, conexoes: [] })).toBeNull();
+  });
 });
 
 describe('backup', () => {

@@ -27,7 +27,6 @@ export interface PluggyApi {
   investimentos(itemId: string): Promise<PluggyInvestimento[]>;
   item(itemId: string): Promise<PluggyItem>;
   documentoTitular(itemId: string): Promise<string | null>;
-  atualizarItem(itemId: string): Promise<void>;
 }
 
 type Pagina<T> = { results: T[]; totalPages?: number };
@@ -121,8 +120,5 @@ export class PluggyClient implements PluggyApi {
   async documentoTitular(itemId: string) {
     const r = await this.req<{ document?: string | null }>('GET', `/identity?itemId=${itemId}`);
     return soDigitos(r.document);
-  }
-  async atualizarItem(itemId: string) {
-    await this.req<unknown>('PATCH', `/items/${itemId}`, {});
   }
 }

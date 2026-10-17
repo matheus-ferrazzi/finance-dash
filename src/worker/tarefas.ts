@@ -1,6 +1,6 @@
 import { montarLinha } from './linha';
 import {
-  formaDoTipo, montarFatura, montarHistorico, montarInvestimento, montarSaldo, precisaPedirAtualizacao,
+  formaDoTipo, montarFatura, montarHistorico, montarInvestimento, montarSaldo,
 } from './montar';
 import type { PluggyApi } from './pluggy';
 import { contarDiferencas, planejarReconciliacao } from './reconciliar';
@@ -18,7 +18,7 @@ export interface OpcoesTarefa {
   desde?: string;
   limite?: number;
 }
-export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens' | 'atualizar-itens';
+export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens';
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const chave = (c: Conta) => `${c.banco}/${c.responsavel}/${c.forma}`;
@@ -209,27 +209,10 @@ async function itens(ctx: Contexto) {
   });
 }
 
-async function atualizarItens(ctx: Contexto) {
-  return executar(ctx, 'atualizar-itens', async (contagens, falhas) => {
-    const pedidos: string[] = [];
-    for (const [itemId, c] of porItem(await contasComItem(ctx, () => true))) {
-      try {
-        if (!precisaPedirAtualizacao(await ctx.pluggy.item(itemId), ctx.agora())) continue;
-        if (ctx.modo === 'real') await ctx.pluggy.atualizarItem(itemId);
-        pedidos.push(`${c.banco}/${c.responsavel}`);
-      } catch (e) {
-        falhas.push(`${c.banco}/${c.responsavel}: ${msg(e)}`);
-      }
-    }
-    contagens.pedidos = pedidos;
-  });
-}
-
 export const TAREFAS: Record<NomeTarefa, (ctx: Contexto, opts: OpcoesTarefa) => Promise<Execucao>> = {
   transacoes,
   faturas,
   saldos,
   investimentos,
   itens,
-  'atualizar-itens': atualizarItens,
 };

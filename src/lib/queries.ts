@@ -1480,12 +1480,14 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
          AND (data_lancamento <= $2::date OR criado_em::date <= $2::date)`,
       [desde, hoje],
     ),
-    // aplicação líquida por mês: aplicar soma, resgatar subtrai; rendimento (receita) fica fora
+    // aplicação líquida por mês: aplicar soma, resgatar subtrai; rendimento (receita) fica fora. Auditoria 17/10 (M2):
+    // pagamento de fatura também fica — a Pluggy põe "Investments" no Pix do Itaú para a NU PAGAMENTOS (R$ 3.500
+    // em jul–ago/26 viravam "9% do que entra vai para aplicação")
     q<any>(
       `SELECT to_char(data_lancamento,'YYYY-MM') AS mes,
               SUM(CASE WHEN tipo_movimento = 'Entrada' THEN -valor ELSE valor END)::float8 AS liq
        FROM financas_lancamentos
-       WHERE forma_pagamento = 'Débito' AND classe <> 'receita'
+       WHERE forma_pagamento = 'Débito' AND classe NOT IN ('receita', 'pagamento_fatura')
          AND (classe = 'aporte' OR categoria = 'Investments')
          AND data_lancamento >= $1::date AND data_lancamento < date_trunc('month', $2::date)
        GROUP BY 1`,
@@ -1497,7 +1499,12 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   const proj = computeProjecao(base, 24, hoje);
   const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
   const alvo = addMonths(mesAtual, 12);
-  const lancs = divRows.map((x) => ({ descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor) }));
+  // auditoria 17/10 (N3): parcelaTotal e parcelaNumero chegam ao agrupamento — sem eles, dois planos da mesma
+  // renegociação (3× 823,53 e 8× 355,67 no Nubank) viravam uma dívida só, "R$ 355,67 · faltam 7"
+  const lancs = divRows.map((x) => ({
+    descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor),
+    parcelaTotal: x.parcelaTotal == null ? null : Number(x.parcelaTotal), parcelaNumero: x.parcelaNumero == null ? null : Number(x.parcelaNumero),
+  }));
   const juros = lancs.filter((l) => l.data <= hoje && ehAtraso(l.descricao, l.categoria)).map((l) => l.data.slice(0, 7));
   const porMes = new Map(aplRows.map((x) => [x.mes as string, Math.round(Number(x.liq) * 100) / 100]));
   return {

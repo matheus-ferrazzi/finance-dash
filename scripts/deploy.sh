@@ -87,8 +87,10 @@ if [[ "$ALVO" == painel || "$ALVO" == ambos ]]; then
   done
 fi
 if [[ "$ALVO" == worker || "$ALVO" == ambos ]]; then
-  docker logs --tail 3 finance-worker 2>&1 | sed 's/^/  /'
-  docker logs --tail 3 finance-worker 2>&1 | grep -q "worker no ar" || FALHAS=$((FALHAS+1))
+  # 17/10: lê o log uma vez; `docker logs | grep -q` com pipefail dava falha falsa (o grep fecha o pipe cedo)
+  LOG=$(docker logs --tail 3 finance-worker 2>&1)
+  sed 's/^/  /' <<<"$LOG"
+  grep -q "worker no ar" <<<"$LOG" || FALHAS=$((FALHAS+1))
 fi
 echo
 if [[ $FALHAS -gt 0 ]]; then echo "ATENÇÃO: $FALHAS conferência(s) falharam."; else echo "OK: tudo respondeu."; fi

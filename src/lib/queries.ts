@@ -345,7 +345,10 @@ export async function getSyncStatus(): Promise<SyncStatus> {
   const rows = await q<any>(
     `SELECT banco, responsavel, to_char(last_sync,'YYYY-MM-DD"T"HH24:MI:SSOF') AS last_sync,
             ROUND(EXTRACT(EPOCH FROM (now()-last_sync))/3600, 1) AS horas
-     FROM financas_sync ORDER BY last_sync ASC NULLS FIRST`,
+     FROM financas_sync s
+     -- 17/10: conexão com todas as contas desligadas (apagada no Meu Pluggy, fora de uso) não pinta a bolinha
+     WHERE EXISTS (SELECT 1 FROM pluggy_contas c WHERE c.banco = s.banco AND c.responsavel = s.responsavel AND c.ativo)
+     ORDER BY last_sync ASC NULLS FIRST`,
   );
   // last_sync nulo = conexão que nunca sincronizou. Sem esse tratamento o
   // Number(null)=0 fazia ela aparecer como a MAIS fresca de todas, em verde.

@@ -74,7 +74,13 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
       ('i2', 'Neon', 'A', now() - interval '21 hours', NULL),
       ('i3', 'Itau', 'M', now() - interval '25 hours', now() + interval '1 hour'),
       ('i4', 'Nubank', 'M', now() - interval '31 hours', now() + interval '1 hour'),
-      ('i5', 'Bradesco', 'M', now() - interval '2 hours', NULL)`);
+      ('i5', 'Bradesco', 'M', now() - interval '2 hours', NULL),
+      ('i6', 'Velho', 'M', now() - interval '200 hours', NULL)`);
+    // 17/10: conexão com todas as contas desligadas (ex.: apagada no Meu Pluggy) não é aviso
+    await pool.query(`INSERT INTO pluggy_contas (account_id, item_id, banco, responsavel, forma, ativo) VALUES
+      ('a1', 'i1', 'Inter', 'M', 'Débito', true), ('a2', 'i2', 'Neon', 'A', 'Crédito', true), ('a3', 'i3', 'Itau', 'M', 'Débito', true),
+      ('a4', 'i4', 'Nubank', 'M', 'Crédito', true), ('a5', 'i5', 'Bradesco', 'M', 'Débito', true),
+      ('a6', 'i6', 'Velho', 'M', 'Débito', false), ('a7', 'i6', 'Velho', 'M', 'Crédito', false)`);
     expect(((await f.saude()) as any).conexoes.map((c: any) => [c.banco, Math.round(c.horas)])).toEqual([['Inter', 77], ['Nubank', 31], ['Neon', 21]]);
     expect(await f.backup()).toMatchObject({ tamanho: 1048576, tabelas: 30, falhas_24h: 0 });
     const fora = criarFontes(pool, 'http://painel', (async () => ({ ok: false, status: 502, json: async () => ({}) })) as any);

@@ -38,8 +38,10 @@ const SQL_SAUDE = `SELECT json_build_object(
   -- parada há 20 h já é aviso (cada conexão atualiza 1x/dia); com ela ligada, só depois de 30 h
   'conexoes', (SELECT json_agg(json_build_object('banco', banco, 'responsavel', responsavel,
                  'horas', ROUND(EXTRACT(EPOCH FROM (now() - last_updated_at)) / 3600, 1)) ORDER BY last_updated_at)
-               FROM pluggy_itens
-               WHERE last_updated_at < now() - CASE WHEN next_auto_sync_at IS NULL THEN interval '20 hours' ELSE interval '30 hours' END)
+               FROM pluggy_itens i
+               WHERE last_updated_at < now() - CASE WHEN next_auto_sync_at IS NULL THEN interval '20 hours' ELSE interval '30 hours' END
+                 -- conexão com todas as contas desligadas (apagada no Meu Pluggy, fora de uso) não é aviso
+                 AND EXISTS (SELECT 1 FROM pluggy_contas c WHERE c.item_id = i.item_id AND c.ativo))
 ) AS saude`
 
 const SQL_BACKUP = `SELECT json_build_object(

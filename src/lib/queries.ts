@@ -796,11 +796,19 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
  * estorno financeiro ("Crédito de parcelamento", antecipação, renegociação) fica fora.
  */
 const PALAVRAS_ESTORNO_FINANCEIRO = ['PARCELAMENTO', 'ANTECIPA', 'RENEG', 'REVERSAO', 'DESAGIO', 'CESSAO', 'RESGATE', 'FATURA', 'NUFINANCEIRA'];
-const GASTO_META = `forma_pagamento IN ('Débito', 'Crédito') AND NOT (COALESCE(categoria, '') = ANY(ARRAY[${CASA_CATS.map((c) => `'${c}'`).join(',')}]))
-  AND ${SEM_ESPELHO} AND NOT ${sqlDividaOuAtraso()}
+// auditoria 17/10 (N1): casa e dívida pela categoria EFETIVA — o "Encerramento de dívida" do Nubank chega como
+// Transfers e só a regra do painel o faz dívida; pela crua, R$ 660,19 entravam como gasto em out/26
+const CAT_EF = 'categoria_efetiva(descricao, categoria, contraparte_doc)';
+const lista = (xs: readonly string[]) => xs.map((c) => `'${c.replace(/'/g, "''")}'`).join(',');
+const GASTO_META = `forma_pagamento IN ('Débito', 'Crédito') AND NOT (COALESCE(${CAT_EF}, '') = ANY(ARRAY[${lista(CASA_CATS)}]))
+  AND ${SEM_ESPELHO} AND NOT ${sqlDividaOuAtraso('descricao', CAT_EF)}
   AND (classe = 'despesa' OR (classe = 'estorno' AND NOT (translate(upper(descricao), 'ÁÀÂÃÉÊÍÓÔÕÚÜÇ', 'AAAAEEIOOOUUC')
        LIKE ANY (ARRAY[${PALAVRAS_ESTORNO_FINANCEIRO.map((p) => `'%${p}%'`).join(',')}]))))`;
 const VALOR_GASTO = `CASE WHEN classe = 'estorno' THEN -valor ELSE valor END`;
+/** travado do recorte da meta (consórcio, seguro, imposto, tarifa): pago uma vez no mês, não é ritmo do dia a dia */
+const FIXO_META = `COALESCE(${CAT_EF}, '') = ANY(ARRAY[${lista(FIXO_DEBITO_CATS)}])`;
+/** parcela pela coluna ou só pela descrição ("Drogaria Sao Paulo 1/2" vem sem parcela_total) */
+const PARCELA = String.raw`(COALESCE(parcela_total, 0) > 1 OR descricao ~ '\s\d{1,2}/\d{1,2}$')`;
 
 /**
  * Gastos do mês de `hoje` (casal), no recorte da meta: até hoje (total, o à vista — sem parcela — e por dia) e as
@@ -811,7 +819,8 @@ export async function getGastosMes(hoje: string = currentDateSP()) {
   const [rows, [r]] = await Promise.all([
     q<any>(
       `SELECT EXTRACT(DAY FROM data_lancamento)::int AS dia, SUM(${VALOR_GASTO})::float8 AS v,
-              COALESCE(SUM(${VALOR_GASTO}) FILTER (WHERE COALESCE(parcela_total, 0) <= 1), 0)::float8 AS avista
+              COALESCE(SUM(${VALOR_GASTO}) FILTER (WHERE NOT ${PARCELA} AND NOT ${FIXO_META}), 0)::float8 AS livre,
+              COALESCE(SUM(${VALOR_GASTO}) FILTER (WHERE ${FIXO_META}), 0)::float8 AS fixos
          FROM financas_lancamentos
         WHERE ${GASTO_META} AND data_lancamento >= $1::date AND data_lancamento <= $2::date
         GROUP BY 1 ORDER BY 1`,
@@ -828,10 +837,21 @@ export async function getGastosMes(hoje: string = currentDateSP()) {
   const porDia = rows.map((x) => ({ dia: Number(x.dia), valor: r2(Number(x.v)) }));
   return {
     gasto: r2(rows.reduce((t, x) => t + Number(x.v), 0)),
-    avista: r2(rows.reduce((t, x) => t + Number(x.avista), 0)),
+    livre: r2(rows.reduce((t, x) => t + Number(x.livre), 0)),
+    fixosMes: r2(rows.reduce((t, x) => t + Number(x.fixos), 0)),
     parcelasRestantes: r2(Number(r.v)),
     porDia,
   };
+}
+
+/** Média mensal dos travados (FIXO_META) nos `n` meses fechados antes do mês de `hoje` (mês sem travado conta 0). */
+export async function getFixosMediaMes(hoje: string = currentDateSP(), n = 3): Promise<number> {
+  const [r] = await q<any>(
+    `SELECT COALESCE(SUM(${VALOR_GASTO}), 0)::float8 AS v FROM financas_lancamentos
+      WHERE ${GASTO_META} AND ${FIXO_META} AND data_lancamento >= $1::date AND data_lancamento < $2::date`,
+    [`${addMonths(hoje.slice(0, 7), -n)}-01`, `${hoje.slice(0, 7)}-01`],
+  );
+  return Math.round((Number(r.v) / n) * 100) / 100;
 }
 
 /** Os `n` meses fechados antes do mês de `hoje`, do mais antigo ao mais recente, no recorte da meta (sem dado = 0). */
@@ -866,10 +886,15 @@ export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{
  */
 export async function getMetaMes(hoje: string = currentDateSP()) {
   const mes = hoje.slice(0, 7), diaHoje = Number(hoje.slice(8, 10));
-  const [meses, g, orcamento] = await Promise.all([getGastosMesesFechados(hoje, 6), getGastosMes(hoje), getOrcamentoMes(hoje)]);
+  const [meses, g, orcamento, fixosMedia] = await Promise.all([
+    getGastosMesesFechados(hoje, 6), getGastosMes(hoje), getOrcamentoMes(hoje), getFixosMediaMes(hoje, 3),
+  ]);
   const estado = estadoMeta({
     meta: metaDaMedia(meses), gasto: g.gasto,
-    previstoFim: previstoFimGastos({ gasto: g.gasto, avista: g.avista, parcelasRestantes: g.parcelasRestantes, diaHoje, diasNoMes: diasNoMes(mes) }),
+    previstoFim: previstoFimGastos({
+      gasto: g.gasto, livre: g.livre, parcelasRestantes: g.parcelasRestantes, fixosFaltam: fixosMedia - g.fixosMes,
+      diaHoje, diasNoMes: diasNoMes(mes),
+    }),
     diaHoje, diasNoMes: diasNoMes(mes),
   });
   // série acumulada dia a dia até hoje (16/10: o gráfico da meta); dia sem gasto repete o acumulado

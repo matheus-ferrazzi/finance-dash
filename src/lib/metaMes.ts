@@ -39,17 +39,23 @@ export function metaDaMedia(meses: readonly number[]): number | null {
 }
 
 /**
- * Onde o mês fecha: o que já foi + as parcelas já lançadas que ainda caem no mês + o ritmo do à vista (débito e
- * crédito sem parcela, por dia até hoje) nos dias que faltam. Parcela não entra no ritmo: ela já tem data.
+ * Onde o mês fecha: o que já foi + as parcelas já lançadas que ainda caem no mês + os travados que faltam (consórcio,
+ * seguro, imposto: uma vez, pela média) + o ritmo do gasto LIVRE (sem parcela e sem travado, por dia até hoje) nos
+ * dias que faltam. Auditoria 17/10 (N2): projetar o à vista inteiro multiplicava por dia a conta mensal travada e o
+ * item único, e o "fecha em" de out/26 saía R$ 1.647 alto.
  */
-export function previstoFimGastos(e: { gasto: number; avista: number; parcelasRestantes: number; diaHoje: number; diasNoMes: number }): number {
+export function previstoFimGastos(e: { gasto: number; livre: number; parcelasRestantes: number; fixosFaltam: number; diaHoje: number; diasNoMes: number }): number {
   const diasRestantes = Math.max(0, e.diasNoMes - e.diaHoje);
-  const ritmo = e.diaHoje > 0 ? Math.max(0, e.avista) / e.diaHoje : 0;
-  return r2(e.gasto + e.parcelasRestantes + ritmo * diasRestantes);
+  const ritmo = e.diaHoje > 0 ? Math.max(0, e.livre) / e.diaHoje : 0;
+  return r2(e.gasto + e.parcelasRestantes + Math.max(0, e.fixosFaltam) + ritmo * diasRestantes);
 }
 
-/** O "já avisei" do mês, guardado no estado do registro de notificações (sem tabela própria). */
-export interface MemoriaAlertas { mes: string; ritmoFora: boolean; avisos: string[] }
+/**
+ * O "já avisei" do mês, guardado no estado do registro de notificações (sem tabela própria). `escopo` diz de qual meta
+ * é a memória: a gravada pela meta do débito (15–17/10, sem escopo) não vale para a meta de gastos (auditoria N5).
+ */
+export interface MemoriaAlertas { mes: string; escopo?: 'gastos'; ritmoFora: boolean; avisos: string[] }
+const ESCOPO = 'gastos' as const;
 
 export type Alerta =
   | { tipo: 'ritmo'; previstoFim: number; acima: number; porDia: number }
@@ -65,9 +71,14 @@ export function alertasDaMeta(
   est: EstadoMeta | null, orcamento: readonly { item: string; emoji: string; teto: number; gasto: number }[],
   anterior: MemoriaAlertas | null, mes: string,
 ): { alertas: Alerta[]; memoria: MemoriaAlertas } {
-  const mem: MemoriaAlertas = anterior && anterior.mes === mes
-    ? { mes, ritmoFora: anterior.ritmoFora, avisos: [...anterior.avisos] }
-    : { mes, ritmoFora: false, avisos: [] };
+  const doMes = anterior && anterior.mes === mes ? anterior : null;
+  // memória de outra meta: os avisos da meta (80, 100, ritmo) recomeçam; os de teto do orçamento continuam valendo
+  const mesmaMeta = doMes?.escopo === ESCOPO;
+  const mem: MemoriaAlertas = {
+    mes, escopo: ESCOPO,
+    ritmoFora: mesmaMeta ? doMes!.ritmoFora : false,
+    avisos: doMes ? doMes.avisos.filter((k) => mesmaMeta || k.startsWith('orc:')) : [],
+  };
   const ja = (k: string) => mem.avisos.includes(k);
   const marcar = (k: string) => { if (!ja(k)) mem.avisos.push(k); };
   const alertas: Alerta[] = [];

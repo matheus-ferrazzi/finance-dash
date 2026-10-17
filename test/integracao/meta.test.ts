@@ -46,7 +46,20 @@ describe.skipIf(!url)('meta de gastos (integração)', () => {
         g('t12', '2032-04-10', 1000, 'Débito', 'abril'),
         g('t13', '2032-04-11', 500, 'Crédito', 'abril cred'),
         g('t14', '2032-03-10', 900, 'Débito', 'março'),
+        // 17/10 (auditoria): dívida pela categoria EFETIVA (a regra do painel muda Transfers → Loans)
+        g('t15', '2032-05-05', 660.19, 'Crédito', 'Encerramento de dívida', { categoria: 'Transfers' }), // fora
+        // travado: conta no gasto, mas não vira ritmo por dia; entra uma vez, pela média dos meses fechados
+        g('t16', '2032-05-06', 575, 'Débito', 'CONSORCIO', { categoria: 'Consortium' }),
+        g('t18', '2032-04-06', 575, 'Débito', 'CONSORCIO', { categoria: 'Consortium' }),
+        g('t19', '2032-04-08', 100, 'Débito', 'SEGURO', { categoria: 'Insurance' }),
+        g('t20', '2032-03-06', 575, 'Débito', 'CONSORCIO', { categoria: 'Consortium' }),
+        g('t21', '2032-02-06', 575, 'Débito', 'CONSORCIO', { categoria: 'Consortium' }),
+        // parcela que veio só na descrição (sem parcela_total): conta no gasto, fora do ritmo
+        g('t17', '2032-05-07', 120, 'Crédito', 'Drogaria Sao Paulo 1/2', { categoria: 'Pharmacy' }),
       ].join(',')}`);
+    // a categoria efetiva de produção aplica as regras do painel; aqui, só a regra que o teste precisa
+    await pool.query(`CREATE OR REPLACE FUNCTION categoria_efetiva(desc_ text, cat_ text, doc_ text DEFAULT NULL) RETURNS text
+      LANGUAGE sql IMMUTABLE AS $$ SELECT CASE WHEN desc_ ILIKE 'Encerramento de d%' THEN 'Loans and financing' ELSE cat_ END $$`);
     await pool.query(`INSERT INTO financas_orcamento (item, emoji, categorias, teto) VALUES ('Mercado', '🛒', ARRAY['Groceries'], 500)`);
     queries = await import('../../src/lib/queries');
   });
@@ -60,14 +73,19 @@ describe.skipIf(!url)('meta de gastos (integração)', () => {
     expect(await queries.getOrcamentoMes('2031-03-15')).toEqual([{ item: 'Mercado', emoji: '🛒', teto: 500, gasto: 400 }]);
   });
 
-  it('gastos do mês até hoje: débito + crédito, parcela do mês, menos estorno de compra; fora casa, dívida e espelho', async () => {
+  it('gastos do mês até hoje: débito + crédito, parcela do mês, menos estorno de compra; fora casa, dívida (efetiva) e espelho', async () => {
     const r = await queries.getGastosMes('2032-05-15');
-    expect(r.gasto).toBeCloseTo(100 + 200 + 50 - 40, 2);
-    expect(r.avista).toBeCloseTo(100 + 200 - 40, 2);
+    expect(r.gasto).toBeCloseTo(100 + 200 + 50 - 40 + 575 + 120, 2);
+    // livre = o que vira ritmo por dia: sem parcela (nem a da descrição) e sem travado
+    expect(r.livre).toBeCloseTo(100 + 200 - 40, 2);
     expect(r.parcelasRestantes).toBeCloseTo(50, 2);
-    expect(r.porDia).toEqual([{ dia: 3, valor: 100 }, { dia: 4, valor: 200 }, { dia: 5, valor: 50 }, { dia: 9, valor: -40 }]);
+    expect(r.fixosMes).toBeCloseTo(575, 2);
+    expect(r.porDia).toEqual([{ dia: 3, valor: 100 }, { dia: 4, valor: 200 }, { dia: 5, valor: 50 }, { dia: 6, valor: 575 }, { dia: 7, valor: 120 }, { dia: 9, valor: -40 }]);
   });
   it('meses fechados antes de hoje, do mais antigo ao mais recente (mês sem dado = 0)', async () => {
-    expect(await queries.getGastosMesesFechados('2032-05-15', 3)).toEqual([0, 900, 1500]);
+    expect(await queries.getGastosMesesFechados('2032-05-15', 3)).toEqual([575, 1475, 2175]);
+  });
+  it('travados: média dos meses fechados no recorte da meta', async () => {
+    expect(await queries.getFixosMediaMes('2032-05-15', 3)).toBeCloseTo((575 + 575 + 675) / 3, 2);
   });
 });

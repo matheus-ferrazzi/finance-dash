@@ -33,7 +33,7 @@ describe('alertasDaMeta', () => {
   it('dispara uma vez e guarda na memória; na rodada seguinte não repete', () => {
     const r1 = alertasDaMeta(e(3300, 3900), [], null, '2026-10');
     expect(r1.alertas.map((a) => a.tipo)).toEqual(['80']);
-    expect(r1.memoria).toEqual({ mes: '2026-10', ritmoFora: false, avisos: ['80'] });
+    expect(r1.memoria).toEqual({ mes: '2026-10', escopo: 'gastos', ritmoFora: false, avisos: ['80'] });
     expect(alertasDaMeta(e(3350, 3900), [], r1.memoria, '2026-10').alertas).toEqual([]);
   });
   it('a meta sobe e o % cai para 79: não repete nem "desavisa"', () => {
@@ -55,6 +55,15 @@ describe('alertasDaMeta', () => {
     const r3 = alertasDaMeta(e(1700, 3950), [], r2.memoria, '2026-10');
     expect(r3.memoria.ritmoFora).toBe(false);
     expect(alertasDaMeta(e(1800, 4200), [], r3.memoria, '2026-10').alertas.map((a) => a.tipo)).toEqual(['ritmo']);
+  });
+  it('17/10 (auditoria N5): memória da meta antiga (só débito) não cala a meta de gastos; o orçamento já avisado fica', () => {
+    // memória gravada pela meta do débito: 80% e ritmo já avisados, teto do Mercado em 80% também
+    const antiga = { mes: '2026-10', ritmoFora: true, avisos: ['80', 'orc:Mercado:80'] };
+    const r = alertasDaMeta(e(3300, 4300), orc(850), antiga, '2026-10');
+    expect(r.alertas.map((a) => a.tipo)).toEqual(['80', 'ritmo']);
+    expect(r.memoria).toEqual({ mes: '2026-10', escopo: 'gastos', ritmoFora: true, avisos: ['orc:Mercado:80', '80'] });
+    // a partir daí vale a memória nova: nada repete
+    expect(alertasDaMeta(e(3350, 4350), orc(860), r.memoria, '2026-10').alertas).toEqual([]);
   });
   it('mês novo zera a memória', () => {
     const r1 = alertasDaMeta(e(3300, 3900), [], null, '2026-10');
@@ -81,11 +90,16 @@ describe('metaDaMedia', () => {
 });
 
 describe('previstoFimGastos', () => {
-  it('o que já foi + parcelas que ainda caem no mês + o ritmo do à vista nos dias que faltam', () => {
-    // à vista 1500 em 15 dias = 100/dia; faltam 15 dias
-    expect(previstoFimGastos({ gasto: 3000, avista: 1500, parcelasRestantes: 400, diaHoje: 15, diasNoMes: 30 })).toBe(4900);
+  it('o que já foi + parcelas que ainda caem + travados que faltam + o ritmo só do livre nos dias que faltam', () => {
+    // livre 1500 em 15 dias = 100/dia; faltam 15 dias; travados: falta 300
+    expect(previstoFimGastos({ gasto: 3000, livre: 1500, parcelasRestantes: 400, fixosFaltam: 300, diaHoje: 15, diasNoMes: 30 })).toBe(5200);
   });
-  it('último dia: só o que já foi e as parcelas de hoje em diante', () => {
-    expect(previstoFimGastos({ gasto: 3000, avista: 1500, parcelasRestantes: 0, diaHoje: 30, diasNoMes: 30 })).toBe(3000);
+  it('17/10 (auditoria N2): conta travada e item único não viram ritmo por dia', () => {
+    // o mesmo gasto de 3000, mas 1000 dele é consórcio/seguro já pago: o ritmo é só dos 1500 livres
+    const so = previstoFimGastos({ gasto: 3000, livre: 1500, parcelasRestantes: 0, fixosFaltam: 0, diaHoje: 15, diasNoMes: 30 });
+    expect(so).toBe(4500);
+  });
+  it('último dia: só o que já foi, as parcelas e os travados que faltam', () => {
+    expect(previstoFimGastos({ gasto: 3000, livre: 1500, parcelasRestantes: 0, fixosFaltam: 0, diaHoje: 30, diasNoMes: 30 })).toBe(3000);
   });
 });

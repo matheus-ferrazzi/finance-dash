@@ -13,14 +13,12 @@ export const AGENDA: readonly [string, NomeTarefa][] = [
   ['0 23 * * *', 'tesouro'],
 ];
 
-/** Notificações (C2), no horário (SP) dos bots do n8n que substituem. */
+/**
+ * Notificações no WhatsApp (D): grupo do casal; técnico no privado do Matheus. 17/10: o Telegram saiu (bots 02–12
+ * desligados no n8n) e os 5 do C2 (ritmo, fatura, gasto, saude, backup) saíram da agenda; seguem rodando à mão com
+ * `notif-<bot> --dry-run`, e as linhas de saúde e backup continuam no técnico.
+ */
 export const AGENDA_NOTIF: readonly [string, Bot][] = [
-  ['0 8 * * *', 'ritmo'],
-  ['0 9 * * *', 'fatura'],
-  ['45 16,22 * * *', 'gasto'],
-  ['30 12 * * *', 'saude'],
-  ['0 10 * * *', 'backup'],
-  // D (WhatsApp): grupo do casal; técnico no privado do Matheus
   ['0 8 * * *', 'diario'],
   ['0 9 * * 1', 'semanal'],
   ['0 9 1 * *', 'mensal'],

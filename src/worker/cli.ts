@@ -9,6 +9,8 @@ export const AGENDA: readonly [string, NomeTarefa][] = [
   ['25 16,22 * * *', 'investimentos'],
   ['35 16,22 * * *', 'saldos'],
   ['9 14-22 * * *', 'itens'],
+  // 17/10: títulos do Tesouro de conexão desligada (o arquivo do dia sai à tarde)
+  ['0 23 * * *', 'tesouro'],
 ];
 
 /** Notificações (C2), no horário (SP) dos bots do n8n que substituem. */

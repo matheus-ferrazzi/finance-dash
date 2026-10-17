@@ -23,8 +23,8 @@ describe('lerArgs', () => {
 });
 
 describe('AGENDA', () => {
-  it('cobre as cinco tarefas; sem pedir atualização de item (17/10: item do Meu Pluggy não aceita PATCH)', () => {
-    expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens']));
+  it('cobre as seis tarefas; sem pedir atualização de item (17/10: item do Meu Pluggy não aceita PATCH)', () => {
+    expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens', 'tesouro']));
   });
 });
 

@@ -5,6 +5,7 @@ import {
 import type { PluggyApi } from './pluggy';
 import { contarDiferencas, planejarReconciliacao } from './reconciliar';
 import type { Repo } from './repositorio';
+import { lerPrecosTesouro, precoDoTitulo, tituloDoNome } from './tesouro';
 import type { Conta, Execucao, Modo } from './tipos';
 
 export interface Contexto {
@@ -13,12 +14,14 @@ export interface Contexto {
   modo: Modo;
   agora: () => Date;
   log: (m: string) => void;
+  /** 17/10: o CSV de preços do Tesouro Transparente (tarefa `tesouro`) */
+  tesouro?: () => Promise<string>;
 }
 export interface OpcoesTarefa {
   desde?: string;
   limite?: number;
 }
-export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens';
+export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens' | 'tesouro';
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const chave = (c: Conta) => `${c.banco}/${c.responsavel}/${c.forma}`;
@@ -209,10 +212,35 @@ async function itens(ctx: Contexto) {
   });
 }
 
+/**
+ * 17/10: títulos do Tesouro de conexão desligada (o Inter saiu do Meu Pluggy): valor bruto = quantidade × PU de
+ * resgate do dia mais recente do Tesouro Transparente. Sem título nessa situação, nem baixa o arquivo (~14 MB).
+ */
+async function tesouro(ctx: Contexto) {
+  return executar(ctx, 'tesouro', async (contagens, falhas) => {
+    const titulos = await ctx.repo.titulosSemConexao();
+    const feitos: string[] = [];
+    contagens.titulos = feitos;
+    if (!titulos.length) return;
+    if (!ctx.tesouro) throw new Error('sem fonte de preços do Tesouro');
+    const precos = lerPrecosTesouro(await ctx.tesouro());
+    for (const t of titulos) {
+      const rot = `${t.banco}/${t.responsavel} ${t.nome}`;
+      const tit = tituloDoNome(t.nome);
+      const p = tit && precoDoTitulo(precos, tit);
+      if (!p) { falhas.push(`${rot}: sem preço no Tesouro Transparente`); continue; }
+      const valor = Math.round(t.quantidade * p.pu * 100) / 100;
+      if (ctx.modo === 'real') await ctx.repo.atualizarValorTitulo(t.id_investimento, valor, ctx.agora().toISOString());
+      feitos.push(`${rot}: ${valor} (${p.data})`);
+    }
+  });
+}
+
 export const TAREFAS: Record<NomeTarefa, (ctx: Contexto, opts: OpcoesTarefa) => Promise<Execucao>> = {
   transacoes,
   faturas,
   saldos,
   investimentos,
   itens,
+  tesouro,
 };

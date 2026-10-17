@@ -55,6 +55,9 @@ export class RepoFake implements Repo {
   async upsertFaturasHistorico() { this.chamadas.push('upsertFaturasHistorico'); }
   async upsertSaldo() { this.chamadas.push('upsertSaldo'); }
   async upsertInvestimento() { this.chamadas.push('upsertInvestimento'); }
+  titulos: { id_investimento: string; nome: string; quantidade: number; banco: string; responsavel: string }[] = [];
+  async titulosSemConexao() { return [...this.titulos]; }
+  async atualizarValorTitulo(id: string, valor: number) { this.chamadas.push(`atualizarValorTitulo ${id} ${valor}`); }
   async upsertItem(id: string) { this.chamadas.push(`upsertItem ${id}`); }
   async registrarSync(b: string, r: string) { this.chamadas.push(`registrarSync ${b} ${r}`); }
   async registrarExecucao(e: Execucao) { this.execucoes.push(e); }

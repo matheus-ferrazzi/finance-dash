@@ -2,8 +2,9 @@ import type { RegraPainel } from '../lib/categoriaPainel';
 import type { Pool } from 'pg';
 import type { LinhaBanco } from './reconciliar';
 import type {
-  Conta, Execucao, FaturaAtual, FaturaHistorico, Investimento, Lancamento, PluggyItem, PluggyTransacao, Saldo,
+  Conta, Execucao, FaturaAtual, FaturaHistorico, Investimento, Lancamento, Modo, PluggyItem, PluggyTransacao, Saldo,
 } from './tipos';
+import type { NomeTarefa } from './tarefas';
 
 export interface Repo {
   contasAtivas(): Promise<Conta[]>;
@@ -24,6 +25,8 @@ export interface Repo {
   upsertItem(itemId: string, banco: string, responsavel: string, item: PluggyItem): Promise<void>;
   registrarSync(banco: string, responsavel: string, lastSync: string): Promise<void>;
   registrarExecucao(e: Execucao): Promise<void>;
+  /** 17/10: início da última execução de cada tarefa no modo dado (repor rodada perdida na subida) */
+  ultimasExecucoes(modo: Modo): Promise<Map<NomeTarefa, Date>>;
   /** regras de categoria criadas pelo painel (F4): aplicadas antes de gravar */
   regrasPainel(): Promise<RegraPainel[]>;
   /** N2: entrada "receita" que é a outra ponta de uma transferência interna do casal → transferência. Devolve quantas. */
@@ -266,5 +269,10 @@ export class PgRepo implements Repo {
       `INSERT INTO pluggy_execucoes (tarefa, modo, inicio, fim, ok, contagens, erro) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [e.tarefa, e.modo, e.inicio, e.fim, e.ok, JSON.stringify(e.contagens), e.erro],
     );
+  }
+
+  async ultimasExecucoes(modo: Modo) {
+    const r = await this.pool.query(`SELECT tarefa, MAX(inicio) AS inicio FROM pluggy_execucoes WHERE modo = $1 GROUP BY tarefa`, [modo]);
+    return new Map(r.rows.map((x) => [x.tarefa as NomeTarefa, new Date(x.inicio)]));
   }
 }

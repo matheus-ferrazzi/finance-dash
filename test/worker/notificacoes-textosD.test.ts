@@ -218,12 +218,12 @@ describe('desafio do mês', () => {
   });
 });
 
-// 15/10: meta do débito — mensagem 2×/semana e alertas na hora (valores inventados)
-describe('meta do débito', () => {
+// 15/10: meta (de gastos desde 17/10) — mensagem 2×/semana e alertas na hora (valores inventados)
+describe('meta de gastos', () => {
   const est = (gasto: number, previstoFim: number) => estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 15, diasNoMes: 30 });
   it('andamento: gasto de meta, por dia e onde fecha no ritmo (acima: 🔴 com quanto)', () => {
     expect(montarMeta({ mesLabel: 'out/26', estado: est(2000, 4300) }, 'L')).toBe([
-      '🎯 *Meta do débito em out/26*',
+      '🎯 *Meta de gastos em out/26*',
       `💸 ${brl(2000)} de ${brl(4000)} (50%), faltam 15 dias`,
       `🐢 Dá pra gastar ${brl(125)}/dia até o fim`,
       `📈 No ritmo atual fecha em ${brl(4300)} 🔴 (${brl(300)} acima)`,
@@ -239,8 +239,8 @@ describe('meta do débito', () => {
     const d = { mes: '2026-10', mesLabel: 'out/26', estado: est(3300, 4300), orcamento: [{ item: 'Mercado', emoji: '🛒', teto: 1000, gasto: 820 }] };
     const r = montarAlertasMeta(d, null, 'L');
     expect(r.texto).toBe([
-      `🟡 Já foram 80% da meta do débito: ${brl(3300)} de ${brl(4000)}, faltam 15 dias`,
-      `⚠️ No ritmo atual, o débito de out/26 fecha em ${brl(4300)}: ${brl(300)} acima da meta. Dá pra gastar ${brl(43.75)}/dia até o fim`,
+      `🟡 Já foram 80% da meta de gastos: ${brl(3300)} de ${brl(4000)}, faltam 15 dias`,
+      `⚠️ No ritmo atual, os gastos de out/26 fecham em ${brl(4300)}: ${brl(300)} acima da meta. Dá pra gastar ${brl(43.75)}/dia até o fim`,
       `🛒 Mercado passou de 80% do teto: ${brl(820)} de ${brl(1000)}`,
       '', '👉 L',
     ].join('\n'));
@@ -248,6 +248,6 @@ describe('meta do débito', () => {
     expect(montarAlertasMeta(d, r.estado, 'L')).toEqual({ texto: null, estado: r.estado, temMeta: false });
     // 16/10: só teto do orçamento → o gráfico é o das barras, não a linha da meta
     expect(montarAlertasMeta({ ...d, estado: null }, null, 'L').temMeta).toBe(false);
-    expect(montarAlertasMeta({ ...d, estado: est(4100, 4400) }, r.estado, 'L').texto).toContain(`🔴 Passaram da meta do débito de out/26: ${brl(4100)} de ${brl(4000)}`);
+    expect(montarAlertasMeta({ ...d, estado: est(4100, 4400) }, r.estado, 'L').texto).toContain(`🔴 Passaram da meta de gastos de out/26: ${brl(4100)} de ${brl(4000)}`);
   });
 });

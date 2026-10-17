@@ -1,11 +1,11 @@
 import { q, qw, writerPool } from './db';
 import { currentMonthSP, escaparLike, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import {
-  agruparDividas, chaveDivida, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, METAS_PADRAO,
+  agruparDividas, chaveDivida, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, METAS_PADRAO, sqlDividaOuAtraso,
   type ChaveMeta, type DadosTrilha, type MarcasDivida, type MetasTrilha,
 } from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
-import { estadoMeta } from './metaMes';
+import { estadoMeta, metaDaMedia, previstoFimGastos } from './metaMes';
 import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, grupoDaCategoria, type GrupoGasto } from './grupos';
@@ -786,31 +786,61 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
   return calibrarValidada(erros.filter((e): e is number => e !== null), hoje);
 }
 
-/** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
 /**
- * Meta do débito (15/10/2026): o débito do mês de `hoje` até hoje, com o recorte da meta e do `debito` de
- * getRealizado — despesa no débito, fora as contas da casa e os espelhos do cartão. Agendado (data futura) fica fora.
+ * 17/10: o recorte da meta de todos os gastos — despesa no débito e no crédito (o crédito no dia da compra; parcela
+ * no mês em que cai), fora as contas da casa, os espelhos do cartão e a dívida antiga (renegociação, parcelamento de
+ * fatura, encargos de atraso: é gasto já contado quando aconteceu). Estorno de compra abate (valor negativo); o
+ * estorno financeiro ("Crédito de parcelamento", antecipação, renegociação) fica fora.
  */
-export async function getDebitoMesAte(hoje: string = currentDateSP()): Promise<number> {
-  const [r] = await q<any>(
-    `SELECT COALESCE(SUM(valor), 0)::float8 AS v FROM financas_lancamentos
-      WHERE classe = 'despesa' AND forma_pagamento = 'Débito' AND NOT (categoria = ANY($3::text[])) AND ${SEM_ESPELHO}
-        AND data_lancamento >= $1::date AND data_lancamento <= $2::date`,
-    [`${hoje.slice(0, 7)}-01`, hoje, CASA_CATS],
-  );
-  return Math.round(Number(r.v) * 100) / 100;
+const PALAVRAS_ESTORNO_FINANCEIRO = ['PARCELAMENTO', 'ANTECIPA', 'RENEG', 'REVERSAO', 'DESAGIO', 'CESSAO', 'RESGATE', 'FATURA', 'NUFINANCEIRA'];
+const GASTO_META = `forma_pagamento IN ('Débito', 'Crédito') AND NOT (COALESCE(categoria, '') = ANY(ARRAY[${CASA_CATS.map((c) => `'${c}'`).join(',')}]))
+  AND ${SEM_ESPELHO} AND NOT ${sqlDividaOuAtraso()}
+  AND (classe = 'despesa' OR (classe = 'estorno' AND NOT (translate(upper(descricao), 'ÁÀÂÃÉÊÍÓÔÕÚÜÇ', 'AAAAEEIOOOUUC')
+       LIKE ANY (ARRAY[${PALAVRAS_ESTORNO_FINANCEIRO.map((p) => `'%${p}%'`).join(',')}]))))`;
+const VALOR_GASTO = `CASE WHEN classe = 'estorno' THEN -valor ELSE valor END`;
+
+/**
+ * Gastos do mês de `hoje` (casal), no recorte da meta: até hoje (total, o à vista — sem parcela — e por dia) e as
+ * parcelas já lançadas que caem depois de hoje no mesmo mês ("conhecido em hoje": gravadas até hoje).
+ */
+export async function getGastosMes(hoje: string = currentDateSP()) {
+  const ini = `${hoje.slice(0, 7)}-01`, fim = `${addMonths(hoje.slice(0, 7), 1)}-01`;
+  const [rows, [r]] = await Promise.all([
+    q<any>(
+      `SELECT EXTRACT(DAY FROM data_lancamento)::int AS dia, SUM(${VALOR_GASTO})::float8 AS v,
+              COALESCE(SUM(${VALOR_GASTO}) FILTER (WHERE COALESCE(parcela_total, 0) <= 1), 0)::float8 AS avista
+         FROM financas_lancamentos
+        WHERE ${GASTO_META} AND data_lancamento >= $1::date AND data_lancamento <= $2::date
+        GROUP BY 1 ORDER BY 1`,
+      [ini, hoje],
+    ),
+    q<any>(
+      `SELECT COALESCE(SUM(${VALOR_GASTO}), 0)::float8 AS v FROM financas_lancamentos
+        WHERE ${GASTO_META} AND parcela_total > 1 AND data_lancamento > $1::date AND data_lancamento < $2::date
+          AND criado_em::date <= $1::date`,
+      [hoje, fim],
+    ),
+  ]);
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const porDia = rows.map((x) => ({ dia: Number(x.dia), valor: r2(Number(x.v)) }));
+  return {
+    gasto: r2(rows.reduce((t, x) => t + Number(x.v), 0)),
+    avista: r2(rows.reduce((t, x) => t + Number(x.avista), 0)),
+    parcelasRestantes: r2(Number(r.v)),
+    porDia,
+  };
 }
 
-/** 16/10: o mesmo débito de getDebitoMesAte, por dia do mês (o gráfico da meta na mensagem do Zeca). */
-export async function getDebitoPorDia(hoje: string = currentDateSP()): Promise<{ dia: number; valor: number }[]> {
+/** Os `n` meses fechados antes do mês de `hoje`, do mais antigo ao mais recente, no recorte da meta (sem dado = 0). */
+export async function getGastosMesesFechados(hoje: string = currentDateSP(), n = 6): Promise<number[]> {
+  const meses = Array.from({ length: n }, (_, i) => addMonths(hoje.slice(0, 7), -(n - i)));
   const rows = await q<any>(
-    `SELECT EXTRACT(DAY FROM data_lancamento)::int AS dia, SUM(valor)::float8 AS v FROM financas_lancamentos
-      WHERE classe = 'despesa' AND forma_pagamento = 'Débito' AND NOT (categoria = ANY($3::text[])) AND ${SEM_ESPELHO}
-        AND data_lancamento >= $1::date AND data_lancamento <= $2::date
-      GROUP BY 1 ORDER BY 1`,
-    [`${hoje.slice(0, 7)}-01`, hoje, CASA_CATS],
+    `SELECT to_char(data_lancamento, 'YYYY-MM') AS mes, SUM(${VALOR_GASTO})::float8 AS v FROM financas_lancamentos
+      WHERE ${GASTO_META} AND data_lancamento >= $1::date AND data_lancamento < $2::date GROUP BY 1`,
+    [`${meses[0]}-01`, `${hoje.slice(0, 7)}-01`],
   );
-  return rows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.v) * 100) / 100 }));
+  const por = new Map(rows.map((x) => [x.mes as string, Math.round(Number(x.v) * 100) / 100]));
+  return meses.map((m) => por.get(m) ?? 0);
 }
 
 /** Tetos do Orçamento e o gasto do mês até hoje em cada um (débito e crédito: é gasto da categoria). */
@@ -827,27 +857,28 @@ export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{
 }
 
 /**
- * O estado da meta do débito hoje (casal): a meta da Previsão recalculada (sair do vermelho em 12 meses), o débito
- * do mês até hoje e onde o mês fecha no ritmo da previsão (o que já foi + o débito que a previsão ainda espera).
+ * O estado da meta de gastos hoje (casal; 17/10: débito + crédito, era só o débito): a meta é a média dos 6 meses
+ * fechados menos 10% (recalculada a cada mês), o gasto do mês até hoje e onde o mês fecha (o que já foi + parcelas
+ * que ainda caem + o ritmo do à vista). A meta de débito da Previsão (sair do vermelho) segue na Previsão.
  */
 export async function getMetaMes(hoje: string = currentDateSP()) {
-  const mes = hoje.slice(0, 7);
-  const [base, gasto, orcamento, porDia] = await Promise.all([getProjecaoBase('casal', hoje), getDebitoMesAte(hoje), getOrcamentoMes(hoje), getDebitoPorDia(hoje)]);
-  const atual = computeProjecao(base, 1, hoje)[0];
-  const meta = debitoParaSairAte(base, hoje, addMonths(mes, 12));
+  const mes = hoje.slice(0, 7), diaHoje = Number(hoje.slice(8, 10));
+  const [meses, g, orcamento] = await Promise.all([getGastosMesesFechados(hoje, 6), getGastosMes(hoje), getOrcamentoMes(hoje)]);
   const estado = estadoMeta({
-    meta, gasto, previstoFim: gasto + atual.despesaVariavel + atual.despesaFixa,
-    diaHoje: Number(hoje.slice(8, 10)), diasNoMes: diasNoMes(mes),
+    meta: metaDaMedia(meses), gasto: g.gasto,
+    previstoFim: previstoFimGastos({ gasto: g.gasto, avista: g.avista, parcelasRestantes: g.parcelasRestantes, diaHoje, diasNoMes: diasNoMes(mes) }),
+    diaHoje, diasNoMes: diasNoMes(mes),
   });
-  // série acumulada dia a dia até hoje (16/10: o gráfico da meta); dia sem débito repete o acumulado
+  // série acumulada dia a dia até hoje (16/10: o gráfico da meta); dia sem gasto repete o acumulado
   const serie: { dia: number; acumulado: number }[] = [];
-  for (let d = 1, soma = 0; d <= Number(hoje.slice(8, 10)); d++) {
-    soma += porDia.filter((p) => p.dia === d).reduce((t, p) => t + p.valor, 0);
+  for (let d = 1, soma = 0; d <= diaHoje; d++) {
+    soma += g.porDia.filter((p) => p.dia === d).reduce((t, p) => t + p.valor, 0);
     serie.push({ dia: d, acumulado: Math.round(soma * 100) / 100 });
   }
   return { mes, mesLabel: mesLabel(mes), estado, orcamento, serie, diasNoMes: diasNoMes(mes) };
 }
 
+/** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
 export async function getRealizado(mes: string, resp: Resp = 'casal'): Promise<Componentes> {
   const rr = rf(resp, 3);
   const [r] = await q<any>(

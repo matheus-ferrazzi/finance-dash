@@ -36,7 +36,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
     // a trilha é do casal e é complemento: se falhar, a home abre sem ela
     // na visão do casal, a trilha reaproveita a base que a home já está buscando
     (resp === 'casal' ? basePromise.then((b) => getTrilhaDados(hoje, b)) : getTrilhaDados(hoje)).catch((e) => { console.error('trilha falhou', e); return null; }),
-    // meta do débito (15/10): do casal, do mês atual; complemento — se falhar, a home abre sem o card
+    // meta de gastos (15/10; débito + crédito desde 17/10): do casal, do mês atual; complemento — se falhar, a home abre sem o card
     resp === 'casal' && corrente ? getMetaMes(hoje).catch((e) => { console.error('meta do mês falhou', e); return null; }) : Promise.resolve(null),
   ]);
   const mesProj = computeProjecao(base, 1)[0];
@@ -65,7 +65,7 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
     <div>
       {trilhaDados && <FaixaTrilha trilha={avaliarTrilha(trilhaDados)} />}
       <LinhaDoMes serie={serie} faixa={calib && ritmo ? faixaMesCorrente(serie.fechamento, ritmo.diasRestantes, diasNoMes(mes), calib) : null} titulo={corrente ? 'Fecha o mês em' : 'Fechou em'} href={linkPara('previsao', f, atual)} />
-      {metaMes?.estado && <CardMeta estado={metaMes.estado} href={linkPara('previsao', f, atual)} />}
+      {metaMes?.estado && <CardMeta estado={metaMes.estado} href={linkPara('gastos', f, atual)} />}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <BlocoHome titulo="Ritmo do dia" href={linkPara('gastos', { ...f, tipo: 'livre', forma: 'debito' }, atual)}
           valor={ritmo ? `${brl(ritmo.ritmoSeguroDia)}/dia` : '—'}

@@ -24,6 +24,16 @@ export function ehAtraso(descricao: string, categoria: string | null): boolean {
   return PALAVRAS_ATRASO.some((p) => d.includes(p));
 }
 
+/**
+ * 17/10: ehDivida || ehAtraso em SQL, das mesmas listas (a meta de gastos tira a dívida antiga no banco). As palavras
+ * só têm letra, ponto e espaço: nada que o ILIKE trate como curinga.
+ */
+export function sqlDividaOuAtraso(desc = 'descricao', cat = 'categoria'): string {
+  const lit = (xs: string[]) => xs.map((x) => `'${x.replace(/'/g, "''")}'`).join(',');
+  const semAc = `translate(upper(${desc}), 'ÁÀÂÃÉÊÍÓÔÕÚÜÇ', 'AAAAEEIOOOUUC')`;
+  return `(COALESCE(${cat}, '') IN (${lit([...CATS_DIVIDA, ...CATS_ATRASO])}) OR ${semAc} LIKE ANY (ARRAY[${lit([...PALAVRAS_DIVIDA, ...PALAVRAS_ATRASO].map((p) => `%${p}%`))}]))`;
+}
+
 export interface LancDivida {
   descricao: string; categoria: string | null; banco: string; forma: string; data: string; valor: number;
   parcelaTotal?: number | null;

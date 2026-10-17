@@ -4,17 +4,17 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CardMeta } from '../../src/app/components/CardMeta';
 import { estadoMeta, type EstadoMeta } from '../../src/lib/metaMes';
 
-// 15/10: o card da meta do débito na home (valores inventados)
+// 15/10: o card da meta na home (de gastos, débito + crédito, desde 17/10) (valores inventados)
 const e = (gasto: number, previstoFim: number) => estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 15, diasNoMes: 30 }) as EstadoMeta;
 
 describe('CardMeta', () => {
-  it('dentro: gasto de meta, ainda pode e por dia; barra verde; sem aviso de ritmo; link da Previsão', () => {
-    const h = renderToStaticMarkup(createElement(CardMeta, { estado: e(2000, 3800), href: '/previsibilidade' }));
-    expect(h).toContain('Meta do débito');
+  it('dentro: gasto de meta, ainda pode e por dia; barra verde; sem aviso de ritmo; link dos Gastos', () => {
+    const h = renderToStaticMarkup(createElement(CardMeta, { estado: e(2000, 3800), href: '/gastos' }));
+    expect(h).toContain('Meta de gastos');
     expect(h).toContain('Ainda pode');
     expect(h).toContain('bg-accent');
     expect(h).not.toContain('no ritmo atual');
-    expect(h).toContain('href="/previsibilidade"');
+    expect(h).toContain('href="/gastos"');
     expect((h.match(/money/g) ?? []).length).toBeGreaterThanOrEqual(4);
   });
   it('ritmo passa: avisa onde fecha; 80%: barra âmbar', () => {

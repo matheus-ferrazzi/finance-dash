@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alertasDaMeta, estadoMeta, type EstadoMeta } from '../../src/lib/metaMes';
+import { alertasDaMeta, estadoMeta, metaDaMedia, previstoFimGastos, type EstadoMeta } from '../../src/lib/metaMes';
 
 // 15/10: a meta do débito e o gasto do mês "se conversam" (card, mensagem do Zeca e alertas) — valores inventados
 const e = (gasto: number, previstoFim: number, diaHoje = 15, meta: number | null = 4000, diasNoMes = 30) =>
@@ -65,5 +65,27 @@ describe('alertasDaMeta', () => {
     expect(r1.alertas).toEqual([{ tipo: 'orcamento', item: 'Mercado', emoji: '🛒', pct: 80, gasto: 850, teto: 1000 }]);
     expect(alertasDaMeta(null, orc(900), r1.memoria, '2026-10').alertas).toEqual([]);
     expect(alertasDaMeta(null, orc(1010), r1.memoria, '2026-10').alertas.map((a: any) => a.pct)).toEqual([100]);
+  });
+});
+
+// 17/10: a meta passa a ser de todos os gastos (débito + crédito) — média dos meses fechados menos 10%
+describe('metaDaMedia', () => {
+  it('média dos meses menos 10%, arredondada a R$ 50', () => {
+    expect(metaDaMedia([10000, 9000, 8000])).toBe(8100);
+    expect(metaDaMedia([9333, 9333, 9334])).toBe(8400);
+  });
+  it('menos de 3 meses com dado: sem meta (média frágil)', () => {
+    expect(metaDaMedia([9000, 8000])).toBeNull();
+    expect(metaDaMedia([9000, 0, 8000])).toBeNull();
+  });
+});
+
+describe('previstoFimGastos', () => {
+  it('o que já foi + parcelas que ainda caem no mês + o ritmo do à vista nos dias que faltam', () => {
+    // à vista 1500 em 15 dias = 100/dia; faltam 15 dias
+    expect(previstoFimGastos({ gasto: 3000, avista: 1500, parcelasRestantes: 400, diaHoje: 15, diasNoMes: 30 })).toBe(4900);
+  });
+  it('último dia: só o que já foi e as parcelas de hoje em diante', () => {
+    expect(previstoFimGastos({ gasto: 3000, avista: 1500, parcelasRestantes: 0, diaHoje: 30, diasNoMes: 30 })).toBe(3000);
   });
 });

@@ -107,4 +107,20 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     const r = await pool.query(`SELECT id_transacao, account_id FROM financas_lancamentos WHERE id_transacao = 'outra'`);
     expect(r.rows).toEqual([{ id_transacao: 'outra', account_id: 'seed-debito' }]);
   });
+
+  it('17/10: título do Tesouro só de conexão desligada; atualizarValorTitulo grava valor e hora', async () => {
+    await pool.query(`INSERT INTO pluggy_contas (account_id, banco, responsavel, forma, ativo) VALUES
+      ('i-deb', 'Inter', 'Matheus', 'Débito', false), ('i-cred', 'Inter', 'Matheus', 'Crédito', false), ('it-deb', 'Itaú', 'Matheus', 'Débito', true)`);
+    await pool.query(`INSERT INTO financas_investimentos (id_investimento, nome, subtipo, valor_atual, quantidade, banco, responsavel, status) VALUES
+      ('t1', 'LFT - Tesouro Selic 2027', 'TREASURY', 591.33, 0.03, 'Inter', 'Matheus', 'ACTIVE'),
+      ('t2', 'INTER LIQUIDEZ FIC', 'INVESTMENT_FUND', 0, NULL, 'Inter', 'Matheus', 'TOTAL_WITHDRAWAL'),
+      ('t3', 'LFT - Tesouro Selic 2029', 'TREASURY', 100, 0.01, 'Inter', 'Matheus', 'TOTAL_WITHDRAWAL'),
+      ('t4', 'LFT - Tesouro Selic 2027', 'TREASURY', 900, 0.05, 'Itaú', 'Matheus', 'ACTIVE')`);
+    expect(await repo.titulosSemConexao()).toEqual([
+      { id_investimento: 't1', nome: 'LFT - Tesouro Selic 2027', quantidade: 0.03, banco: 'Inter', responsavel: 'Matheus' },
+    ]);
+    await repo.atualizarValorTitulo('t1', 602.6, '2026-10-17T23:00:00Z');
+    const [r] = (await pool.query(`SELECT valor_atual::float8 AS v, atualizado_em = '2026-10-17T23:00:00Z'::timestamptz AS hora FROM financas_investimentos WHERE id_investimento = 't1'`)).rows;
+    expect(r).toEqual({ v: 602.6, hora: true });
+  });
 });

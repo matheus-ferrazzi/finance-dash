@@ -20,6 +20,7 @@ import type { Bot } from './notificacoes/textos';
 import { PluggyClient } from './pluggy';
 import { PgRepo } from './repositorio';
 import { TAREFAS } from './tarefas';
+import { URL_PRECOS_TESOURO } from './tesouro';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -44,7 +45,13 @@ async function main() {
   const log = (m: string) => console.log(`${new Date().toISOString()} ${m}`);
   const modo = lerModo(process.env.WORKER_MODO);
   // cliente (e chave da Pluggy) novo a cada rodada: a chave vence em ~2h e o processo vive dias
-  const base = () => ({ pluggy: new PluggyClient(creds), repo, agora: () => new Date(), log });
+  // 17/10: preços públicos do Tesouro (títulos de conexão desligada); ~14 MB, 2 min de folga
+  const tesouro = async () => {
+    const r = await fetch(URL_PRECOS_TESOURO, { signal: AbortSignal.timeout(120000) });
+    if (!r.ok) throw new Error(`Tesouro Transparente HTTP ${r.status}`);
+    return r.text();
+  };
+  const base = () => ({ pluggy: new PluggyClient(creds), repo, agora: () => new Date(), log, tesouro });
 
   // notificações (C2): sem token/chat do Telegram, tudo em sombra (registra, não envia)
   const token = process.env.TELEGRAM_BOT_TOKEN;

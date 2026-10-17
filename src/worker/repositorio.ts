@@ -18,6 +18,9 @@ export interface Repo {
   upsertFaturasHistorico(h: readonly FaturaHistorico[]): Promise<void>;
   upsertSaldo(s: Saldo): Promise<void>;
   upsertInvestimento(i: Investimento): Promise<void>;
+  /** 17/10: títulos do Tesouro com quantidade, de banco/pessoa sem nenhuma conta ativa (conexão desligada) */
+  titulosSemConexao(): Promise<{ id_investimento: string; nome: string; quantidade: number; banco: string; responsavel: string }[]>;
+  atualizarValorTitulo(idInvestimento: string, valor: number, quando: string): Promise<void>;
   upsertItem(itemId: string, banco: string, responsavel: string, item: PluggyItem): Promise<void>;
   registrarSync(banco: string, responsavel: string, lastSync: string): Promise<void>;
   registrarExecucao(e: Execucao): Promise<void>;
@@ -170,6 +173,20 @@ export class PgRepo implements Repo {
          tipo = EXCLUDED.tipo, saldo = EXCLUDED.saldo, atualizado_pluggy = EXCLUDED.atualizado_pluggy, atualizado_em = now()`,
       [s.id_conta, s.banco, s.responsavel, s.tipo, s.saldo, s.atualizado_pluggy],
     );
+  }
+
+  async titulosSemConexao() {
+    const r = await this.pool.query(
+      `SELECT id_investimento, nome, quantidade::float8 AS quantidade, banco, responsavel FROM financas_investimentos i
+        WHERE subtipo = 'TREASURY' AND quantidade > 0 AND COALESCE(status, '') <> 'TOTAL_WITHDRAWAL'
+          AND NOT EXISTS (SELECT 1 FROM pluggy_contas c WHERE c.banco = i.banco AND c.responsavel = i.responsavel AND c.ativo)
+        ORDER BY banco, responsavel, nome`,
+    );
+    return r.rows.map((x) => ({ ...x, quantidade: Number(x.quantidade) }));
+  }
+
+  async atualizarValorTitulo(idInvestimento: string, valor: number, quando: string) {
+    await this.pool.query(`UPDATE financas_investimentos SET valor_atual = $2, atualizado_em = $3 WHERE id_investimento = $1`, [idInvestimento, valor, quando]);
   }
 
   async upsertInvestimento(i: Investimento) {

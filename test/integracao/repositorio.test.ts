@@ -123,4 +123,17 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     const [r] = (await pool.query(`SELECT valor_atual::float8 AS v, atualizado_em = '2026-10-17T23:00:00Z'::timestamptz AS hora FROM financas_investimentos WHERE id_investimento = 't1'`)).rows;
     expect(r).toEqual({ v: 602.6, hora: true });
   });
+
+  it('17/10: ultimasExecucoes devolve o início mais recente de cada tarefa, só do modo pedido', async () => {
+    const ex = (tarefa: string, modo: string, inicio: string) =>
+      repo.registrarExecucao({ tarefa: tarefa as any, modo: modo as any, inicio, fim: inicio, ok: true, contagens: {}, erro: null });
+    await ex('saldos', 'real', '2026-10-16T22:35:00Z');
+    await ex('saldos', 'real', '2026-10-17T01:35:00Z');
+    await ex('saldos', 'dry-run', '2026-10-17T05:00:00Z');
+    await ex('tesouro', 'dry-run', '2026-10-17T05:00:00Z');
+    const m = await repo.ultimasExecucoes('real');
+    expect(m.get('saldos')?.toISOString()).toBe('2026-10-17T01:35:00.000Z');
+    expect(m.has('tesouro')).toBe(false);
+  });
 });
+

@@ -19,6 +19,7 @@ import { PgRegistroNotif } from './notificacoes/registro';
 import type { Bot } from './notificacoes/textos';
 import { PluggyClient } from './pluggy';
 import { PgRepo } from './repositorio';
+import { reporPerdidas } from './repor';
 import { TAREFAS } from './tarefas';
 import { URL_PRECOS_TESOURO } from './tesouro';
 
@@ -144,6 +145,13 @@ async function main() {
       servidor.listen(porta, '0.0.0.0', () => log(`bot no ar na porta interna ${porta}`));
     }
     log(`worker no ar, modo=${modo}, ${AGENDA.length} tarefas + ${AGENDA_NOTIF.length} notificações agendadas (${TZ})`);
+    // 17/10: rodada perdida (VPS desligada pela Hostinger, deploy no meio de uma rodada) roda uma vez na subida;
+    // 30 s de folga para o Postgres e a rede subirem junto com a VPS
+    setTimeout(() => {
+      reporPerdidas({ ...base(), modo }, AGENDA, TAREFAS, TZ)
+        .then((feitas) => { for (const ex of feitas) log(`${ex.tarefa} (reposta) ${ex.ok ? 'ok' : 'FALHOU'} ${JSON.stringify(ex.contagens)}${ex.erro ? ` erro=${ex.erro}` : ''}`); })
+        .catch((e) => log(`repor rodada perdida FALHOU ${e instanceof Error ? e.message : String(e)}`));
+    }, 30000);
     return;
   }
 

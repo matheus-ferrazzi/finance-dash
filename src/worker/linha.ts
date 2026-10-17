@@ -7,6 +7,19 @@ export function soDigitos(v: string | null | undefined): string | null {
   return d.length ? d : null;
 }
 
+const FMT_DIA_SP = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' });
+/**
+ * Auditoria 17/10 (W1): o dia em São Paulo. A Pluggy manda a hora em UTC; cortar no "T" punha a compra das 21h–24h
+ * no dia seguinte (12% dos lançamentos, às vezes no mês seguinte). "Só a data" chega de dois jeitos e fica no dia
+ * escrito: 03:00Z (meia-noite em SP) e meia-noite UTC exata (00:00:00.000Z / .001Z: parcela futura do Nubank e
+ * purchaseDate do Santander, medido em 17/10). Texto sem hora fica como veio.
+ */
+export function diaSP(iso: string): string {
+  if (!iso.includes('T') || /T00:00:00(\.00\d)?Z?$/.test(iso)) return iso.slice(0, 10);
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : FMT_DIA_SP.format(d);
+}
+
 /**
  * Uma transação da Pluggy vira uma linha de financas_lancamentos.
  * Os 11 primeiros campos seguem exatamente o Finance 2.0 (paridade);
@@ -30,7 +43,7 @@ export function montarLinha(t: PluggyTransacao, conta: Conta, docsCasal: Readonl
 
   return {
     id_transacao: t.id,
-    data_lancamento: t.date.split('T')[0],
+    data_lancamento: diaSP(t.date),
     valor: Math.abs(t.amount),
     tipo_movimento: saida ? 'Saída' : 'Entrada',
     classe: efetiva.classe,
@@ -43,7 +56,7 @@ export function montarLinha(t: PluggyTransacao, conta: Conta, docsCasal: Readonl
     account_id: t.accountId,
     parcela_numero: cc?.installmentNumber ?? null,
     parcela_total: cc?.totalInstallments ?? null,
-    data_compra: cc?.purchaseDate ? cc.purchaseDate.slice(0, 10) : null,
+    data_compra: cc?.purchaseDate ? diaSP(cc.purchaseDate) : null,
     fatura_id: cc?.billId ?? null,
     fatura_prevista: cc?.billForecastDate ?? null,
     contraparte_nome: contra?.name ?? null,

@@ -20,6 +20,20 @@ describe('soDigitos', () => {
 });
 
 describe('montarLinha', () => {
+  it('17/10 (auditoria W1): data pelo dia de São Paulo — compra às 22h41 de 15/10 (01:41Z de 16/10) fica em 15/10', () => {
+    expect(montarLinha(tx({ date: '2026-10-16T01:41:18.520Z' }), conta, new Set()).data_lancamento).toBe('2026-10-15');
+    // virada de mês: 31/03 22:41 em SP não pode cair em abril
+    expect(montarLinha(tx({ date: '2026-04-01T01:41:27.024Z' }), conta, new Set()).data_lancamento).toBe('2026-03-31');
+    // "só a data" chega como 03:00Z (meia-noite em SP): mesmo dia
+    expect(montarLinha(tx({ date: '2026-09-10T03:00:00.000Z' }), conta, new Set()).data_lancamento).toBe('2026-09-10');
+    expect(montarLinha(tx({ date: '2026-09-10' }), conta, new Set()).data_lancamento).toBe('2026-09-10');
+    // data da compra parcelada: mesma regra
+    const cc = { creditCardMetadata: { purchaseDate: '2026-08-02T01:50:15.000Z', installmentNumber: 2, totalInstallments: 5 } } as any;
+    expect(montarLinha(tx(cc), conta, new Set()).data_compra).toBe('2026-08-01');
+    // meia-noite UTC exata também é "só a data" (parcela futura do Nubank: 00:00:00.001Z, mesmo dia do date 03:00Z)
+    const futura = { creditCardMetadata: { purchaseDate: '2026-11-09T00:00:00.001Z', installmentNumber: 2, totalInstallments: 2 } } as any;
+    expect(montarLinha(tx({ ...futura, date: '2026-11-09T03:00:00.000Z' }), conta, new Set()).data_compra).toBe('2026-11-09');
+  });
   it('campos de paridade iguais ao Finance 2.0', () => {
     const l = montarLinha(tx(), conta, new Set());
     expect(l).toMatchObject({

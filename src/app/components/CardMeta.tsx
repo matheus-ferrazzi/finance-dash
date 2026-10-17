@@ -2,14 +2,14 @@ import Link from 'next/link';
 import { brl } from '@/lib/format';
 import type { EstadoMeta } from '@/lib/metaMes';
 
-/** 15/10: meta do débito × gasto do mês × quanto ainda pode — a meta da Previsão vira algo para acompanhar. */
+/** Meta de gastos do mês (débito + crédito, 17/10) × gasto do mês × quanto ainda pode. */
 export function CardMeta({ estado: e, href }: { estado: EstadoMeta; href: string }) {
   const estourou = e.situacao === 'estourou';
   const barra = estourou ? 'bg-despesa' : e.pct >= 80 ? 'bg-warn' : 'bg-accent';
   return (
     <Link href={href} className="card mb-3 block p-3.5 transition-colors hover:bg-surface-2/40">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <span className="text-xs text-muted">🎯 Meta do débito no mês</span>
+        <span className="text-xs text-muted">🎯 Meta de gastos no mês</span>
         <span className="text-sm">
           <b className="tnum money">{brl(e.gasto)}</b> <span className="text-muted">de <span className="money">{brl(e.meta)}</span> ({e.pct}%)</span>
         </span>

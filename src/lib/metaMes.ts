@@ -1,6 +1,6 @@
-// Meta do débito no mês (15/10/2026): a meta da Previsão (o débito máximo por mês que faz sair do vermelho em 12
-// meses, recalculada todo dia) × o débito do mês até hoje. Uma conta só para o card da home, a mensagem do Zeca e os
-// alertas — os três nunca discordam.
+// Meta de gastos no mês (17/10/2026; de 15 a 17/10 era só do débito, pela meta da Previsão): todos os gastos —
+// débito e crédito, fora casa e dívida antiga — × a média dos meses fechados menos 10%. Uma conta só para o card da
+// home, a mensagem do Zeca e os alertas — os três nunca discordam.
 
 export interface EntradaMeta { meta: number | null; gasto: number; previstoFim: number; diaHoje: number; diasNoMes: number }
 
@@ -25,6 +25,27 @@ export function estadoMeta(e: EntradaMeta): EstadoMeta | null {
     porDia: r2(falta / (diasRestantes + 1)), diasRestantes,
     previstoFim: r2(e.previstoFim), acimaNoRitmo: r2(Math.max(0, e.previstoFim - e.meta)), situacao,
   };
+}
+
+/**
+ * 17/10: meta de todos os gastos (débito + crédito) = média dos meses fechados com dado menos 10%, arredondada a
+ * R$ 50. Com menos de 3 meses com dado a média é frágil: sem meta. Como o gasto vem caindo, a meta aperta sozinha.
+ */
+export function metaDaMedia(meses: readonly number[]): number | null {
+  const com = meses.filter((v) => v > 0);
+  if (com.length < 3) return null;
+  const media = com.reduce((a, b) => a + b, 0) / com.length;
+  return Math.round((media * 0.9) / 50) * 50;
+}
+
+/**
+ * Onde o mês fecha: o que já foi + as parcelas já lançadas que ainda caem no mês + o ritmo do à vista (débito e
+ * crédito sem parcela, por dia até hoje) nos dias que faltam. Parcela não entra no ritmo: ela já tem data.
+ */
+export function previstoFimGastos(e: { gasto: number; avista: number; parcelasRestantes: number; diaHoje: number; diasNoMes: number }): number {
+  const diasRestantes = Math.max(0, e.diasNoMes - e.diaHoje);
+  const ritmo = e.diaHoje > 0 ? Math.max(0, e.avista) / e.diaHoje : 0;
+  return r2(e.gasto + e.parcelasRestantes + ritmo * diasRestantes);
 }
 
 /** O "já avisei" do mês, guardado no estado do registro de notificações (sem tabela própria). */

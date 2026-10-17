@@ -177,11 +177,11 @@ describe('tema escuro', () => {
   });
 });
 
-describe('gráfico da meta do débito', () => {
+describe('gráfico da meta de gastos', () => {
   const est = (gasto: number, previstoFim: number) => estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 3, diasNoMes: 30 });
   const r = (gasto: number, previstoFim: number) => ({ mesLabel: 'out/26', estado: est(gasto, previstoFim), diasNoMes: 30,
     serie: [{ dia: 1, acumulado: gasto * 0.5 }, { dia: 2, acumulado: gasto * 0.8 }, { dia: 3, acumulado: gasto }] });
-  it('linha do débito acumulado, ritmo tracejado até o fim e a meta como linha horizontal com rótulo', async () => {
+  it('linha do gasto acumulado, ritmo tracejado até o fim e a meta como linha horizontal com rótulo', async () => {
     const s = graficoMeta(r(1500, 4500))!;
     expect(s).toContain('<polyline');
     expect(s).toContain('stroke-dasharray');

@@ -115,7 +115,7 @@ export function graficoMensal(r: ResumoMensal): string | null {
 }
 
 /**
- * 16/10: meta do débito no mês — débito acumulado dia a dia (cheia), o ritmo até o fim (tracejado, do ponto de hoje
+ * 16/10: meta de gastos no mês (débito + crédito desde 17/10) — gasto acumulado dia a dia (cheia), o ritmo até o fim (tracejado, do ponto de hoje
  * até onde a previsão fecha) e a meta como linha horizontal. Cor pela situação: verde dentro, âmbar a partir de 80%,
  * vermelho se o ritmo passa ou estourou. Sem meta ou sem dado do mês: sem gráfico.
  */
@@ -130,7 +130,7 @@ export function graficoMeta(r: { mesLabel: string; estado: EstadoMeta | null; se
   const cor = e.situacao === 'estourou' || e.situacao === 'ritmo_passa' || e.acimaNoRitmo > 0 ? VERM : e.situacao === 'passou_80' ? AMBAR : VERDE;
   const pts = [{ dia: 0, acumulado: 0 }, ...s].map((p) => `${f(X(p.dia))},${f(Y(p.acumulado))}`).join(' ');
   return svg([
-    texto(40, 56, `meta do débito · ${r.mesLabel}`, 24, SUAVE),
+    texto(40, 56, `meta de gastos · ${r.mesLabel}`, 24, SUAVE),
     texto(40, 106, `${brlCurto(e.gasto)} de ${brlCurto(e.meta)} (${e.pct}%)`, 40, TEXTO, ' font-weight="bold"'),
     `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" stroke="${GRADE}" stroke-width="2"/>`,
     // a meta: linha horizontal tracejada, com o rótulo em cima, do lado esquerdo (o ritmo sobe pela direita)

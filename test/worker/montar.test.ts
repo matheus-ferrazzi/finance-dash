@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formaDoTipo, montarFatura, montarHistorico, montarInvestimento, montarSaldo, precisaPedirAtualizacao,
+  formaDoTipo, montarFatura, montarHistorico, montarInvestimento, montarSaldo,
 } from '../../src/worker/montar';
 import type { Conta } from '../../src/worker/tipos';
 
@@ -57,17 +57,6 @@ describe('montarInvestimento (porta do workflow de investimentos)', () => {
   it('sem balance usa value * quantity; sem lucro informado é 0', () => {
     const i = montarInvestimento({ id: 'inv', itemId: 'item', value: 10, quantity: 3 }, { banco: 'Inter', responsavel: 'Matheus' }, AGORA);
     expect(i).toMatchObject({ valor_atual: 30, valor_investido: 30, lucro_acumulado: 0, nome: 'Sem nome', tipo: 'Desconhecido' });
-  });
-});
-
-describe('precisaPedirAtualizacao', () => {
-  const agora = new Date('2026-10-09T16:00:00Z');
-  // Onda 2 / S2: com 26 h e uma checagem por dia, o item chegava a ~50 h parado; agora 20 h, duas vezes por dia
-  it('só item sem auto-sync e parado há mais de 20 h', () => {
-    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-09-16T00:11:00Z' }, agora)).toBe(true);
-    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-10-08T19:00:00Z' }, agora)).toBe(true); // 21 h
-    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: null, lastUpdatedAt: '2026-10-08T21:00:00Z' }, agora)).toBe(false); // 19 h
-    expect(precisaPedirAtualizacao({ id: 'i', nextAutoSyncAt: '2026-10-10T00:00:00Z', lastUpdatedAt: '2026-09-01T00:00:00Z' }, agora)).toBe(false);
   });
 });
 

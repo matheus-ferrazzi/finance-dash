@@ -56,14 +56,6 @@ export function montarInvestimento(inv: PluggyInvestimento, meta: { banco: strin
   };
 }
 
-/** Item sem auto-sync configurado (nextAutoSyncAt nulo) e parado há mais de 26 h — caso do Inter em set/2026. */
-export function precisaPedirAtualizacao(item: PluggyItem, agora: Date): boolean {
-  if (item.nextAutoSyncAt) return false;
-  if (!item.lastUpdatedAt) return true;
-  // 20 h (era 26): com a checagem às 7h e às 13h, nenhum item passa de ~1 dia parado (auditoria 13/10)
-  return agora.getTime() - new Date(item.lastUpdatedAt).getTime() > 20 * 3600 * 1000;
-}
-
 export function formaDoTipo(tipoPluggy: string): Forma | null {
   if (tipoPluggy === 'CREDIT') return 'Crédito';
   if (tipoPluggy === 'BANK') return 'Débito';

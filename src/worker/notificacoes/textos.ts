@@ -75,6 +75,11 @@ export function montarGasto(txs: GastoGrande[], estado: { lastCriadoEm: string }
 export interface SaudeDados {
   h_lancamentos: number | null; h_investimentos: number | null; h_faturas: number | null;
   h_worker_ok: number | null; worker_falhas_24h: number | null; ultimo_lancamento: string | null;
+  /**
+   * 17/10: conexões paradas (pluggy_itens). Item do Meu Pluggy não se atualiza pela API: quando a Pluggy o tira da
+   * atualização automática (sem nextAutoSyncAt), só quem é dono da conexão destrava, no Meu Pluggy.
+   */
+  conexoes?: { banco: string; responsavel: string; horas: number }[] | null;
 }
 /** As linhas de problema da saúde (usadas também no aviso técnico do D). */
 export function linhasSaude(s: SaudeDados): string[] {
@@ -85,6 +90,10 @@ export function linhasSaude(s: SaudeDados): string[] {
   if ((s.h_lancamentos ?? 999) > 72) probs.push(`• Lançamentos: nada novo há ${s.h_lancamentos}h (pode ser normal se sem gastos)`);
   if ((s.h_worker_ok ?? 999) > 19) probs.push(`• Ingestão (worker): última rodada completa há ${s.h_worker_ok ?? '—'}h`);
   if ((s.worker_falhas_24h ?? 0) > 0) probs.push(`• Ingestão (worker): ${s.worker_falhas_24h} rodada(s) com falha nas últimas 24h`);
+  for (const c of s.conexoes ?? []) {
+    const quanto = c.horas >= 48 ? `${Math.floor(c.horas / 24)} dias` : `${Math.round(c.horas)} h`;
+    probs.push(`• ${c.banco} (${c.responsavel}): sem atualizar há ${quanto}, abrir o Meu Pluggy e atualizar a conexão`);
+  }
   return probs;
 }
 

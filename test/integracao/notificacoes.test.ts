@@ -68,6 +68,14 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
     expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx1']);
     expect(await f.ritmo()).toEqual({ mesLabel: 'm' });
     expect(await f.saude()).toHaveProperty('h_lancamentos');
+    // 17/10: conexão parada pela Pluggy — sem auto-sync: aviso depois de 20 h; com auto-sync, só depois de 30 h
+    await pool.query(`INSERT INTO pluggy_itens (item_id, banco, responsavel, last_updated_at, next_auto_sync_at) VALUES
+      ('i1', 'Inter', 'M', now() - interval '77 hours', NULL),
+      ('i2', 'Neon', 'A', now() - interval '21 hours', NULL),
+      ('i3', 'Itau', 'M', now() - interval '25 hours', now() + interval '1 hour'),
+      ('i4', 'Nubank', 'M', now() - interval '31 hours', now() + interval '1 hour'),
+      ('i5', 'Bradesco', 'M', now() - interval '2 hours', NULL)`);
+    expect(((await f.saude()) as any).conexoes.map((c: any) => [c.banco, Math.round(c.horas)])).toEqual([['Inter', 77], ['Nubank', 31], ['Neon', 21]]);
     expect(await f.backup()).toMatchObject({ tamanho: 1048576, tabelas: 30, falhas_24h: 0 });
     const fora = criarFontes(pool, 'http://painel', (async () => ({ ok: false, status: 502, json: async () => ({}) })) as any);
     await expect(fora.ritmo()).rejects.toThrow('painel HTTP 502');

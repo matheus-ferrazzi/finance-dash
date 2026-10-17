@@ -157,11 +157,12 @@ describe('técnico', () => {
     expect(t).toContain('🟡 Consentimento do B1 (R) na Pluggy vence hoje');
     expect(t).toContain('🟡 Consentimento do B2 (R) na Pluggy vence amanhã');
   });
-  it('S2: conexão da Pluggy parada há mais de 30 h vira linha 🔴 com o que fazer', () => {
-    const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], conexoes: [{ banco: 'B1', responsavel: 'R', horas: 94.5 }, { banco: 'B2', responsavel: 'R', horas: 37 }] })!;
-    expect(t).toContain('🔴 Conexão B1 (R) sem atualizar há 3 dias: reconectar no Meu Pluggy');
-    expect(t).toContain('🔴 Conexão B2 (R) sem atualizar há 37 h: reconectar no Meu Pluggy');
-    expect(montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], conexoes: [] })).toBeNull();
+  it('S2/17/10: conexão parada vem da saúde, uma linha 🔴 por banco com o que fazer', () => {
+    const t = montarTecnico({ saude: { ...saudeOk, conexoes: [{ banco: 'B1', responsavel: 'R', horas: 94.5 }, { banco: 'B2', responsavel: 'R', horas: 37 }] } as any, backup: backupOk as any, consentimentos: [] })!;
+    expect(t).toContain('🔴 B1 (R): sem atualizar há 3 dias, abrir o Meu Pluggy e atualizar a conexão');
+    expect(t).toContain('🔴 B2 (R): sem atualizar há 37 h, abrir o Meu Pluggy e atualizar a conexão');
+    expect(t.match(/B1/g)).toHaveLength(1);
+    expect(montarTecnico({ saude: { ...saudeOk, conexoes: [] } as any, backup: backupOk as any, consentimentos: [] })).toBeNull();
   });
   it('bot: falhas e modelo sumido viram linhas 🔴; zerado não aparece', () => {
     const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], bot: { falhas24h: 2, modelosSumidos: ['m-velho'] } })!;

@@ -34,7 +34,7 @@ Container separado (`docker build --target worker -t finance-worker:1 .`) que bu
 
 - **Modos** (`WORKER_MODO`): `sombra` (padrão — só lê a Pluggy e grava o próprio diagnóstico em `pluggy_*`), `real` (grava nas tabelas `financas_*`). `--dry-run` na linha de comando não grava nada.
 - **Reconciliação:** lançamento que a Pluggy não devolve mais (cancelado ou recriado com outro id) sai de `financas_lancamentos` e vai para `financas_lancamentos_removidos` (a linha inteira em JSON). Trava se a Pluggy vier vazia ou se a remoção passar de 20% da conta.
-- **Execução manual:** `docker exec finance-worker node worker.js <transacoes|faturas|saldos|investimentos|itens|atualizar-itens> [--dry-run] [--desde AAAA-MM-DD] [--limite 0.2]`.
+- **Execução manual:** `docker exec finance-worker node worker.js <transacoes|faturas|saldos|investimentos|itens> [--dry-run] [--desde AAAA-MM-DD] [--limite 0.2]`.
 - **Contas:** tabela `pluggy_contas`. O seed real é gerado fora do git (`node scripts/gerar_seed_contas.mjs <export-do-n8n>` → `db/seed_contas.local.sql`).
 
 ### Testes

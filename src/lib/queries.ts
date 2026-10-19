@@ -6,6 +6,8 @@ import {
 } from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
 import { estadoMeta, metaDaMedia, previstoFimGastos } from './metaMes';
+import { CARTAO_SEM_FATURA, CASA_CATS, FIXO_META, GASTO_META, PARCELA, SEM_ESPELHO, SO_ESPELHO_REAL, VALOR_GASTO } from './recorteGasto';
+export { CASA_CATS } from './recorteGasto';
 import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
 import { agruparGastos, FIXO_DEBITO_CATS, grupoDaCategoria, type GrupoGasto } from './grupos';
@@ -89,20 +91,6 @@ function rf(resp: Resp, idx: number): { sql: string; p: string[] } {
 // regra única: nunca contar lançamento com data no futuro (parcela agendada)
 const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
 
-/**
- * Lançamentos-espelho do Bradesco: o banco replica a dívida do cartão na conta
- * corrente ("MORA CARTAO", "PROVISAO"). Não é dinheiro saindo — se entrar na
- * conta de caixa, inventa saídas de R$ 13 mil que nunca existiram.
- */
-const SO_ESPELHO_REAL = `descricao NOT ILIKE '%MORA CARTAO%' AND descricao NOT ILIKE '%PROVISAO%'`;
-/**
- * "GASTOS CARTAO" NÃO é espelho (auditoria 13/10): é o débito que paga a fatura do cartão Bradesco,
- * que não tem histórico de fatura na Pluggy — o cartão registra o mesmo valor como "PAGTO. POR DEB EM C/C".
- * Fica fora só onde se paga fatura de cartão COM histórico (o "já pago" que abate a fatura real);
- * entra no saldo reconstruído, no realizado e vira a fatura mensal prevista desse cartão.
- */
-const CARTAO_SEM_FATURA = `descricao ILIKE '%GASTOS CART%'`;
-const SEM_ESPELHO = `${SO_ESPELHO_REAL} AND NOT (${CARTAO_SEM_FATURA})`;
 /**
  * N9: crédito no cartão que abate a fatura em que cai. Medido contra o histórico de faturas (18/10/2026):
  * "Estorno de compra" e "Crédito de "LOJA"" (devolução) e os descontos do Nubank abatem; "Crédito de parcelamento"
@@ -324,7 +312,6 @@ export async function getAporteMensal(resp: Resp, meses = 12): Promise<AportePon
  * vem da Telefônica dentro de "Telecommunications". Tratar "Internet" como fixo
  * cobrava compra avulsa como se fosse conta do mês.
  */
-export const CASA_CATS = ['Housing', 'Electricity', 'Water', 'Telecommunications', 'Gas'];
 
 export async function getCasaSerie(resp: Resp, per: Periodo, meses = 6): Promise<SeriePonto[]> {
   const r = rf(resp, 3);
@@ -799,26 +786,6 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
   return calibrarValidada(erros.filter((e): e is number => e !== null), hoje);
 }
 
-/**
- * 17/10: o recorte da meta de todos os gastos — despesa no débito e no crédito (o crédito no dia da compra; parcela
- * no mês em que cai), fora as contas da casa, os espelhos do cartão e a dívida antiga (renegociação, parcelamento de
- * fatura, encargos de atraso: é gasto já contado quando aconteceu). Estorno de compra abate (valor negativo); o
- * estorno financeiro ("Crédito de parcelamento", antecipação, renegociação) fica fora.
- */
-const PALAVRAS_ESTORNO_FINANCEIRO = ['PARCELAMENTO', 'ANTECIPA', 'RENEG', 'REVERSAO', 'DESAGIO', 'CESSAO', 'RESGATE', 'FATURA', 'NUFINANCEIRA'];
-// auditoria 17/10 (N1): casa e dívida pela categoria EFETIVA — o "Encerramento de dívida" do Nubank chega como
-// Transfers e só a regra do painel o faz dívida; pela crua, ele entrava como gasto
-const CAT_EF = 'categoria_efetiva(descricao, categoria, contraparte_doc)';
-const lista = (xs: readonly string[]) => xs.map((c) => `'${c.replace(/'/g, "''")}'`).join(',');
-const GASTO_META = `forma_pagamento IN ('Débito', 'Crédito') AND NOT (COALESCE(${CAT_EF}, '') = ANY(ARRAY[${lista(CASA_CATS)}]))
-  AND ${SEM_ESPELHO} AND NOT ${sqlDividaOuAtraso('descricao', CAT_EF)}
-  AND (classe = 'despesa' OR (classe = 'estorno' AND NOT (translate(upper(descricao), 'ÁÀÂÃÉÊÍÓÔÕÚÜÇ', 'AAAAEEIOOOUUC')
-       LIKE ANY (ARRAY[${PALAVRAS_ESTORNO_FINANCEIRO.map((p) => `'%${p}%'`).join(',')}]))))`;
-const VALOR_GASTO = `CASE WHEN classe = 'estorno' THEN -valor ELSE valor END`;
-/** travado do recorte da meta (consórcio, seguro, imposto, tarifa): pago uma vez no mês, não é ritmo do dia a dia */
-const FIXO_META = `COALESCE(${CAT_EF}, '') = ANY(ARRAY[${lista(FIXO_DEBITO_CATS)}])`;
-/** parcela pela coluna ou só pela descrição ("Drogaria Sao Paulo 1/2" vem sem parcela_total) */
-const PARCELA = String.raw`(COALESCE(parcela_total, 0) > 1 OR descricao ~ '\s\d{1,2}/\d{1,2}$')`;
 
 /**
  * Gastos do mês de `hoje` (casal), no recorte da meta: até hoje (total, o à vista — sem parcela — e por dia) e as

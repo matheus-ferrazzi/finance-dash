@@ -58,14 +58,21 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
   it('fontes: faturas na janela 0–3 dias, gastos ≥ 500 dos últimos 3 dias, saúde, backup e o painel', async () => {
     await pool.query(`INSERT INTO financas_faturas (id_conta, banco, responsavel, valor_fatura_atual, data_vencimento) VALUES
       ('fx1','B1','X',100,(now() AT TIME ZONE 'America/Sao_Paulo')::date + 2), ('fx2','B2','X',100,(now() AT TIME ZONE 'America/Sao_Paulo')::date + 9)`);
-    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, classe, banco, responsavel, criado_em) VALUES
-      ('gx1', (now() AT TIME ZONE 'America/Sao_Paulo')::date, 700, 'COMPRA', 'despesa', 'B', 'X', now()),
-      ('gx2', (now() AT TIME ZONE 'America/Sao_Paulo')::date, 100, 'PEQUENA', 'despesa', 'B', 'X', now())`);
+    // 19/10: gasto grande no recorte da meta — conta da casa, travado (consórcio), dívida antiga e espelho não avisam
+    const hoje = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, classe, banco, responsavel, criado_em) VALUES
+      ('gx1', ${hoje}, 700, 'COMPRA', 'Groceries', 'Débito', 'despesa', 'B', 'X', now()),
+      ('gx2', ${hoje}, 100, 'PEQUENA', 'Groceries', 'Débito', 'despesa', 'B', 'X', now()),
+      ('gx3', ${hoje}, 1900, 'ALUGUEL', 'Housing', 'Débito', 'despesa', 'B', 'X', now()),
+      ('gx4', ${hoje}, 800, 'BOLETO', 'Consortium', 'Débito', 'despesa', 'B', 'X', now()),
+      ('gx5', ${hoje}, 640, 'Renegociação de pendências 1/3', 'Loans and financing', 'Crédito', 'despesa', 'B', 'X', now()),
+      ('gx6', ${hoje}, 950, 'MORA CARTAO', 'Groceries', 'Débito', 'despesa', 'B', 'X', now()),
+      ('gx7', ${hoje}, 620, 'LOJA', 'Shopping', 'Crédito', 'despesa', 'B', 'X', now())`);
     await pool.query(`INSERT INTO financas_backup (feito_em, ok, n8n_ok, n8n_workflows, puxado_em, tamanho_bytes, tabelas)
       VALUES (now() - interval '2 hours', true, true, 20, now() - interval '5 hours', 1048576, 30)`);
     const f = criarFontes(pool, 'http://painel', (async (u: string) => ({ ok: u.endsWith('/api/previsao'), status: 200, json: async () => ({ mesLabel: 'm' }) })) as any);
     expect(((await f.fatura()) as any[]).map((x) => [x.banco, x.dias])).toEqual([['B1', 2]]);
-    expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx1']);
+    expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx1', 'gx7']);
     expect(await f.ritmo()).toEqual({ mesLabel: 'm' });
     expect(await f.saude()).toHaveProperty('h_lancamentos');
     // 17/10: conexão parada pela Pluggy — sem auto-sync: aviso depois de 20 h; com auto-sync, só depois de 30 h

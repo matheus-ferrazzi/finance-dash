@@ -63,7 +63,7 @@ describe('motor', () => {
   it('gasto: primeira execução só grava a marca; dry-run não grava nem envia', async () => {
     const { reg, linhas } = registroFake(); const { canal, enviados } = canalFake();
     const g = fontes({ gasto: async () => [{ id_transacao: 'a', criado_em: '2026-10-10T10:00:00', valor: 600, descricao: 'X', banco: 'B', responsavel: 'Y', data: '10/10' }] });
-    await rodarNotificacao('gasto', { fontes: g, registro: reg, canais: { grupo: null, matheus: null, telegram: canal }, modo: 'real' });
+    await rodarNotificacao('gasto', { fontes: g, registro: reg, canais: { grupo: canal, matheus: null, telegram: null }, modo: 'real' });
     expect(linhas).toEqual([{ bot: 'gasto', modo: 'real', texto: null, enviado: false, erro: null, estado: { lastCriadoEm: '2026-10-10T10:00:00' } }]);
     const d = await rodarNotificacao('fatura', { fontes: fontes(), registro: reg, canais: { grupo: null, matheus: null, telegram: canal }, modo: 'dry-run' });
     expect(d.texto).not.toBeNull();
@@ -123,8 +123,10 @@ describe('destinos (D)', () => {
     expect(grupo.enviados[0]).toContain('https://painel.exemplo/gastos?p=sem-2026-10-05');
     expect(grupo.enviados[0]).not.toContain('exemplo//');
   });
-  it('bots do C2 seguem no Telegram mesmo com o grupo do WhatsApp configurado (até o desligamento)', async () => {
-    expect(['ritmo', 'fatura', 'gasto', 'saude', 'backup'].map((b) => destinoDe(b as any))).toEqual(Array(5).fill('telegram'));
+  it('bots do C2 seguem no Telegram; o gasto grande vai para o grupo (19/10)', async () => {
+    expect(['ritmo', 'fatura', 'saude', 'backup'].map((b) => destinoDe(b as any))).toEqual(Array(4).fill('telegram'));
+    // 19/10: o gasto grande vai para o grupo (o Bot 09 do Telegram saiu em 17/10)
+    expect(destinoDe('gasto')).toBe('grupo');
     expect(['diario', 'semanal', 'mensal'].map((b) => destinoDe(b as any))).toEqual(Array(3).fill('grupo'));
     const { reg } = registroFake(); const grupo = canalFake(); const tg = canalFake();
     await rodarNotificacao('ritmo', { fontes: fontes(), registro: reg, canais: { grupo: grupo.canal, matheus: null, telegram: tg.canal }, modo: 'real' });

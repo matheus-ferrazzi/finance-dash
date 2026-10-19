@@ -112,7 +112,7 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     await pool.query(`INSERT INTO pluggy_contas (account_id, banco, responsavel, forma, ativo) VALUES
       ('i-deb', 'Inter', 'Matheus', 'Débito', false), ('i-cred', 'Inter', 'Matheus', 'Crédito', false), ('it-deb', 'Itaú', 'Matheus', 'Débito', true)`);
     await pool.query(`INSERT INTO financas_investimentos (id_investimento, nome, subtipo, valor_atual, quantidade, banco, responsavel, status) VALUES
-      ('t1', 'LFT - Tesouro Selic 2027', 'TREASURY', 591.33, 0.03, 'Inter', 'Matheus', 'ACTIVE'),
+      ('t1', 'LFT - Tesouro Selic 2027', 'TREASURY', 588.74, 0.03, 'Inter', 'Matheus', 'ACTIVE'),
       ('t2', 'INTER LIQUIDEZ FIC', 'INVESTMENT_FUND', 0, NULL, 'Inter', 'Matheus', 'TOTAL_WITHDRAWAL'),
       ('t3', 'LFT - Tesouro Selic 2029', 'TREASURY', 100, 0.01, 'Inter', 'Matheus', 'TOTAL_WITHDRAWAL'),
       ('t4', 'LFT - Tesouro Selic 2027', 'TREASURY', 900, 0.05, 'Itaú', 'Matheus', 'ACTIVE')`);

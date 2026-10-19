@@ -47,7 +47,7 @@ describe.skipIf(!url)('meta de gastos (integração)', () => {
         g('t13', '2032-04-11', 500, 'Crédito', 'abril cred'),
         g('t14', '2032-03-10', 900, 'Débito', 'março'),
         // 17/10 (auditoria): dívida pela categoria EFETIVA (a regra do painel muda Transfers → Loans)
-        g('t15', '2032-05-05', 660.19, 'Crédito', 'Encerramento de dívida', { categoria: 'Transfers' }), // fora
+        g('t15', '2032-05-05', 512.26, 'Crédito', 'Encerramento de dívida', { categoria: 'Transfers' }), // fora
         // travado: conta no gasto, mas não vira ritmo por dia; entra uma vez, pela média dos meses fechados
         g('t16', '2032-05-06', 575, 'Débito', 'CONSORCIO', { categoria: 'Consortium' }),
         g('t18', '2032-04-06', 575, 'Débito', 'CONSORCIO', { categoria: 'Consortium' }),

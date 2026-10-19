@@ -797,7 +797,7 @@ async function calcularCalibracao(meses: string[], hoje: string): Promise<Calibr
  */
 const PALAVRAS_ESTORNO_FINANCEIRO = ['PARCELAMENTO', 'ANTECIPA', 'RENEG', 'REVERSAO', 'DESAGIO', 'CESSAO', 'RESGATE', 'FATURA', 'NUFINANCEIRA'];
 // auditoria 17/10 (N1): casa e dívida pela categoria EFETIVA — o "Encerramento de dívida" do Nubank chega como
-// Transfers e só a regra do painel o faz dívida; pela crua, R$ 660,19 entravam como gasto em out/26
+// Transfers e só a regra do painel o faz dívida; pela crua, ele entrava como gasto
 const CAT_EF = 'categoria_efetiva(descricao, categoria, contraparte_doc)';
 const lista = (xs: readonly string[]) => xs.map((c) => `'${c.replace(/'/g, "''")}'`).join(',');
 const GASTO_META = `forma_pagamento IN ('Débito', 'Crédito') AND NOT (COALESCE(${CAT_EF}, '') = ANY(ARRAY[${lista(CASA_CATS)}]))
@@ -1481,7 +1481,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
       [desde, hoje],
     ),
     // aplicação líquida por mês: aplicar soma, resgatar subtrai; rendimento (receita) fica fora. Auditoria 17/10 (M2):
-    // pagamento de fatura também fica — a Pluggy põe "Investments" no Pix do Itaú para a NU PAGAMENTOS (R$ 3.500
+    // pagamento de fatura também fica — a Pluggy põe "Investments" no Pix do Itaú para a NU PAGAMENTOS (milhares de reais
     // em jul–ago/26 viravam "9% do que entra vai para aplicação")
     q<any>(
       `SELECT to_char(data_lancamento,'YYYY-MM') AS mes,
@@ -1500,7 +1500,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
   const alvo = addMonths(mesAtual, 12);
   // auditoria 17/10 (N3): parcelaTotal e parcelaNumero chegam ao agrupamento — sem eles, dois planos da mesma
-  // renegociação (3× 823,53 e 8× 355,67 no Nubank) viravam uma dívida só, "R$ 355,67 · faltam 7"
+  // renegociação (um em 3× e outro em 8× no Nubank) viravam uma dívida só, com a parcela de um e o prazo do outro
   const lancs = divRows.map((x) => ({
     descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor),
     parcelaTotal: x.parcelaTotal == null ? null : Number(x.parcelaTotal), parcelaNumero: x.parcelaNumero == null ? null : Number(x.parcelaNumero),

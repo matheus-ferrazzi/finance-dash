@@ -418,18 +418,18 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       `('${id}', '${data}', ${valor}, '${descricao}', 'Loans and financing', 'Crédito', 'Nubank', 'Matheus', 'despesa', 'Saída', '2043-04-01', ${n}, ${t})`;
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, parcela_numero, parcela_total) VALUES
       ${[
-        l('rn-a1', '2043-04-07', 823.53, 'Renegociação de pendências 1/3', 1, 3),
-        l('rn-a2', '2043-05-07', 823.53, 'Renegociação de pendências 2/3', 2, 3),
-        l('rn-a3', '2043-06-06', 823.53, 'Renegociação de pendências 3/3', 3, 3),
-        l('rn-b3', '2043-04-07', 355.67, 'Renegociação de pendências 3/8', 3, 8),
-        ...[4, 5, 6, 7, 8].map((n) => l(`rn-b${n}`, `2043-${String(n + 1).padStart(2, '0')}-07`, 355.67, `Renegociação de pendências ${n}/8`, n, 8)),
+        l('rn-a1', '2043-04-07', 731.18, 'Renegociação de pendências 1/3', 1, 3),
+        l('rn-a2', '2043-05-07', 731.18, 'Renegociação de pendências 2/3', 2, 3),
+        l('rn-a3', '2043-06-06', 731.18, 'Renegociação de pendências 3/3', 3, 3),
+        l('rn-b3', '2043-04-07', 417.42, 'Renegociação de pendências 3/8', 3, 8),
+        ...[4, 5, 6, 7, 8].map((n) => l(`rn-b${n}`, `2043-${String(n + 1).padStart(2, '0')}-07`, 417.42, `Renegociação de pendências ${n}/8`, n, 8)),
       ].join(',')}`);
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
       ('ap-1', '2043-03-04', 2000, 'Pagamento de Pix QR Code NU PAGAMENTOS S/A', 'Investments', 'Débito', 'Itau', 'Matheus', 'pagamento_fatura', 'Saída', '2043-03-04'),
       ('ap-2', '2043-03-10', 300, 'TED APLICACAO', 'Investments', 'Débito', 'Itau', 'Matheus', 'transferencia_interna', 'Saída', '2043-03-10')`);
     const d = await queries.getTrilhaDados('2043-04-15');
     const nubank = d.dividas.filter((x) => x.banco === 'Nubank').sort((a, b) => (a.plano ?? 0) - (b.plano ?? 0));
-    expect(nubank.map((x) => [x.plano, x.valorParcela, x.restantes, x.fim])).toEqual([[3, 823.53, 2, '2043-06'], [8, 355.67, 5, '2043-09']]);
+    expect(nubank.map((x) => [x.plano, x.valorParcela, x.restantes, x.fim])).toEqual([[3, 731.18, 2, '2043-06'], [8, 417.42, 5, '2043-09']]);
     expect(d.aplicacaoMensal.find((m) => m.mes === '2043-03')).toEqual({ mes: '2043-03', valor: 300 });
   });
 

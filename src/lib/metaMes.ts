@@ -42,7 +42,7 @@ export function metaDaMedia(meses: readonly number[]): number | null {
  * Onde o mês fecha: o que já foi + as parcelas já lançadas que ainda caem no mês + os travados que faltam (consórcio,
  * seguro, imposto: uma vez, pela média) + o ritmo do gasto LIVRE (sem parcela e sem travado, por dia até hoje) nos
  * dias que faltam. Auditoria 17/10 (N2): projetar o à vista inteiro multiplicava por dia a conta mensal travada e o
- * item único, e o "fecha em" de out/26 saía R$ 1.647 alto.
+ * item único, e o "fecha em" de out/26 saía bem acima do real.
  */
 export function previstoFimGastos(e: { gasto: number; livre: number; parcelasRestantes: number; fixosFaltam: number; diaHoje: number; diasNoMes: number }): number {
   const diasRestantes = Math.max(0, e.diasNoMes - e.diaHoje);

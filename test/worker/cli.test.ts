@@ -40,7 +40,8 @@ describe('notificações (C2)', () => {
     // 17/10: o Telegram saiu (bots 02–12 desligados no n8n); os 5 do C2 em sombra saíram da agenda
     expect(AGENDA_NOTIF).toEqual([
       ['0 8 * * *', 'diario'], ['0 9 * * 1', 'semanal'], ['0 9 1 * *', 'mensal'], ['30 12 * * *', 'tecnico'],
-      ['0 9 * * 2,5', 'meta'], ['50 16 * * *', 'alerta-meta'], ['5 8 * * *', 'alerta-meta']]);
+      ['0 9 * * 2,5', 'meta'], ['50 16 * * *', 'alerta-meta'], ['5 8 * * *', 'alerta-meta'],
+      ['45 16,22 * * *', 'gasto']]);
     expect(lerArgs(['notif-alerta-meta', '--dry-run'])).toEqual({ tarefa: 'notif-alerta-meta', dryRun: true });
     expect(lerArgs(['notif-diario', '--dry-run'])).toEqual({ tarefa: 'notif-diario', dryRun: true });
   });

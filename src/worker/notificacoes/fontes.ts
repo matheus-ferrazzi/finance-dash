@@ -2,6 +2,7 @@
 // o ritmo, o /api/previsao do painel — a conta continua num lugar só (computeRitmo no painel).
 import type { Pool } from 'pg';
 import type { Fontes } from './motor';
+import { GASTO_GRANDE } from '../../lib/recorteGasto';
 
 type Fetcher = (url: string, init?: { signal?: AbortSignal; headers?: Record<string, string> }) => Promise<{ ok: boolean; status?: number; json: () => Promise<any> }>;
 
@@ -22,7 +23,8 @@ const SQL_GASTO = `SELECT COALESCE(json_agg(t ORDER BY t.criado_em),'[]') AS txs
          COALESCE(banco,'—') AS banco, COALESCE(responsavel,'—') AS responsavel,
          to_char(data_lancamento,'DD/MM') AS data
   FROM financas_lancamentos
-  WHERE classe='despesa' AND valor >= 500
+  -- 19/10: no recorte da meta (sem casa, travado, dívida antiga e espelho): aluguel e consórcio não são exceção
+  WHERE ${GASTO_GRANDE} AND valor >= 500
     AND criado_em >= NOW() - interval '3 days'
     AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
 ) t`;

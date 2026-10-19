@@ -25,12 +25,12 @@ export interface ResultadoNotif {
 }
 
 /**
- * Para onde vai cada mensagem: o técnico vai para o Matheus; diário, semanal e mensal, para o grupo; os bots
- * do C2 seguem no Telegram até o desligamento (não podem mudar de canal só porque o WhatsApp foi configurado).
+ * Para onde vai cada mensagem: o técnico vai para o Matheus; diário, semanal, mensal, meta e gasto grande (19/10), para
+ * o grupo; os outros bots do C2 seguem no Telegram (fora da agenda desde 17/10, só à mão).
  */
 export function destinoDe(bot: Bot): 'grupo' | 'matheus' | 'telegram' {
   if (bot === 'tecnico') return 'matheus';
-  return bot === 'diario' || bot === 'semanal' || bot === 'mensal' || bot === 'meta' || bot === 'alerta-meta' ? 'grupo' : 'telegram';
+  return bot === 'diario' || bot === 'semanal' || bot === 'mensal' || bot === 'meta' || bot === 'alerta-meta' || bot === 'gasto' ? 'grupo' : 'telegram';
 }
 export interface Canais { grupo: Canal | null; matheus: Canal | null; telegram: Canal | null }
 

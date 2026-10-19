@@ -27,6 +27,8 @@ export const AGENDA_NOTIF: readonly [string, Bot][] = [
   ['0 9 * * 2,5', 'meta'],
   ['50 16 * * *', 'alerta-meta'],
   ['5 8 * * *', 'alerta-meta'],
+  // 19/10: gasto grande (≥ R$ 500, no recorte da meta) no grupo, depois de cada ingestão — o Bot 09 do Telegram saiu em 17/10
+  ['45 16,22 * * *', 'gasto'],
 ];
 export type TarefaNotif = `notif-${Bot}`;
 const NOTIFS = new Set<string>(BOTS.map((b) => `notif-${b}`));

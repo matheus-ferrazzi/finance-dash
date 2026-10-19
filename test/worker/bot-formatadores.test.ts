@@ -26,6 +26,11 @@ describe('formatar (texto montado da trava)', () => {
   it('situacao_mes, simular_compra (cabe e não cabe), trilha', () => {
     expect(formatar('situacao_mes', { mesLabel: 'out/26', dapraGastarHoje: 50, ritmoAtualDia: 80, diasRestantes: 10, fechaCom: -500, saiDoVermelho: null, link: '/' }, 'https://p'))
       .toContain(`💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`);
+    // auditoria 18/10: sem faixa calibrada é "pela média"; calibrada afirma
+    const sit = { mesLabel: 'out/26', dapraGastarHoje: 50, ritmoAtualDia: 80, diasRestantes: 10, fechaCom: -500, link: '/' };
+    expect(formatar('situacao_mes', { ...sit, saiDoVermelho: null }, 'https://p')).toContain('🗓️ Pela média, não sai do vermelho nos próximos 24 meses');
+    expect(formatar('situacao_mes', { ...sit, saiDoVermelho: 'mai/27', calibrada: false }, 'https://p')).toContain('🗓️ Pela média, sai do vermelho em mai/27');
+    expect(formatar('situacao_mes', { ...sit, saiDoVermelho: null, calibrada: true }, 'https://p')).toContain('🗓️ Não sai do vermelho nos próximos 24 meses');
     // N11: no último dia também (era sempre 0 e sumia); sem a linha do ritmo
     const ult = formatar('situacao_mes', { mesLabel: 'out/26', dapraGastarHoje: 70, ritmoAtualDia: 80, diasRestantes: 0, fechaCom: 100, saiDoVermelho: null, link: '/' }, 'https://p');
     expect(ult).toContain(`💸 Hoje dá pra gastar *${brl(70)}* no débito e PIX`);

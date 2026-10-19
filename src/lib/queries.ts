@@ -103,6 +103,12 @@ const SO_ESPELHO_REAL = `descricao NOT ILIKE '%MORA CARTAO%' AND descricao NOT I
  */
 const CARTAO_SEM_FATURA = `descricao ILIKE '%GASTOS CART%'`;
 const SEM_ESPELHO = `${SO_ESPELHO_REAL} AND NOT (${CARTAO_SEM_FATURA})`;
+/**
+ * N9: crédito no cartão que abate a fatura em que cai. Medido contra o histórico de faturas (18/10/2026):
+ * "Estorno de compra" e "Crédito de "LOJA"" (devolução) e os descontos do Nubank abatem; "Crédito de parcelamento"
+ * não (jul e ago/26 fecharam iguais ao previsto com ele no ciclo), nem os créditos de renegociação do Bradesco.
+ */
+const ESTORNO_ABATE_FATURA = `(descricao ILIKE 'Estorno de compra%' OR descricao ILIKE 'Crédito de "%' OR descricao ILIKE 'Desconto%')`;
 const RANGE = `data_lancamento >= $1::date AND data_lancamento < $2::date AND data_lancamento <= ${HOJE}`;
 
 export interface Kpis {
@@ -360,14 +366,18 @@ export async function getSyncStatus(): Promise<SyncStatus> {
   return { oldestH, conns };
 }
 
-/** compras de crédito (despesa) numa janela ampla, pra montar a composição da fatura por cartão */
+/**
+ * Compras de crédito (despesa) numa janela ampla, pra montar a composição da fatura por cartão.
+ * N9: estorno que abate a fatura vem junto, com valor negativo (o parcial do ciclo é o líquido).
+ */
 export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
   const r = rf(resp, 1);
   const rows = await q<any>(
-    `SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data, valor, descricao,
+    `SELECT id_transacao AS id, to_char(data_lancamento,'YYYY-MM-DD') AS data,
+            CASE WHEN classe = 'estorno' THEN -valor ELSE valor END AS valor, descricao,
             categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
      FROM financas_lancamentos
-     WHERE classe='despesa' AND forma_pagamento='Crédito'
+     WHERE (classe='despesa' OR (classe='estorno' AND tipo_movimento='Entrada' AND ${ESTORNO_ABATE_FATURA})) AND forma_pagamento='Crédito'
        AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - 75
        AND data_lancamento <  (now() AT TIME ZONE 'America/Sao_Paulo')::date + 75${r.sql}
      ORDER BY data_lancamento DESC, valor DESC`,
@@ -1115,12 +1125,14 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
               CASE WHEN l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
                    THEN (to_date(l.fatura_prevista, 'YYYY-MM') + make_interval(months => COALESCE(d.meses, 0)::int))::date END,
               (date_trunc('month', l.data_lancamento) + interval '1 month')::date), 'YYYY-MM') AS venc,
-            SUM(l.valor)::float8 AS total
+            SUM(CASE WHEN l.classe = 'estorno' THEN -l.valor ELSE l.valor END)::float8 AS total
      FROM financas_lancamentos l
      LEFT JOIN financas_faturas_historico h ON h.id = l.fatura_id
      LEFT JOIN desloc d ON d.account_id = l.account_id
-     -- parcela de parcelamento de fatura (pagamento_fatura que SAI no cartão) também vence na fatura
-     WHERE (l.classe = 'despesa' OR (l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Saída'))
+     -- parcela de parcelamento de fatura (pagamento_fatura que SAI no cartão) também vence na fatura;
+     -- N9 (auditoria 17/10, medido 18/10): estorno de compra e desconto abatem a fatura do mesmo vencimento
+     WHERE (l.classe = 'despesa' OR (l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Saída')
+            OR (l.classe = 'estorno' AND l.tipo_movimento = 'Entrada' AND ${ESTORNO_ABATE_FATURA.replace(/descricao/g, 'l.descricao')}))
        AND l.forma_pagamento = 'Crédito'
        AND (l.data_lancamento <= $1::date OR l.criado_em::date <= $1::date)${r3.sql}
      GROUP BY 1`,
@@ -1128,6 +1140,43 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   );
   const creditoPorVencimento: Record<string, number> = {};
   credVencRows.forEach((x) => { creditoPorVencimento[x.venc] = Number(x.total); });
+
+  // N6/L3 (auditoria 17/10): cartão em que a Pluggy não entrega todas as compras (Neon: só uma parcela por compra
+  // e nada do ciclo em curso). "Incompleto" = em 2 das 4 últimas faturas fechadas o total passou das compras
+  // ligadas a ela (medido em 18/10: só a Neon; nos completos o limite usado bate com as compras a vencer). Nele,
+  // o limite usado que nenhuma compra a vencer explica entra na próxima fatura — teto, não chute: é dívida no cartão.
+  const rnd = rf(resp, 2);
+  const naoDetalhadoRows = await q<any>(
+    `WITH fat AS (
+       SELECT h.account_id, h.vencimento, h.total,
+              (SELECT COALESCE(SUM(l.valor), 0) FROM financas_lancamentos l
+                WHERE l.fatura_id = h.id AND l.forma_pagamento = 'Crédito'
+                  AND (l.classe = 'despesa' OR (l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Saída'))) AS compras,
+              row_number() OVER (PARTITION BY h.account_id ORDER BY h.vencimento DESC) AS rn
+       FROM financas_faturas_historico h
+       WHERE h.vencimento <= $1::date AND h.total > 0
+     ), incompletos AS (
+       SELECT account_id, MAX(vencimento) AS ultimo FROM fat WHERE rn <= 4
+       GROUP BY account_id HAVING COUNT(*) FILTER (WHERE total > compras * 1.05 + 1) >= 2
+          -- fatura parada há mais de 45 dias = conexão desligada (W5): o limite usado é velho, não entra
+          AND MAX(vencimento) >= $1::date - 45
+     )
+     SELECT i.account_id,
+            to_char(i.ultimo + make_interval(months => (
+              (EXTRACT(year FROM $1::date) * 12 + EXTRACT(month FROM $1::date)) - (EXTRACT(year FROM i.ultimo) * 12 + EXTRACT(month FROM i.ultimo))
+              + CASE WHEN EXTRACT(day FROM i.ultimo) >= EXTRACT(day FROM $1::date) THEN 0 ELSE 1 END)::int), 'YYYY-MM') AS venc,
+            COALESCE(f.valor_fatura_atual, 0)::float8 AS usado,
+            (SELECT COALESCE(SUM(l.valor), 0)::float8 FROM financas_lancamentos l
+              WHERE l.account_id = i.account_id AND l.forma_pagamento = 'Crédito' AND l.classe = 'despesa'
+                AND l.data_lancamento > i.ultimo - 30 AND l.fatura_id IS NULL) AS conhecidas
+     FROM incompletos i JOIN financas_faturas f ON f.id_conta = i.account_id
+     WHERE 1=1${rnd.sql.replace('responsavel', 'f.responsavel')}`,
+    [hoje, ...rnd.p],
+  );
+  for (const x of naoDetalhadoRows) {
+    const falta = Math.round(Math.max(0, Number(x.usado) - Number(x.conhecidas)) * 100) / 100;
+    if (falta > 0) creditoPorVencimento[x.venc] = Math.round(((creditoPorVencimento[x.venc] ?? 0) + falta) * 100) / 100;
+  }
 
   // fatura real (histórico da Pluggy) das que vencem até o mês de hoje
   const filtroResp = resp === 'casal' ? '' : ' AND c.responsavel = $2';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compraCabe, saiDoVermelho, sobraPorMes } from '../../src/lib/decisoes';
+import { compraCabe, mancheteSaida, saiDoVermelho, sobraPorMes } from '../../src/lib/decisoes';
 
 const proj = (saldos: number[]) => saldos.map((s, i) => ({ mes: `2027-${String(i + 1).padStart(2, '0')}`, saldoProjetado: s, saldo: i ? s - saldos[i - 1] : s }) as any);
 const c = { p10: -100, p90: 100, n: 12, calculadaEm: 'x' };
@@ -55,5 +55,26 @@ describe('revisão final F2a', () => {
     const t = textoVeredito(r, (m) => m, (v) => `R$ ${v}`);
     expect(t.startsWith('Cabe')).toBe(false);
     expect(t).toBe('Atenção: já está no vermelho sem ela; no pior mês (2027-02) a compra aprofunda o vermelho em R$ 50.');
+  });
+});
+
+describe('manchete da saída do vermelho (auditoria 18/10)', () => {
+  const passados = [{ previsto: -2000, real: -1400 }, { previsto: -1500, real: -500 }, { previsto: -2500, real: -100 }];
+  it('com calibração: afirma o mês (ou que não sai)', () => {
+    expect(mancheteSaida({ provavel: '2027-05', piorCaso: '2027-08' }, true, [], 24)).toMatchObject({ valor: 'Sai em mai/27', tom: 'bom' });
+    expect(mancheteSaida({ provavel: null, piorCaso: null }, true, [], 24)).toMatchObject({ valor: 'Não sai em 24 meses', tom: 'ruim' });
+  });
+  it('sem calibração: diz que é pela média, não pinta de vermelho e mostra quanto a previsão errou', () => {
+    const m = mancheteSaida({ provavel: null, piorCaso: null }, false, passados, 24);
+    expect(m.valor).toBe('Pela média, não sai em 24 meses');
+    expect(m.tom).toBe('atencao');
+    // erros (real − previsto): 600, 1000, 2400 → média 1333, todos para cima (a previsão foi pessimista)
+    expect(m.erro).toEqual({ medio: 1333, n: 3, lado: 'pessimista' });
+    expect(mancheteSaida({ provavel: '2027-05', piorCaso: '2027-05' }, false, passados, 24).valor).toBe('Pela média, sai em mai/27');
+  });
+  it('erro para os dois lados = misto; sem meses fechados = sem erro', () => {
+    expect(mancheteSaida({ provavel: null, piorCaso: null }, false, [{ previsto: 0, real: 100 }, { previsto: 0, real: -300 }], 24).erro)
+      .toEqual({ medio: 200, n: 2, lado: 'misto' });
+    expect(mancheteSaida({ provavel: null, piorCaso: null }, false, [], 24).erro).toBeNull();
   });
 });

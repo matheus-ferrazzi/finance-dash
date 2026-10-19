@@ -2,6 +2,7 @@
 // "Pior caso" = limite de baixo da faixa 8 em 10; sem calibração, pior caso = provável.
 import type { ProjecaoMes } from './previsao';
 import { faixaMes, type Calibracao } from './faixa';
+import { mesLabel } from './format';
 
 const baixo = (p: ProjecaoMes[], c: Calibracao | null) => p.map((m, k) => (k === 0 ? m.saldoProjetado : faixaMes(m.saldoProjetado, k, c).piorCaso));
 
@@ -53,4 +54,26 @@ export function textoVeredito(
   // maisNegativo é o fundo da curva, não o primeiro mês no vermelho: dizer "no pior mês" para não confundir
   if (r.maisNegativo) return `Atenção: já está no vermelho sem ela; no pior mês (${mesLabel(r.maisNegativo)}) a compra aprofunda o vermelho em ${dinheiro(r.aprofunda ?? 0)}.`;
   return 'Cabe: nenhum mês vai para o vermelho por causa dela, nem pelo pior caso.';
+}
+
+export type ErroPrevisao = { medio: number; n: number; lado: 'pessimista' | 'otimista' | 'misto' };
+
+/**
+ * Manchete do "Saindo do vermelho" (auditoria 18/10). Sem a faixa calibrada a projeção longa é só a média
+ * de poucos meses — e errou mais de mil reais por mês em jul–set/26. Então: diz que é
+ * "pela média", não pinta de vermelho como certeza, e mostra o erro medido nos meses fechados.
+ */
+export function mancheteSaida(
+  sai: { provavel: string | null; piorCaso?: string | null }, calibrada: boolean,
+  passados: readonly { previsto: number; real: number }[], horizonte: number,
+): { valor: string; tom: 'bom' | 'atencao' | 'ruim'; erro: ErroPrevisao | null } {
+  const frase = sai.provavel ? `sai em ${mesLabel(sai.provavel)}` : `não sai em ${horizonte} meses`;
+  const difs = passados.map((p) => p.real - p.previsto);
+  const erro: ErroPrevisao | null = difs.length ? {
+    medio: Math.round(difs.reduce((s, d) => s + Math.abs(d), 0) / difs.length),
+    n: difs.length,
+    lado: difs.every((d) => d > 0) ? 'pessimista' : difs.every((d) => d < 0) ? 'otimista' : 'misto',
+  } : null;
+  if (calibrada) return { valor: frase[0].toUpperCase() + frase.slice(1), tom: sai.provavel ? 'bom' : 'ruim', erro };
+  return { valor: `Pela média, ${frase}`, tom: sai.provavel ? 'bom' : 'atencao', erro };
 }

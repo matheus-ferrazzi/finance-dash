@@ -10,6 +10,6 @@ export async function GET() {
   const sai = saiDoVermelho(computeProjecao(base, 24), calib).provavel;
   return NextResponse.json({
     mesLabel: p.mesLabel, dapraGastarHoje: p.ritmoSeguroDia, ritmoAtualDia: p.ritmoAtualDia, diasRestantes: p.diasRestantes,
-    fechaCom: p.fechaCom, saiDoVermelho: sai ? mesLabel(sai) : null, link: '/',
+    fechaCom: p.fechaCom, saiDoVermelho: sai ? mesLabel(sai) : null, calibrada: !!calib, link: '/',
   });
 }

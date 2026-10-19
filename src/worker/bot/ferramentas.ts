@@ -68,7 +68,11 @@ export function formatar(nome: string, d: any, painel: string): string {
       l.push(`💸 Hoje dá pra gastar *${brl(d.dapraGastarHoje)}* no débito e PIX`);
       if (d.diasRestantes > 0) l.push(`${d.ritmoAtualDia > d.dapraGastarHoje ? '🔥' : '🐢'} Ritmo: ${brl(d.ritmoAtualDia)} por dia`);
       l.push(`${d.fechaCom < 0 ? '📉' : '📈'} ${d.mesLabel} fecha em *${brl(d.fechaCom)}*`);
-      if (d.fechaCom < 0) l.push(d.saiDoVermelho ? `🗓️ Sai do vermelho em ${d.saiDoVermelho}` : '🗓️ Não sai do vermelho nos próximos 24 meses');
+      // auditoria 18/10: sem a faixa calibrada a projeção longa é só a média — não vira certeza
+      if (d.fechaCom < 0) {
+        const media = d.calibrada ? '' : 'Pela média, ';
+        l.push(d.saiDoVermelho ? `🗓️ ${media}${media ? 's' : 'S'}ai do vermelho em ${d.saiDoVermelho}` : `🗓️ ${media}${media ? 'n' : 'N'}ão sai do vermelho nos próximos 24 meses`);
+      }
       break;
     case 'gasto_periodo':
       l.push(`💰 Gasto em ${d.periodo} (${quem(d.pessoa)}${d.grupo ? `, ${d.grupo}` : ''}): *${brl(d.total)}*${d.totalDinheiro > 0 ? ` (💵 ${brl(d.totalDinheiro)})` : ''}`);

@@ -7,24 +7,26 @@ const dia = { mesLabel: 'out/26', fechaCom: -500, diasRestantes: 10, ritmoSeguro
 
 describe('diário', () => {
   it('acima do que cabe, fecha no vermelho, conta e link', () => {
+    // 19/10: título; a bolinha no começo; "nesse passo" (50 × 11 − 80 × 10 = −250) e "pela média", cada um com a base
     expect(montarDiario(dia, 'https://painel/')).toBe([
+      `🔴 *Mês no vermelho* · out/26 fecha em ${brl(-500)}`,
       '☀️ *Bom dia!*',
       `💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`,
-      `🔥 Ritmo: ${brl(80)} por dia, acima do que cabe 🔴`,
-      `📉 out/26 fecha em *${brl(-500)}* 🔴`,
+      `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-250)}*`,
+      `🔴 Pela média dos outros meses, out/26 fecha em *${brl(-500)}*`,
       '', `🧾 Luz (${brl(120)}) vence hoje`,
       '', '👉 https://painel/',
     ].join('\n'));
   });
   it('dentro do que cabe e fecha no azul; sem contas a parte some', () => {
     const t = montarDiario({ ...dia, ritmoAtualDia: 40, fechaCom: 300, contas: [] }, 'L');
-    expect(t).toContain(`🐢 Ritmo: ${brl(40)} por dia, dentro do que cabe 🟢`);
-    expect(t).toContain(`📈 out/26 fecha em *${brl(300)}* 🟢`);
+    expect(t).toContain(`🟢 Ritmo de ${brl(40)}/dia, dentro do que cabe`);
+    expect(t).toContain(`🟢 Pela média dos outros meses, out/26 fecha em *${brl(300)}*`);
     expect(t).not.toContain('🧾');
   });
   it('último dia do mês: o que dá pra gastar hoje (N11: era sempre 0) e como fecha; sem ritmo', () => {
     const u = montarDiario({ ...dia, diasRestantes: 0, contas: [] }, 'L');
-    expect(u).toBe(['☀️ *Bom dia!*', `💸 Último dia do mês: dá pra gastar *${brl(50)}* hoje`, `📅 out/26 fecha em *${brl(-500)}* 🔴`, '', '👉 L'].join('\n'));
+    expect(u).toBe([`🔴 *Último dia do mês* · out/26 fecha em ${brl(-500)}`, '☀️ *Bom dia!*', `💸 Último dia do mês: dá pra gastar *${brl(50)}* hoje`, `🔴 out/26 fecha em *${brl(-500)}*`, '', '👉 L'].join('\n'));
   });
   it('Onda 2: avisos por exceção numa seção própria, depois do fecha-em e antes das contas', () => {
     const t = montarDiario({ ...dia, avisos: [
@@ -62,6 +64,7 @@ const sem = {
 describe('semanal', () => {
   it('total com % sobre a média, setas por grupo, trilha com barrinha e links', () => {
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).toBe([
+      '🔴 *Semana acima da média* · 16% a mais',
       '📊 *Semana de 05/10 a 11/10*',
       `💰 No dia a dia gastaram ${brl(1160)}, 🔺 16% acima da média`,
       '',
@@ -110,9 +113,9 @@ const mes = {
 describe('mensal', () => {
   it('sobrou: 🎉, 🟢, saldo vermelho, trilha e mês novo', () => {
     expect(montarMensal(mes, 'L')).toBe([
-      '📅 *set/26 fechou* 🎉',
+      `🟢 *set/26 fechou com sobra* · ${brl(300.5)}`,
       `🟢 Sobrou ${brl(300.5)} (previsto ${brl(-1300.25)})`,
-      `🏦 Saldo em conta no fim: ${brl(-1200.75)} 🔴`,
+      `🔴 Saldo em conta no fim: ${brl(-1200.75)}`,
       '',
       '🧭 *Trilha* ▰▱▱▱ seguem na fase 1: Sair das dívidas',
       '',
@@ -129,9 +132,9 @@ describe('mensal', () => {
   });
   it('faltou: sem 🎉; mudou de fase: 🚀', () => {
     const t = montarMensal({ ...mes, sobraReal: -200, saldoFim: 50, trilha: { fase: 2, titulo: 'Fazer sobrar', mudou: true, faseAntes: 1 } }, 'L');
-    expect(t.split('\n')[0]).toBe('📅 *set/26 fechou*');
+    expect(t.split('\n')[0]).toBe(`🔴 *set/26 fechou no vermelho* · faltou ${brl(200)}`);
     expect(t).toContain(`🔴 Faltou ${brl(200)} (previsto ${brl(-1300.25)})`);
-    expect(t).toContain(`🏦 Saldo em conta no fim: ${brl(50)} 🟢`);
+    expect(t).toContain(`🟢 Saldo em conta no fim: ${brl(50)}`);
     expect(t).toContain('🚀 *Trilha* ▰▰▱▱ passaram da fase 1 para a 2: Fazer sobrar');
   });
 });
@@ -146,7 +149,7 @@ describe('técnico', () => {
   it('🔴 para o que quebrou, 🟡 para consentimento a vencer, 🔴 para vencido', () => {
     const t = montarTecnico({ saude: { ...saudeOk, worker_falhas_24h: 1 } as any, backup: backupOk as any, consentimentos: [{ banco: 'B1', responsavel: 'R', dias: 10 }, { banco: 'B2', responsavel: 'R', dias: -1 }] })!;
     expect(t).toBe([
-      '🛠️ *Aviso técnico*', '',
+      '🔴 *Aviso técnico* · Ingestão (worker): 1 rodada(s) com falha nas últimas 24h, e mais 2', '',
       '🔴 Ingestão (worker): 1 rodada(s) com falha nas últimas 24h',
       '🟡 Consentimento do B1 (R) na Pluggy vence em 10 dias',
       '🔴 Consentimento do B2 (R) na Pluggy venceu',
@@ -161,7 +164,8 @@ describe('técnico', () => {
     const t = montarTecnico({ saude: { ...saudeOk, conexoes: [{ banco: 'B1', responsavel: 'R', horas: 94.5 }, { banco: 'B2', responsavel: 'R', horas: 37 }] } as any, backup: backupOk as any, consentimentos: [] })!;
     expect(t).toContain('🔴 B1 (R): sem atualizar há 3 dias, abrir o Meu Pluggy e atualizar a conexão');
     expect(t).toContain('🔴 B2 (R): sem atualizar há 37 h, abrir o Meu Pluggy e atualizar a conexão');
-    expect(t.match(/B1/g)).toHaveLength(1);
+    // B1 aparece no título (19/10) e na linha dele
+    expect(t.match(/B1/g)).toHaveLength(2);
     expect(montarTecnico({ saude: { ...saudeOk, conexoes: [] } as any, backup: backupOk as any, consentimentos: [] })).toBeNull();
   });
   it('bot: falhas e modelo sumido viram linhas 🔴; zerado não aparece', () => {
@@ -181,7 +185,7 @@ describe('barra da trilha', () => {
 describe('semanal com dinheiro (E3)', () => {
   it('dinheiro na semana: linha 💵 logo depois do total', () => {
     const t = montarSemanal({ ...sem, totalDinheiro: 70 }, { gastos: 'G', trilha: 'T' });
-    expect(t.split('\n')[2]).toBe(`💵 dos quais ${brl(70)} em dinheiro vivo`);
+    expect(t.split('\n')[3]).toBe(`💵 dos quais ${brl(70)} em dinheiro vivo`);
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('dinheiro vivo');
   });
 });
@@ -213,8 +217,9 @@ describe('desafio do mês', () => {
     const l = t.split('\n');
     const i = l.findIndex((x) => x.startsWith('🧭'));
     expect(l.slice(i - 2, i)).toEqual([`🎯 Desafio de out/26: 🛒 Mercado em ${brl(675)} de ${brl(1350)} (50%)`, '']);
+    // 19/10: a bolinha vai para o começo da linha
     expect(montarSemanal({ ...sem, desafio: { ...novo, gasto: 1400, pct: 104 } }, { gastos: 'G', trilha: 'T' }))
-      .toContain(`🎯 Desafio de out/26: 🛒 Mercado em ${brl(1400)} de ${brl(1350)} (104%), passou da meta 🔴`);
+      .toContain(`🔴 Desafio de out/26: 🛒 Mercado em ${brl(1400)} de ${brl(1350)} (104%), passou da meta`);
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('🎯');
   });
 });
@@ -224,10 +229,11 @@ describe('meta de gastos', () => {
   const est = (gasto: number, previstoFim: number) => estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 15, diasNoMes: 30 });
   it('andamento: gasto de meta, por dia e onde fecha no ritmo (acima: 🔴 com quanto)', () => {
     expect(montarMeta({ mesLabel: 'out/26', estado: est(2000, 4300) }, 'L')).toBe([
+      `🟡 *Meta de gastos: o ritmo passa da meta* · fecha em ${brl(4300)}`,
       '🎯 *Meta de gastos em out/26*',
       `💸 ${brl(2000)} de ${brl(4000)} (50%), faltam 15 dias`,
       `🐢 Dá pra gastar ${brl(125)}/dia até o fim`,
-      `📈 No ritmo atual fecha em ${brl(4300)} 🔴 (${brl(300)} acima)`,
+      `🔴 No ritmo atual fecha em ${brl(4300)} (${brl(300)} acima)`,
       '', '👉 L',
     ].join('\n'));
   });
@@ -240,6 +246,7 @@ describe('meta de gastos', () => {
     const d = { mes: '2026-10', mesLabel: 'out/26', estado: est(3300, 4300), orcamento: [{ item: 'Mercado', emoji: '🛒', teto: 1000, gasto: 820 }] };
     const r = montarAlertasMeta(d, null, 'L');
     expect(r.texto).toBe([
+      '🟡 *Meta de gastos quase no limite* · 83% usados · e mais 2 avisos', '',
       `🟡 Já foram 80% da meta de gastos: ${brl(3300)} de ${brl(4000)}, faltam 15 dias`,
       `⚠️ No ritmo atual, os gastos de out/26 fecham em ${brl(4300)}: ${brl(300)} acima da meta. Dá pra gastar ${brl(43.75)}/dia até o fim`,
       `🛒 Mercado passou de 80% do teto: ${brl(820)} de ${brl(1000)}`,
@@ -250,5 +257,83 @@ describe('meta de gastos', () => {
     // 16/10: só teto do orçamento → o gráfico é o das barras, não a linha da meta
     expect(montarAlertasMeta({ ...d, estado: null }, null, 'L').temMeta).toBe(false);
     expect(montarAlertasMeta({ ...d, estado: est(4100, 4400) }, r.estado, 'L').texto).toContain(`🔴 Passaram da meta de gastos de out/26: ${brl(4100)} de ${brl(4000)}`);
+  });
+});
+
+// 19/10: toda mensagem abre com um título — bolinha do tom (🟢 bom, 🟡 atenção, 🔴 ruim) + assunto em negrito —
+// para a primeira linha da notificação já dizer do que se trata e se é bom ou ruim. Bolinha sempre no começo da
+// linha (no fim, o WhatsApp a jogava sozinha para a linha de baixo).
+describe('títulos (19/10)', () => {
+  const d = { mesLabel: 'out/26', fechaCom: 300, diasRestantes: 10, ritmoSeguroDia: 50, ritmoAtualDia: 80, sobraParaODiaADia: 550, contas: [] };
+  const primeira = (t: string | null) => (t ?? '').split('\n')[0];
+  it('diário: ritmo acima e nesse passo o mês fecha no vermelho; a média ainda fecha no azul', () => {
+    // nesse passo: 550 − 80 × 10 = −250 (mesma conta do N8)
+    expect(montarDiario(d, 'L')).toBe([
+      '🔴 *Ritmo acima do que cabe* · nesse passo out/26 fecha no vermelho',
+      '☀️ *Bom dia!*',
+      `💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`,
+      `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-250)}*`,
+      `🟢 Pela média dos outros meses, out/26 fecha em *${brl(300)}*`,
+      '', '👉 L',
+    ].join('\n'));
+  });
+  it('diário: ritmo acima mas ainda fecha no azul nesse passo: atenção', () => {
+    const t = montarDiario({ ...d, sobraParaODiaADia: 900 }, 'L');
+    expect(primeira(t)).toBe('🟡 *Ritmo acima do que cabe* · nesse passo ainda fecha no azul');
+    expect(t).toContain(`🟡 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(100)}*`);
+  });
+  it('diário: dentro do que cabe; mês no vermelho pela média manda no título; conta no negativo manda mais', () => {
+    const ok = montarDiario({ ...d, ritmoAtualDia: 40 }, 'L');
+    expect(primeira(ok)).toBe(`🟢 *Ritmo dentro do que cabe* · out/26 fecha em ${brl(300)}`);
+    expect(ok).toContain(`🟢 Ritmo de ${brl(40)}/dia, dentro do que cabe`);
+    expect(primeira(montarDiario({ ...d, fechaCom: -500 }, 'L'))).toBe(`🔴 *Mês no vermelho* · out/26 fecha em ${brl(-500)}`);
+    expect(primeira(montarDiario({ ...d, avisos: [{ tipo: 'negativo', banco: 'B1', responsavel: 'Ariane', valor: -42.5 }] }, 'L')))
+      .toBe('🔴 *Conta no negativo* · B1 (Ariane)');
+  });
+  it('diário: sem a sobra (painel antigo), a conta usa o que dá pra gastar × os dias', () => {
+    // 50 × 11 = 550 → nesse passo −250
+    const { sobraParaODiaADia, ...antigo } = d;
+    expect(montarDiario(antigo, 'L')).toContain(`nesse passo fecha em *${brl(-250)}*`);
+  });
+  it('diário: último dia do mês', () => {
+    expect(primeira(montarDiario({ ...d, diasRestantes: 0 }, 'L'))).toBe(`🟢 *Último dia do mês* · out/26 fecha em ${brl(300)}`);
+    expect(primeira(montarDiario({ ...d, diasRestantes: 0, fechaCom: -10 }, 'L'))).toBe(`🔴 *Último dia do mês* · out/26 fecha em ${brl(-10)}`);
+  });
+  it('semanal: abaixo, acima, sem média e sem gasto', () => {
+    expect(primeira(montarSemanal({ ...sem, total: 800 }, { gastos: 'G', trilha: 'T' }))).toBe('🟢 *Semana abaixo da média* · 20% a menos');
+    expect(primeira(montarSemanal(sem, { gastos: 'G', trilha: 'T' }))).toBe('🔴 *Semana acima da média* · 16% a mais');
+    expect(primeira(montarSemanal({ ...sem, mediaTotal: 0 }, { gastos: 'G', trilha: 'T' }))).toBe(`⚪ *Resumo da semana* · ${brl(1160)}`);
+    expect(primeira(montarSemanal({ ...sem, total: 0 }, { gastos: 'G', trilha: 'T' }))).toBe('🟢 *Semana sem gastos*');
+  });
+  it('meta: um título por situação', () => {
+    const m = (gasto: number, previstoFim: number) => primeira(montarMeta({ mesLabel: 'out/26', estado: estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 15, diasNoMes: 30 }) }, 'L'));
+    expect(m(2000, 3800)).toBe('🟢 *Meta de gastos dentro* · 50% usados');
+    expect(m(1500, 4300)).toBe(`🟡 *Meta de gastos: o ritmo passa da meta* · fecha em ${brl(4300)}`);
+    expect(m(3300, 3900)).toBe('🟡 *Meta de gastos quase no limite* · 83% usados');
+    expect(m(4100, 4600)).toBe(`🔴 *Meta de gastos estourada* · ${brl(100)} acima`);
+  });
+  it('alertas: o título é o aviso mais grave; os outros contam no detalhe', () => {
+    const est = (gasto: number, previstoFim: number) => estadoMeta({ meta: 4000, gasto, previstoFim, diaHoje: 15, diasNoMes: 30 });
+    const orc = (gasto: number) => [{ item: 'Mercado', emoji: '🛒', teto: 1000, gasto }];
+    const a = (e: any, o: any[]) => primeira(montarAlertasMeta({ mes: '2026-10', mesLabel: 'out/26', estado: e, orcamento: o }, null, 'L').texto);
+    expect(a(est(4100, 4600), orc(850))).toBe('🔴 *Meta de gastos estourada* · e mais 1 aviso');
+    expect(a(null, orc(1100))).toBe('🔴 *Teto estourado: Mercado*');
+    expect(a(est(3300, 3900), [])).toBe('🟡 *Meta de gastos quase no limite* · 83% usados');
+    expect(a(est(1500, 4300), [])).toBe('🟡 *Meta de gastos: o ritmo passa da meta*');
+    expect(a(null, orc(850))).toBe('🟡 *Teto quase no limite: Mercado*');
+  });
+  it('mensal: sobra ou falta', () => {
+    const r = { mes: '2026-09', mesLabel: 'set/26', sobraReal: 250, sobraPrevista: 100, saldoFim: 50,
+      trilha: { fase: 1, titulo: 'x', mudou: false, faseAntes: null }, mesNovo: { mesLabel: 'out/26', fechaCom: 10 } };
+    expect(primeira(montarMensal(r, 'L'))).toBe(`🟢 *set/26 fechou com sobra* · ${brl(250)}`);
+    expect(primeira(montarMensal({ ...r, sobraReal: -80 }, 'L'))).toBe(`🔴 *set/26 fechou no vermelho* · faltou ${brl(80)}`);
+  });
+  it('técnico: o primeiro problema no título, sem a instrução', () => {
+    const ok = { h_lancamentos: 5, h_investimentos: 5, h_faturas: 5, h_worker_ok: 5, worker_falhas_24h: 0, ultimo_lancamento: 'x' };
+    const bk = { h_desde_ok: 5, h_desde_n8n: 5, n8n_workflows: 19, h_desde_offsite: 5, tamanho: 1048576, tabelas: 30, falhas_24h: 0, ultimo_erro: null };
+    const t = montarTecnico({ saude: { ...ok, conexoes: [{ banco: 'Inter', responsavel: 'Matheus', horas: 80 }] }, backup: bk, consentimentos: [{ banco: 'Neon', responsavel: 'Ariane', dias: 5 }] });
+    expect(primeira(t)).toBe('🔴 *Aviso técnico* · Inter (Matheus): sem atualizar há 3 dias, e mais 1');
+    expect(primeira(montarTecnico({ saude: ok, backup: bk, consentimentos: [{ banco: 'Neon', responsavel: 'Ariane', dias: 5 }] })))
+      .toBe('🟡 *Aviso técnico* · Consentimento do Neon (Ariane) na Pluggy vence em 5 dias');
   });
 });

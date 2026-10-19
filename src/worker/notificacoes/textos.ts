@@ -8,6 +8,16 @@ export interface Montagem<E> { texto: string | null; estado: E }
 const brl = (v: unknown) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const clean = (s: unknown) => String(s ?? '').replace(/[*_`\[\]]/g, '');
 
+export type Tom = 'bom' | 'atencao' | 'ruim' | 'info';
+const BOLINHA: Record<Tom, string> = { bom: '🟢', atencao: '🟡', ruim: '🔴', info: '⚪' };
+/**
+ * 19/10: a primeira linha de toda mensagem do Zeca — a bolinha do tom e o assunto em negrito, para a notificação já
+ * dizer do que se trata e se é bom ou ruim. Bolinha sempre no começo (no fim da linha o WhatsApp a deixava sozinha).
+ */
+export function titulo(tom: Tom, assunto: string, detalhe?: string | null): string {
+  return `${BOLINHA[tom]} *${assunto}*${detalhe ? ` · ${detalhe}` : ''}`;
+}
+
 // ---------- Bot 12 — Ritmo do dia (lê /api/previsao do painel) ----------
 export interface PrevisaoApi {
   mesLabel: string; fechaCom: number; diasRestantes: number; ritmoSeguroDia: number; ritmoAtualDia: number;
@@ -65,8 +75,11 @@ export function montarGasto(txs: GastoGrande[], estado: { lastCriadoEm: string }
   // primeira execução: só define a marca, não alerta histórico
   if (!last || !novos.length) return { texto: null, estado: { lastCriadoEm: marca } };
   const linhas = novos.map((t) => `• ${brl(t.valor)} — ${clean(t.descricao)} (${t.banco}, ${t.responsavel}, ${t.data})`);
+  const topo = novos.length === 1
+    ? titulo('atencao', 'Gasto grande', `${brl(novos[0].valor)} no ${novos[0].banco} (${novos[0].responsavel})`)
+    : titulo('atencao', `${novos.length} gastos grandes`, `${brl(novos.reduce((s, t) => s + Number(t.valor), 0))} no total`);
   return {
-    texto: `💸 *Gasto acima de ${brl(LIMITE_GASTO)}*\n\n${linhas.join('\n')}\n\n_Se não reconhece, confira no app do banco._`,
+    texto: `${topo}\n💸 *Gasto acima de ${brl(LIMITE_GASTO)}*\n\n${linhas.join('\n')}\n\n_Se não reconhece, confira no app do banco._`,
     estado: { lastCriadoEm: marca },
   };
 }

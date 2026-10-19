@@ -50,8 +50,11 @@ describe('gasto grande', () => {
     const r1 = montarGasto([t('a', '2026-10-10T10:00:00')], null);
     expect(r1).toEqual({ texto: null, estado: { lastCriadoEm: '2026-10-10T10:00:00' } });
     const r2 = montarGasto([t('a', '2026-10-10T10:00:00'), t('b', '2026-10-11T09:00:00', 'LOJA *_`[x]')], r1.estado);
-    expect(r2.texto).toBe(`💸 *Gasto acima de ${brl(500)}*\n\n• ${brl(600)} — LOJA x (B, X, 10/10)\n\n_Se não reconhece, confira no app do banco._`);
+    // 19/10: título com o valor e o banco; com mais de um, quantos e o total
+    expect(r2.texto).toBe(`🟡 *Gasto grande* · ${brl(600)} no B (X)\n💸 *Gasto acima de ${brl(500)}*\n\n• ${brl(600)} — LOJA x (B, X, 10/10)\n\n_Se não reconhece, confira no app do banco._`);
     expect(r2.estado).toEqual({ lastCriadoEm: '2026-10-11T09:00:00' });
+    const r3 = montarGasto([t('c', '2026-10-12T09:00:00'), t('d', '2026-10-12T10:00:00')], r2.estado);
+    expect(r3.texto!.split('\n')[0]).toBe(`🟡 *2 gastos grandes* · ${brl(1200)} no total`);
     expect(montarGasto([], r2.estado)).toEqual({ texto: null, estado: r2.estado });
   });
 });

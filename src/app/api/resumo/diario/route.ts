@@ -21,6 +21,8 @@ export async function GET() {
   return NextResponse.json({
     mesLabel: p.mesLabel, fechaCom: p.fechaCom, diasRestantes: p.diasRestantes,
     ritmoSeguroDia: p.ritmoSeguroDia, ritmoAtualDia: p.ritmoAtualDia,
+    // 19/10: o "nesse passo fecha em" do diário (sobra − ritmo × dias, a conta do N8)
+    sobraParaODiaADia: p.sobraParaODiaADia,
     avisos: dadosAvisos ? avisosDoDia(dadosAvisos) : [],
     // N5: contas do caderno + faturas fechadas dos cartões dos dois, vencendo hoje/amanhã
     contas: [...contasDoDia(contas.itens, dia, diasNoMes(mes)), ...faturasDoDia(faturas, hoje, contas.itens)]

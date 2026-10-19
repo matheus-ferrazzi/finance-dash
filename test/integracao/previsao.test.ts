@@ -58,6 +58,42 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(base.faturaReal).toEqual({ '2026-08': 300 });
   });
 
+  it('N9: estorno de compra e desconto de antecipação abatem a fatura do vencimento; crédito de parcelamento não', async () => {
+    // medido contra financas_faturas_historico (18/10): fatura real = compras − estorno de compra;
+    // jul e ago/26 do Matheus fecharam iguais ao previsto mesmo com "Crédito de parcelamento" no ciclo
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista)
+      VALUES ('n9-c', '2041-03-03', 200, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2041-03-03', 'n9', '2041-04'),
+             ('n9-e', '2041-03-05', 20, 'Estorno de compra', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2041-03-05', 'n9', '2041-04'),
+             ('n9-q', '2041-03-06', 30, 'Crédito de "LOJA X"', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2041-03-06', 'n9', '2041-04'),
+             ('n9-d', '2041-03-07', 10, 'Desconto de antecipação', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2041-03-07', 'n9', '2041-04'),
+             ('n9-p', '2041-03-08', 500, 'Crédito de parcelamento', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2041-03-08', 'n9', '2041-04'),
+             ('n9-x', '2041-03-09', 999, 'CRED RENEG DIVIDA', 'Crédito', 'Bradesco', 'Matheus', 'estorno', 'Entrada', '2041-03-09', 'n9b', '2041-04')`);
+    const base = await queries.getProjecaoBase('casal', '2041-03-20');
+    expect(base.creditoPorVencimento['2041-04']).toBeCloseTo(140, 2);
+  });
+
+  it('N6/L3: cartão com compras faltando (Neon) põe na próxima fatura o limite usado que nenhuma compra explica', async () => {
+    // 4 faturas fechadas; em 2 delas o total passou das compras gravadas → cartão incompleto
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES
+      ('n6-1', 'n6', '2042-06-05', 100), ('n6-2', 'n6', '2042-07-05', 300), ('n6-3', 'n6', '2042-08-05', 250), ('n6-4', 'n6', '2042-09-05', 80),
+      ('n6c-1', 'n6c', '2042-08-10', 50), ('n6c-2', 'n6c', '2042-09-10', 60)`);
+    await pool.query(`INSERT INTO financas_faturas (id_conta, banco, responsavel, limite_total, limite_disponivel, valor_fatura_atual)
+      VALUES ('n6', 'Neon', 'Ariane', 500, 100, 400), ('n6c', 'Nubank', 'Ariane', 500, 400, 100)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_id)
+      VALUES ('n6-a', '2042-05-10', 100, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2042-05-10', 'n6', 'n6-1'),
+             ('n6-b', '2042-06-10', 90, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2042-06-10', 'n6', 'n6-2'),
+             ('n6-c', '2042-07-10', 80, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2042-07-10', 'n6', 'n6-3'),
+             ('n6-d', '2042-08-10', 80, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2042-08-10', 'n6', 'n6-4'),
+             ('n6c-a', '2042-07-15', 50, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-07-15', 'n6c', 'n6c-1'),
+             ('n6c-b', '2042-08-15', 60, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-08-15', 'n6c', 'n6c-2'),
+             ('n6c-c', '2042-09-15', 30, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-09-15', 'n6c', NULL)`);
+    const base = await queries.getProjecaoBase('casal', '2042-09-20');
+    // Neon: usado 400, nenhuma compra a vencer conhecida → 400 na fatura de out; Nubank (completo): só a compra de 30
+    expect(base.creditoPorVencimento['2042-10']).toBeCloseTo(430, 2);
+    const ari = await queries.getProjecaoBase('Matheus', '2042-09-20');
+    expect(ari.creditoPorVencimento['2042-10'] ?? 0).toBe(0);
+  });
+
   it('receita sem documento agrupa pela descrição sem dígitos e com espaços normalizados', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em)
       VALUES ('r1', '2026-05-05', 3000, 'PIX RECEBIDO  SILVA 0501', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '2026-05-05'),

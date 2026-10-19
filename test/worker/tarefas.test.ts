@@ -42,6 +42,18 @@ describe('transacoes', () => {
     expect(ex.contagens.pareadas).toBe(2);
   });
 
+  it('auditoria 18/10: cópia "só data" do pagamento do Nubank não vira linha e a que já estava no banco sai', async () => {
+    const c = ctx('real');
+    // 5 linhas boas + a seca: a remoção fica abaixo da trava de 20%
+    const boas = ['a', 'x1', 'x2', 'x3', 'x4'];
+    for (const id of [...boas, 'seca']) c.repo.banco.set(id, linhaBancoFake(id));
+    const pag = { description: 'Pagamento recebido', amount: -1234 };
+    c.pluggy.txs.set('acc-1', [...boas.map((id) => txFake(id)), txFake('seca', '2026-09-20', pag), txFake('hora', '2026-09-20', { ...pag, date: '2026-09-20T14:15:12.514Z' })]);
+    await TAREFAS.transacoes(c, {});
+    expect(c.repo.aplicado).toEqual([{ linhas: [...boas, 'hora'], remover: ['seca'] }]);
+    expect(c.repo.chamadas[0]).toBe('gravarCruas 7');
+  });
+
   it('não remove o que é mais antigo que o histórico que o banco expõe (Itaú só devolve 12 meses)', async () => {
     const c = ctx('real');
     // pedido de 24 meses, mas a Pluggy só tem transações a partir de 2025-10-15

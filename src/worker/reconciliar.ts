@@ -1,4 +1,5 @@
-import type { Lancamento } from './tipos';
+import { diaSP } from './linha';
+import type { Lancamento, PluggyTransacao } from './tipos';
 
 /** Os campos que o Finance 2.0 grava. A comparação do modo sombra é sobre eles. */
 export const CAMPOS_PARIDADE = [
@@ -58,4 +59,27 @@ export function planejarReconciliacao(
   const remover = idsCandidatos.filter((id) => !idsPluggy.has(id));
   if (remover.length > limiteFracao * idsCandidatos.length) return { remover: [], abortado: 'acima_do_limite' };
   return { remover, abortado: null };
+}
+
+const SO_DATA = /T0[03]:00:00(\.00\d)?Z$/;
+const PAGAMENTO = /^pagamento recebido/i;
+
+/**
+ * Auditoria 18/10: o Nubank manda cada pagamento de fatura duas vezes, com ids diferentes — uma cópia com a hora do
+ * pagamento e outra só com a data (03:00Z), as duas ainda devolvidas pela Pluggy (12 de 12 meses em abr–out/26, uma
+ * saída só no débito). Fica a cópia com hora; a seca sai, uma para cada cópia com hora do mesmo valor, texto e dia.
+ * Sem gêmeo com hora a seca fica (dois pagamentos iguais no mesmo dia continuam dois). Só pagamento: compra igual
+ * no mesmo dia é compra repetida de verdade (duas refeições iguais com 6 minutos de diferença).
+ */
+export function semGemeosDePagamento(txs: readonly PluggyTransacao[]): PluggyTransacao[] {
+  const chave = (t: PluggyTransacao) => `${t.amount}|${(t.description ?? '').trim().toLowerCase()}|${diaSP(t.date)}`;
+  const comHora = new Map<string, number>();
+  for (const t of txs) if (PAGAMENTO.test(t.description ?? '') && !SO_DATA.test(t.date)) comHora.set(chave(t), (comHora.get(chave(t)) ?? 0) + 1);
+  const tirar = new Set<string>();
+  for (const t of txs) {
+    if (!PAGAMENTO.test(t.description ?? '') || !SO_DATA.test(t.date)) continue;
+    const n = comHora.get(chave(t)) ?? 0;
+    if (n > 0) { tirar.add(t.id); comHora.set(chave(t), n - 1); }
+  }
+  return txs.filter((t) => !tirar.has(t.id));
 }

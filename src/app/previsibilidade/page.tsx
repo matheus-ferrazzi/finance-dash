@@ -8,7 +8,7 @@ import { Elo } from '../components/Elo';
 import { GraficoSaida } from '../components/GraficoSaida';
 import { brl, currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths, avisosDeCadastro, diasNoMes } from '@/lib/previsao';
-import { saiDoVermelho } from '@/lib/decisoes';
+import { mancheteSaida, saiDoVermelho } from '@/lib/decisoes';
 import { debitoParaSairAte, niveisMeta, projecaoComDebito, tabelaMeta } from '@/lib/meta';
 import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, notaVisaoIndividual, semPassadosSeFalhar } from '@/lib/mesAMes';
 import { ListaMeses } from '../components/ListaMeses';
@@ -41,6 +41,7 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   const ritmo = computeRitmo(base, projecao[0]);
   const linhas = linhasDaLista(projecao, passados, calib, ritmo.diasRestantes, diasNoMes(projecao[0].mes));
   const sai = saiDoVermelho(projecao, calib);
+  const manchete = mancheteSaida(sai, !!calib, passados.map((m) => ({ previsto: m.previsto.saldo, real: m.real.saldo })), HORIZONTE_MAX);
 
   // meta de gasto no débito: o que mais decide "quando saio do vermelho"
   const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
@@ -74,12 +75,18 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
       <div className="md:grid md:grid-cols-2 md:items-start md:gap-4">
         <div>
           {/* Onda 5: "Quando a gente sai do vermelho, e o que mudar pra isso?" */}
-          <CardResposta pergunta="Saindo do vermelho" dinheiro={false} tom={sai.provavel ? 'bom' : 'ruim'}
-            valor={sai.provavel ? `Sai em ${mesLabel(sai.provavel)}` : `Não sai em ${HORIZONTE_MAX} meses`}
+          <CardResposta pergunta="Saindo do vermelho" dinheiro={false} tom={manchete.tom} valor={manchete.valor}
             apoio={<>
               {textoMeta}
               {calib && sai.piorCaso !== sai.provavel && <> Pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai em ${HORIZONTE_MAX} meses`}.</>}
               {notaVisaoIndividual(resp) && <span className="mt-1 block text-[11px] text-faint">{notaVisaoIndividual(resp)}</span>}
+              {!calib && manchete.erro && (
+                <span className="mt-1 block text-[11px] text-muted">
+                  {manchete.erro.lado === 'misto'
+                    ? <>Nos últimos {manchete.erro.n} meses fechados, a previsão do mês errou em média <span className="money">{brl(manchete.erro.medio)}</span>, para os dois lados.</>
+                    : <>Nos últimos {manchete.erro.n} meses fechados, sobrou em média <span className="money">{brl(manchete.erro.medio)}</span> {manchete.erro.lado === 'pessimista' ? 'a mais' : 'a menos'} que o previsto{manchete.erro.lado === 'pessimista' ? ' (fatura parcelada também faz sobrar no mês e volta depois)' : ''}.</>}
+                </span>
+              )}
               {!calib && (
                 <span className="mt-1 block text-[11px] text-faint">
                   {motivo === 'visao_individual' ? 'Faixa de incerteza só na visão do casal.' : 'Sem faixa de incerteza: ela precisa de 6 meses da fase atual e de acertar entre 70% e 90% deles no teste contra o passado.'}

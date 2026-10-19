@@ -3,7 +3,7 @@ import {
   formaDoTipo, montarFatura, montarHistorico, montarInvestimento, montarSaldo,
 } from './montar';
 import type { PluggyApi } from './pluggy';
-import { contarDiferencas, planejarReconciliacao } from './reconciliar';
+import { contarDiferencas, planejarReconciliacao, semGemeosDePagamento } from './reconciliar';
 import type { Repo } from './repositorio';
 import { lerPrecosTesouro, precoDoTitulo, tituloDoNome } from './tesouro';
 import type { Conta, Execucao, Modo } from './tipos';
@@ -98,9 +98,12 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
     for (const c of contas) {
       try {
         const txs = await ctx.pluggy.transacoes(c.account_id, desde);
+        // auditoria 18/10: a cópia "só data" do pagamento de fatura do Nubank não vira linha; a que já está no banco
+        // sai pela reconciliação (vai para financas_lancamentos_removidos). A crua fica gravada como veio.
+        const uteis = semGemeosDePagamento(txs);
         // relidas a cada conta: uma regra salva no painel durante a execução vale já, e não é desfeita
         const regras = await ctx.repo.regrasPainel();
-        const linhas = txs.map((t) => montarLinha(t, c, docs, regras));
+        const linhas = uteis.map((t) => montarLinha(t, c, docs, regras));
         const banco = await ctx.repo.lancamentosDaConta(c, desde);
         const dif = contarDiferencas(banco, linhas);
         // Só é candidata a remoção a linha dentro do que a Pluggy de fato cobriu:
@@ -111,7 +114,7 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
         const candidatos = [...banco.values()]
           .filter((l) => String(l.data_lancamento) > desde && String(l.data_lancamento) >= maisAntiga)
           .map((l) => l.id_transacao);
-        const plano = planejarReconciliacao(new Set(txs.map((t) => t.id)), candidatos, opts.limite);
+        const plano = planejarReconciliacao(new Set(uteis.map((t) => t.id)), candidatos, opts.limite);
         if (ctx.modo !== 'dry-run') await ctx.repo.gravarCruas(txs);
         if (ctx.modo === 'real') await ctx.repo.aplicarConta(linhas, plano.remover);
         porConta[chave(c)] = { pluggy: txs.length, ...dif, remover: plano.remover.length, abortado: plano.abortado };

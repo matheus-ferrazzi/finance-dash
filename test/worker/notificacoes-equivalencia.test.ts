@@ -55,7 +55,8 @@ describe('paridade com o n8n', () => {
     ];
     for (const txs of rodadas) {
       const r = montarGasto(txs, estado);
-      expect(r.texto).toBe(o.rodar({ txs }));
+      // 19/10: o título (1ª linha) é do Zeca; o corpo segue igual ao do Bot 09
+      expect(r.texto === null ? null : r.texto.split('\n').slice(1).join('\n')).toBe(o.rodar({ txs }));
       estado = r.estado;
       expect(estado.lastCriadoEm).toBe(o.store.lastCriadoEm ?? '');
     }

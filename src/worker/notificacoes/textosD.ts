@@ -1,6 +1,6 @@
 // Mensagens do D (WhatsApp): diário, semanal e mensal no grupo do casal; técnico no privado do Matheus.
 // Tom contido, Markdown do WhatsApp (*negrito*), um emoji por linha (D2), link na última linha. Funções puras.
-import { linhasBackup, linhasSaude, titulo, type BackupDados, type SaudeDados } from './textos';
+import { emBlocos, linhasBackup, linhasSaude, titulo, type BackupDados, type Bloco, type SaudeDados } from './textos';
 import type { Aviso } from '../../lib/avisos';
 import type { Desafio } from '../../lib/desafio';
 import { mesLabel } from '../../lib/format';
@@ -96,7 +96,7 @@ function tituloDiario(r: ResumoDiario): string {
 }
 
 export function montarDiario(r: ResumoDiario, link: string): string {
-  const l = [tituloDiario(r), '☀️ *Bom dia!*'];
+  const l: Bloco[] = [tituloDiario(r), '☀️ *Bom dia!*'];
   if (r.diasRestantes > 0) {
     const acima = r.ritmoAtualDia > r.ritmoSeguroDia;
     const noPasso = fechaNoRitmo(r);
@@ -110,10 +110,10 @@ export function montarDiario(r: ResumoDiario, link: string): string {
     l.push(`💸 Último dia do mês: dá pra gastar *${brl(r.ritmoSeguroDia)}* hoje`);
     l.push(`${sinal(r.fechaCom)} ${r.mesLabel} fecha em *${brl(r.fechaCom)}*`);
   }
-  if (r.avisos?.length) l.push('', '⚠️ *Atenção*', ...r.avisos.map(linhaAviso));
-  if (r.contas.length) l.push('', ...r.contas.map((c) => `🧾 ${c.nome} (${brl(c.valor)}) vence ${c.quando}`));
-  l.push('', `👉 ${link}`);
-  return l.join('\n');
+  if (r.avisos?.length) l.push(['⚠️ *Atenção*', ...r.avisos.map(linhaAviso)]);
+  l.push(r.contas.map((c) => `🧾 ${c.nome} (${brl(c.valor)}) vence ${c.quando}`));
+  l.push(`👉 ${link}`);
+  return emBlocos(l);
 }
 
 export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha: string }): string {
@@ -124,24 +124,24 @@ export function montarSemanal(r: ResumoSemanal, links: { gastos: string; trilha:
     : r.mediaTotal > 0 && base !== r.mediaTotal
       ? (base > r.mediaTotal ? titulo('ruim', 'Semana acima da média', `${pctMedia}% a mais`) : titulo('bom', 'Semana abaixo da média', `${pctMedia}% a menos`))
       : titulo('info', 'Resumo da semana', brl(r.total));
-  const l = [topo, `📊 *Semana de ${ddmm(r.semana.inicio)} a ${ddmm(r.semana.fim)}*`];
-  if (r.total <= 0) l.push('💤 Nenhum gasto registrado na semana.');
-  else if (r.mediaTotal > 0 && base !== r.mediaTotal) {
-    const pct = Math.round((Math.abs(base - r.mediaTotal) / r.mediaTotal) * 100);
-    l.push(`💰 No dia a dia gastaram ${brl(r.total)}, ${base > r.mediaTotal ? `🔺 ${pct}% acima` : `🔻 ${pct}% abaixo`} da média`);
-  } else l.push(`💰 No dia a dia gastaram ${brl(r.total)}.`);
-  if ((r.totalDinheiro ?? 0) > 0) l.push(`💵 dos quais ${brl(r.totalDinheiro)} em dinheiro vivo`);
-  if (r.grupos.length) l.push('', ...r.grupos.map((g) => `${g.emoji} ${g.nome}: ${brl(g.semana)} ${seta(g.semana, g.media)} (média ${brl(g.media)})`));
+  const l: Bloco[] = [topo, `📊 *Semana de ${ddmm(r.semana.inicio)} a ${ddmm(r.semana.fim)}*`];
+  // o total e o "dos quais em dinheiro" são um bloco só
+  const total = r.total <= 0 ? '💤 Nenhum gasto registrado na semana.'
+    : r.mediaTotal > 0 && base !== r.mediaTotal
+      ? `💰 No dia a dia gastaram ${brl(r.total)}, ${base > r.mediaTotal ? `🔺 ${pctMedia}% acima` : `🔻 ${pctMedia}% abaixo`} da média`
+      : `💰 No dia a dia gastaram ${brl(r.total)}.`;
+  l.push([total, (r.totalDinheiro ?? 0) > 0 ? `💵 dos quais ${brl(r.totalDinheiro)} em dinheiro vivo` : '']);
+  l.push(r.grupos.map((g) => `${g.emoji} ${g.nome}: ${brl(g.semana)} ${seta(g.semana, g.media)} (média ${brl(g.media)})`));
   if ((r.faturas?.aPagar ?? 0) > 0) {
-    l.push('', `💳 Faturas a pagar: ${brl(r.faturas!.aPagar)}${r.faturas!.proximoVencimento ? ` (próximo vencimento ${r.faturas!.proximoVencimento})` : ''}`);
+    l.push(`💳 Faturas a pagar: ${brl(r.faturas!.aPagar)}${r.faturas!.proximoVencimento ? ` (próximo vencimento ${r.faturas!.proximoVencimento})` : ''}`);
   }
   const d = r.desafio;
   if (d) {
-    l.push('', `${d.gasto > d.meta ? '🔴' : '🎯'} Desafio de ${mesLabel(d.mes)}: ${d.emoji} ${d.grupo} em ${brl(d.gasto)} de ${brl(d.meta)} (${d.pct}%)${d.gasto > d.meta ? ', passou da meta' : ''}`);
+    l.push(`${d.gasto > d.meta ? '🔴' : '🎯'} Desafio de ${mesLabel(d.mes)}: ${d.emoji} ${d.grupo} em ${brl(d.gasto)} de ${brl(d.meta)} (${d.pct}%)${d.gasto > d.meta ? ', passou da meta' : ''}`);
   }
-  l.push('', `🧭 *Trilha* ${barraTrilha(r.trilha.fase)} fase ${r.trilha.fase}: ${r.trilha.titulo}`, `➡️ ${r.trilha.proximoPasso}`,
-    '', `👉 ${links.gastos}`, `👉 ${links.trilha}`);
-  return l.join('\n');
+  l.push([`🧭 *Trilha* ${barraTrilha(r.trilha.fase)} fase ${r.trilha.fase}: ${r.trilha.titulo}`, `➡️ ${r.trilha.proximoPasso}`]);
+  l.push([`👉 ${links.gastos}`, `👉 ${links.trilha}`]);
+  return emBlocos(l);
 }
 
 export function montarMensal(r: ResumoMensal, link: string): string {
@@ -165,18 +165,18 @@ export function montarMensal(r: ResumoMensal, link: string): string {
       : `😬 Desafio de ${mesLabel(a.mes)} não deu: ${a.grupo} ficou em ${brl(a.gasto)} (meta ${brl(a.meta)})`] : []),
     ...(n ? [`🎯 Desafio de ${mesLabel(n.mes)}: ${n.emoji} ${n.grupo} até ${brl(n.meta)} (a média é ${brl(n.media)})`] : []),
   ];
-  return [
+  return emBlocos([
     r.sobraReal >= 0
       ? titulo('bom', `${r.mesLabel} fechou com sobra`, brl(r.sobraReal))
       : titulo('ruim', `${r.mesLabel} fechou no vermelho`, `faltou ${brl(-r.sobraReal)}`),
     sobra,
     `${sinal(r.saldoFim)} Saldo em conta no fim: ${brl(r.saldoFim)}`,
-    ...linhaInv,
-    '', trilha,
-    '', `🔮 ${r.mesNovo.mesLabel} começa fechando em ${brl(r.mesNovo.fechaCom)}`,
-    ...(linhasDesafio.length ? ['', ...linhasDesafio] : []),
-    '', `👉 ${link}`,
-  ].join('\n');
+    linhaInv,
+    trilha,
+    `🔮 ${r.mesNovo.mesLabel} começa fechando em ${brl(r.mesNovo.fechaCom)}`,
+    linhasDesafio,
+    `👉 ${link}`,
+  ]);
 }
 
 /** Andamento da meta de gastos (débito + crédito; terça e sexta 9h). Sem meta (menos de 3 meses de dado): nada. */
@@ -187,7 +187,7 @@ export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, l
     : e.situacao === 'passou_80' ? titulo('atencao', 'Meta de gastos quase no limite', `${e.pct}% usados`)
       : e.situacao === 'ritmo_passa' ? titulo('atencao', 'Meta de gastos: o ritmo passa da meta', `fecha em ${brl(e.previstoFim)}`)
         : titulo('bom', 'Meta de gastos dentro', `${e.pct}% usados`);
-  const l = [topo, `🎯 *Meta de gastos em ${r.mesLabel}*`,
+  const l: Bloco[] = [topo, `🎯 *Meta de gastos em ${r.mesLabel}*`,
     `💸 ${brl(e.gasto)} de ${brl(e.meta)} (${e.pct}%), faltam ${e.diasRestantes} dia${e.diasRestantes === 1 ? '' : 's'}`];
   if (e.situacao === 'estourou') l.push(`🔴 Passaram da meta em ${brl(e.gasto - e.meta)}`);
   else {
@@ -196,8 +196,8 @@ export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, l
       ? `🔴 No ritmo atual fecha em ${brl(e.previstoFim)} (${brl(e.acimaNoRitmo)} acima)`
       : `✅ No ritmo atual fecha em ${brl(e.previstoFim)}, dentro da meta`);
   }
-  l.push('', `👉 ${link}`);
-  return l.join('\n');
+  l.push(`👉 ${link}`);
+  return emBlocos(l);
 }
 
 /**
@@ -220,7 +220,8 @@ export function montarAlertasMeta(
   // 16/10: com aviso da meta, o gráfico é a linha do mês; só teto do orçamento, as barras
   const temMeta = alertas.some((a) => a.tipo !== 'orcamento');
   if (!alertas.length) return { texto: null, estado: memoria, temMeta };
-  return { texto: [tituloAlertas(alertas), '', ...alertas.map(linha), '', `👉 ${link}`].join('\n'), estado: memoria, temMeta };
+  // cada aviso é um bloco (são assuntos diferentes: meta, ritmo, teto)
+  return { texto: emBlocos([tituloAlertas(alertas), ...alertas.map(linha), `👉 ${link}`]), estado: memoria, temMeta };
 }
 
 /** 19/10: o título é o aviso mais grave (estourou > teto estourado > 80% > ritmo > teto em 80%); os outros, contados. */
@@ -253,5 +254,5 @@ export function montarTecnico(d: DadosTecnico): string | null {
   const primeiro = linhas[0].replace(/^\S+\s/, '').split(', ')[0];
   const topo = titulo(linhas.some((x) => x.startsWith('🔴')) ? 'ruim' : 'atencao', 'Aviso técnico',
     `${primeiro}${linhas.length > 1 ? `, e mais ${linhas.length - 1}` : ''}`);
-  return [topo, '', ...linhas].join('\n');
+  return emBlocos([topo, linhas]);
 }

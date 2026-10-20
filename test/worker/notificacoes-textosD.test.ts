@@ -7,16 +7,17 @@ const dia = { mesLabel: 'out/26', fechaCom: -500, diasRestantes: 10, ritmoSeguro
 
 describe('diário', () => {
   it('acima do que cabe, fecha no vermelho, conta e link', () => {
-    // 19/10: título; a bolinha no começo; "nesse passo" (50 × 11 − 80 × 10 = −250) e "pela média", cada um com a base
+    // 19/10: título; a bolinha no começo; "nesse passo" (50 × 11 − 80 × 10 = −250) e "pela média", cada um com a base.
+    // 20/10: em blocos, com uma linha em branco entre eles
     expect(montarDiario(dia, 'https://painel/')).toBe([
       `🔴 *Mês no vermelho* · out/26 fecha em ${brl(-500)}`,
       '☀️ *Bom dia!*',
       `💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`,
       `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-250)}*`,
       `🔴 Pela média dos outros meses, out/26 fecha em *${brl(-500)}*`,
-      '', `🧾 Luz (${brl(120)}) vence hoje`,
-      '', '👉 https://painel/',
-    ].join('\n'));
+      `🧾 Luz (${brl(120)}) vence hoje`,
+      '👉 https://painel/',
+    ].join('\n\n'));
   });
   it('dentro do que cabe e fecha no azul; sem contas a parte some', () => {
     const t = montarDiario({ ...dia, ritmoAtualDia: 40, fechaCom: 300, contas: [] }, 'L');
@@ -26,7 +27,7 @@ describe('diário', () => {
   });
   it('último dia do mês: o que dá pra gastar hoje (N11: era sempre 0) e como fecha; sem ritmo', () => {
     const u = montarDiario({ ...dia, diasRestantes: 0, contas: [] }, 'L');
-    expect(u).toBe([`🔴 *Último dia do mês* · out/26 fecha em ${brl(-500)}`, '☀️ *Bom dia!*', `💸 Último dia do mês: dá pra gastar *${brl(50)}* hoje`, `🔴 out/26 fecha em *${brl(-500)}*`, '', '👉 L'].join('\n'));
+    expect(u).toBe([`🔴 *Último dia do mês* · out/26 fecha em ${brl(-500)}`, '☀️ *Bom dia!*', `💸 Último dia do mês: dá pra gastar *${brl(50)}* hoje`, `🔴 out/26 fecha em *${brl(-500)}*`, '👉 L'].join('\n\n'));
   });
   it('Onda 2: avisos por exceção numa seção própria, depois do fecha-em e antes das contas', () => {
     const t = montarDiario({ ...dia, avisos: [
@@ -63,19 +64,17 @@ const sem = {
 
 describe('semanal', () => {
   it('total com % sobre a média, setas por grupo, trilha com barrinha e links', () => {
+    // 20/10: em blocos; os grupos, a trilha com o próximo passo e os dois links ficam juntos
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).toBe([
       '🔴 *Semana acima da média* · 16% a mais',
       '📊 *Semana de 05/10 a 11/10*',
       `💰 No dia a dia gastaram ${brl(1160)}, 🔺 16% acima da média`,
-      '',
-      `🛒 Mercado: ${brl(0)} ⏬ (média ${brl(500)})`,
-      `💊 Saúde: ${brl(400)} ⏫ (média ${brl(150)})`,
-      `🎮 Lazer: ${brl(300)} ⬆️ (média ${brl(250)})`,
-      '',
-      '🧭 *Trilha* ▰▱▱▱ fase 1: Sair das dívidas',
-      '➡️ Pagar a fatura inteira.',
-      '', '👉 G', '👉 T',
-    ].join('\n'));
+      [`🛒 Mercado: ${brl(0)} ⏬ (média ${brl(500)})`,
+        `💊 Saúde: ${brl(400)} ⏫ (média ${brl(150)})`,
+        `🎮 Lazer: ${brl(300)} ⬆️ (média ${brl(250)})`].join('\n'),
+      '🧭 *Trilha* ▰▱▱▱ fase 1: Sair das dívidas\n➡️ Pagar a fatura inteira.',
+      '👉 G\n👉 T',
+    ].join('\n\n'));
   });
   it('abaixo da média e seta ⬇️ quando cai menos da metade', () => {
     const t = montarSemanal({ ...sem, total: 800, grupos: [{ nome: 'Mercado', emoji: '🛒', semana: 400, media: 500 }] }, { gastos: 'G', trilha: 'T' });
@@ -116,12 +115,10 @@ describe('mensal', () => {
       `🟢 *set/26 fechou com sobra* · ${brl(300.5)}`,
       `🟢 Sobrou ${brl(300.5)} (previsto ${brl(-1300.25)})`,
       `🔴 Saldo em conta no fim: ${brl(-1200.75)}`,
-      '',
       '🧭 *Trilha* ▰▱▱▱ seguem na fase 1: Sair das dívidas',
-      '',
       `🔮 out/26 começa fechando em ${brl(-1700.4)}`,
-      '', '👉 L',
-    ].join('\n'));
+      '👉 L',
+    ].join('\n\n'));
   });
   it('S6: investimentos — total e o que aplicou (ou resgatou) no mês, antes da trilha', () => {
     const t = montarMensal({ ...mes, investimentos: { total: 2000, aplicadoNoMes: -400 } }, 'L');
@@ -185,7 +182,8 @@ describe('barra da trilha', () => {
 describe('semanal com dinheiro (E3)', () => {
   it('dinheiro na semana: linha 💵 logo depois do total', () => {
     const t = montarSemanal({ ...sem, totalDinheiro: 70 }, { gastos: 'G', trilha: 'T' });
-    expect(t.split('\n')[3]).toBe(`💵 dos quais ${brl(70)} em dinheiro vivo`);
+    // 20/10: no mesmo bloco do total, logo abaixo dele
+    expect(t).toContain(`da média\n💵 dos quais ${brl(70)} em dinheiro vivo`);
     expect(montarSemanal(sem, { gastos: 'G', trilha: 'T' })).not.toContain('dinheiro vivo');
   });
 });
@@ -234,8 +232,8 @@ describe('meta de gastos', () => {
       `💸 ${brl(2000)} de ${brl(4000)} (50%), faltam 15 dias`,
       `🐢 Dá pra gastar ${brl(125)}/dia até o fim`,
       `🔴 No ritmo atual fecha em ${brl(4300)} (${brl(300)} acima)`,
-      '', '👉 L',
-    ].join('\n'));
+      '👉 L',
+    ].join('\n\n'));
   });
   it('dentro do ritmo: ✅; estourou: 🔴 quanto passou; sem meta: nada', () => {
     expect(montarMeta({ mesLabel: 'out/26', estado: est(2000, 3800) }, 'L')).toContain(`✅ No ritmo atual fecha em ${brl(3800)}, dentro da meta`);
@@ -246,12 +244,12 @@ describe('meta de gastos', () => {
     const d = { mes: '2026-10', mesLabel: 'out/26', estado: est(3300, 4300), orcamento: [{ item: 'Mercado', emoji: '🛒', teto: 1000, gasto: 820 }] };
     const r = montarAlertasMeta(d, null, 'L');
     expect(r.texto).toBe([
-      '🟡 *Meta de gastos quase no limite* · 83% usados · e mais 2 avisos', '',
+      '🟡 *Meta de gastos quase no limite* · 83% usados · e mais 2 avisos',
       `🟡 Já foram 80% da meta de gastos: ${brl(3300)} de ${brl(4000)}, faltam 15 dias`,
       `⚠️ No ritmo atual, os gastos de out/26 fecham em ${brl(4300)}: ${brl(300)} acima da meta. Dá pra gastar ${brl(43.75)}/dia até o fim`,
       `🛒 Mercado passou de 80% do teto: ${brl(820)} de ${brl(1000)}`,
-      '', '👉 L',
-    ].join('\n'));
+      '👉 L',
+    ].join('\n\n'));
     expect(r.temMeta).toBe(true);
     expect(montarAlertasMeta(d, r.estado, 'L')).toEqual({ texto: null, estado: r.estado, temMeta: false });
     // 16/10: só teto do orçamento → o gráfico é o das barras, não a linha da meta
@@ -274,8 +272,8 @@ describe('títulos (19/10)', () => {
       `💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`,
       `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-250)}*`,
       `🟢 Pela média dos outros meses, out/26 fecha em *${brl(300)}*`,
-      '', '👉 L',
-    ].join('\n'));
+      '👉 L',
+    ].join('\n\n'));
   });
   it('diário: ritmo acima mas ainda fecha no azul nesse passo: atenção', () => {
     const t = montarDiario({ ...d, sobraParaODiaADia: 900 }, 'L');

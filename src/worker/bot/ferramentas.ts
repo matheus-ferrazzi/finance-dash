@@ -78,6 +78,8 @@ export function formatar(nome: string, d: any, painel: string): string {
       l.push(`💰 Gasto em ${d.periodo} (${quem(d.pessoa)}${d.grupo ? `, ${d.grupo}` : ''}): *${brl(d.total)}*${d.totalDinheiro > 0 ? ` (💵 ${brl(d.totalDinheiro)})` : ''}`);
       for (const i of d.itens.slice(0, 6)) l.push(`• ${i.nome}: ${brl(i.valor)}${i.dinheiro > 0 ? ` (💵 ${brl(i.dinheiro)})` : ''}`);
       if (!d.itens.length) l.push('💤 Nenhum gasto no período.');
+      // 20/10 (L2): a dívida antiga não entra no total; o Zeca diz quanto foi, à parte
+      if (d.divida > 0) l.push(`🏦 Fora do total: ${brl(d.divida)} pagando dívida antiga`);
       break;
     case 'maiores_gastos':
       l.push(`🧾 Maiores gastos em ${d.periodo} (${quem(d.pessoa)}${d.grupo ? `, ${d.grupo}` : ''})`);

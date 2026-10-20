@@ -2,6 +2,7 @@
 import type { CatGroup } from '../app/components/CategoryAccordion';
 import { categoriaNoFiltro, grupoDaCategoria } from './grupos';
 import { seta } from './seta';
+import { ehAtraso, ehDivida } from './trilha';
 
 export type LancGasto = {
   id: string; data: string; valor: number; descricao: string; categoria: string; banco: string; responsavel: string;
@@ -16,6 +17,17 @@ const soma = (ls: LancGasto[]) => r2(ls.reduce((s, x) => s + x.valor, 0));
 export const diaADia = (ls: LancGasto[]) =>
   soma(ls.filter((x) => !x.dinheiroId && x.forma === 'Débito' && categoriaNoFiltro(x.categoria, { tipo: 'livre' })));
 export const noCredito = (ls: LancGasto[]) => soma(ls.filter((x) => x.forma === 'Crédito'));
+
+/**
+ * 20/10 (L2, decisão do Matheus): a dívida antiga (renegociação, parcelamento de fatura, empréstimo, juros e encargos
+ * de atraso) sai do total de Gastos e da Visão geral — a mesma regra da meta (ehDivida/ehAtraso, das mesmas listas do
+ * DIVIDA_ANTIGA em SQL) — e aparece à parte. A categoria já chega efetiva (getDespesas).
+ */
+export function separarDivida<T extends { descricao: string; categoria: string; valor: number }>(ls: readonly T[]) {
+  const consumo: T[] = [], divida: T[] = [];
+  for (const x of ls) (ehDivida(x.descricao, x.categoria) || ehAtraso(x.descricao, x.categoria) ? divida : consumo).push(x);
+  return { consumo, divida, totalDivida: r2(divida.reduce((s, x) => s + x.valor, 0)) };
+}
 // o pg entrega a coluna date como Date (meia-noite local), apesar do tipo dizer string: aceita os dois
 const diaDoLancamento = (d: string | Date) => (typeof d === 'string' ? Number(d.slice(8, 10)) : d.getDate());
 export const ateODia = (ls: LancGasto[], dia: number) => ls.filter((x) => diaDoLancamento(x.data) <= dia);

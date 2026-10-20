@@ -6,7 +6,7 @@ import {
 } from './trilha';
 import { debitoParaSairAte, textoMetaAlvo } from './meta';
 import { estadoMeta, metaDaMedia, previstoFimGastos } from './metaMes';
-import { CARTAO_SEM_FATURA, CASA_CATS, FIXO_META, GASTO_META, PARCELA, SEM_ESPELHO, SO_ESPELHO_REAL, VALOR_GASTO } from './recorteGasto';
+import { CARTAO_SEM_FATURA, CASA_CATS, DIVIDA_ANTIGA, FIXO_META, GASTO_META, PARCELA, SEM_ESPELHO, SO_ESPELHO_REAL, VALOR_GASTO } from './recorteGasto';
 export { CASA_CATS } from './recorteGasto';
 import { categoriaEfetiva, nomeSemDocumento, normalizarTexto, recalcular, sugerirTexto, type Origem, type RegraPainel, type TipoRegra } from './categoriaPainel';
 import { detectarAssinaturas, type Assinatura } from './assinaturas';
@@ -1802,17 +1802,31 @@ export async function listarAjustesTrilha(): Promise<AjustesTrilha> {
 
 // ==================== RESUMOS DO D ====================
 
-/** Gasto do casal por categoria (efetiva) num intervalo [inicio, fimExcl). */
+/**
+ * Gasto do casal por categoria (efetiva) num intervalo [inicio, fimExcl). 20/10 (L2): sem a dívida antiga — o Nubank
+ * antecipa as parcelas do plano velho como despesa e o plano novo também é: contava a mesma dívida duas vezes.
+ */
 export async function getGastoPorCategoriaEntre(inicio: string, fimExcl: string, resp: Resp = 'casal'): Promise<Map<string, number>> {
   const r = rf(resp, 3);
   const rows = await q<any>(
     `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS cat, SUM(valor)::float8 AS v
      FROM financas_lancamentos
-     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}
+     WHERE classe = 'despesa' AND NOT ${DIVIDA_ANTIGA} AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}
      GROUP BY 1`,
     [inicio, fimExcl, ...r.p],
   );
   return new Map(rows.map((x) => [x.cat as string, Math.round(Number(x.v) * 100) / 100]));
+}
+
+/** 20/10 (L2): a dívida antiga paga no intervalo — mostrada à parte, fora do total de gasto. */
+export async function getDividaEntre(inicio: string, fimExcl: string, resp: Resp = 'casal'): Promise<number> {
+  const r = rf(resp, 3);
+  const [x] = await q<any>(
+    `SELECT COALESCE(SUM(valor), 0)::float8 AS v FROM financas_lancamentos
+     WHERE classe = 'despesa' AND ${DIVIDA_ANTIGA} AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}`,
+    [inicio, fimExcl, ...r.p],
+  );
+  return Math.round(Number(x.v) * 100) / 100;
 }
 
 /** Gasto livre por dia do mês de `hoje`, até `hoje` (o mesmo filtro do variavelJaGasto: débito, fora casa e fixos). */
@@ -1839,7 +1853,7 @@ export async function getMaioresGastos(resp: Resp, inicio: string, fimExcl: stri
     `SELECT to_char(data_lancamento,'DD/MM') AS data, valor::float8 AS valor, COALESCE(descricao,'(sem descrição)') AS descricao,
             COALESCE(responsavel,'—') AS pessoa, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria
      FROM financas_lancamentos
-     WHERE classe = 'despesa' AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}
+     WHERE classe = 'despesa' AND NOT ${DIVIDA_ANTIGA} AND data_lancamento >= $1::date AND data_lancamento < $2::date${r.sql}
      ORDER BY valor DESC, data_lancamento`,
     [inicio, fimExcl, ...r.p],
   );

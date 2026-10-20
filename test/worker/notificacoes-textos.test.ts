@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude } from '../../src/worker/notificacoes/textos';
+import { emBlocos, montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude } from '../../src/worker/notificacoes/textos';
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -51,7 +51,7 @@ describe('gasto grande', () => {
     expect(r1).toEqual({ texto: null, estado: { lastCriadoEm: '2026-10-10T10:00:00' } });
     const r2 = montarGasto([t('a', '2026-10-10T10:00:00'), t('b', '2026-10-11T09:00:00', 'LOJA *_`[x]')], r1.estado);
     // 19/10: título com o valor e o banco; com mais de um, quantos e o total
-    expect(r2.texto).toBe(`🟡 *Gasto grande* · ${brl(600)} no B (X)\n💸 *Gasto acima de ${brl(500)}*\n\n• ${brl(600)} — LOJA x (B, X, 10/10)\n\n_Se não reconhece, confira no app do banco._`);
+    expect(r2.texto).toBe(`🟡 *Gasto grande* · ${brl(600)} no B (X)\n\n💸 *Gasto acima de ${brl(500)}*\n\n• ${brl(600)} — LOJA x (B, X, 10/10)\n\n_Se não reconhece, confira no app do banco._`);
     expect(r2.estado).toEqual({ lastCriadoEm: '2026-10-11T09:00:00' });
     const r3 = montarGasto([t('c', '2026-10-12T09:00:00'), t('d', '2026-10-12T10:00:00')], r2.estado);
     expect(r3.texto!.split('\n')[0]).toBe(`🟡 *2 gastos grandes* · ${brl(1200)} no total`);
@@ -83,5 +83,12 @@ describe('backup', () => {
     expect(t).toContain('• Postgres (os dados): ultimo OK nunca');
     expect(t).toContain('• 1 falha(s) em 24h — ultima: disco cheio');
     expect(t).toContain('Ultimo bom: 2.00 MB / 30 tabelas, 20 workflows.');
+  });
+});
+
+// 20/10: mensagem em blocos (pedido do Matheus): linha em branco entre os blocos; lista junta; vazio some
+describe('emBlocos', () => {
+  it('texto solto é um bloco; lista fica junta; vazio, nulo e lista vazia somem', () => {
+    expect(emBlocos(['A', ['b1', 'b2'], null, [], '', false, ['', 'c'], 'D'])).toBe('A\n\nb1\nb2\n\nc\n\nD');
   });
 });

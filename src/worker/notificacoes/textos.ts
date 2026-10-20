@@ -18,6 +18,18 @@ export function titulo(tom: Tom, assunto: string, detalhe?: string | null): stri
   return `${BOLINHA[tom]} *${assunto}*${detalhe ? ` · ${detalhe}` : ''}`;
 }
 
+export type Bloco = string | readonly string[] | null | undefined | false;
+/**
+ * 20/10: a mensagem em blocos, com uma linha em branco entre eles (pedido do Matheus: mais organizado). Texto solto é
+ * um bloco de uma linha; lista (grupos da semana, contas, avisos, links) fica junta num bloco só. Vazio some.
+ */
+export function emBlocos(blocos: readonly Bloco[]): string {
+  return blocos
+    .map((b) => (typeof b === 'string' ? b : b ? b.filter(Boolean).join('\n') : ''))
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 // ---------- Bot 12 — Ritmo do dia (lê /api/previsao do painel) ----------
 export interface PrevisaoApi {
   mesLabel: string; fechaCom: number; diasRestantes: number; ritmoSeguroDia: number; ritmoAtualDia: number;
@@ -79,7 +91,7 @@ export function montarGasto(txs: GastoGrande[], estado: { lastCriadoEm: string }
     ? titulo('atencao', 'Gasto grande', `${brl(novos[0].valor)} no ${novos[0].banco} (${novos[0].responsavel})`)
     : titulo('atencao', `${novos.length} gastos grandes`, `${brl(novos.reduce((s, t) => s + Number(t.valor), 0))} no total`);
   return {
-    texto: `${topo}\n💸 *Gasto acima de ${brl(LIMITE_GASTO)}*\n\n${linhas.join('\n')}\n\n_Se não reconhece, confira no app do banco._`,
+    texto: `${topo}\n\n💸 *Gasto acima de ${brl(LIMITE_GASTO)}*\n\n${linhas.join('\n')}\n\n_Se não reconhece, confira no app do banco._`,
     estado: { lastCriadoEm: marca },
   };
 }

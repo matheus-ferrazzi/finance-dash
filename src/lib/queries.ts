@@ -229,8 +229,8 @@ export interface Fatura {
 }
 /**
  * Cartões com a última fatura fechada (N4, auditoria 13/10). Uma função para tela, home, bot e lembrete:
- * pago = pagamentos que o próprio cartão registrou desde 10 dias antes do vencimento (data+valor sem repetir:
- * o Nubank grava o mesmo pagamento 2×); parcelado = "Crédito de parcelamento" na mesma janela.
+ * pago = pagamentos que o próprio cartão registrou desde 10 dias antes do vencimento (19/10: cada linha conta —
+ * a cópia do Nubank sai na ingestão desde o #42); parcelado = "Crédito de parcelamento" na mesma janela.
  */
 export async function getFaturas(resp: Resp, hoje: string = currentDateSP()): Promise<Fatura[]> {
   const r = rf(resp, 2);
@@ -239,9 +239,9 @@ export async function getFaturas(resp: Resp, hoje: string = currentDateSP()): Pr
             COALESCE(f.valor_fatura_atual,0)::float8 AS usado, COALESCE(f.limite_total,0)::float8 AS limite,
             COALESCE(f.limite_disponivel,0)::float8 AS disponivel, to_char(f.data_fechamento,'YYYY-MM-DD') AS fechamento,
             to_char(h.vencimento,'YYYY-MM-DD') AS venc, h.total::float8 AS total,
-            (SELECT COALESCE(SUM(p.valor),0)::float8 FROM (SELECT DISTINCT l.data_lancamento, l.valor FROM financas_lancamentos l
+            (SELECT COALESCE(SUM(l.valor),0)::float8 FROM financas_lancamentos l
                WHERE l.account_id = f.id_conta AND l.forma_pagamento = 'Crédito' AND l.classe = 'pagamento_fatura'
-                 AND l.tipo_movimento = 'Entrada' AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) p) AS pago,
+                 AND l.tipo_movimento = 'Entrada' AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) AS pago,
             (SELECT COALESCE(SUM(l.valor),0)::float8 FROM financas_lancamentos l
                WHERE l.account_id = f.id_conta AND l.forma_pagamento = 'Crédito' AND l.tipo_movimento = 'Entrada'
                  AND l.descricao ILIKE '%parcelamento%' AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) AS parcelado
@@ -1159,14 +1159,13 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
 
   // N3: fatura do mês em andamento, por cartão. Vencida = já não sai (o que faltou virou parcelamento
   // ou rotativo e aparece nas próximas faturas); a vencer = total − o que o próprio cartão registrou
-  // como pagamento desde ~10 dias antes do vencimento (o Nubank grava o mesmo pagamento 2×: data+valor conta 1×).
+  // como pagamento desde ~10 dias antes do vencimento (19/10: cada linha conta; a cópia do Nubank sai na ingestão).
   const restRows = await q<any>(
     `SELECT h.account_id, to_char(h.vencimento, 'YYYY-MM-DD') AS venc, h.total::float8 AS total,
-            (SELECT COALESCE(SUM(p.valor), 0)::float8 FROM (
-               SELECT DISTINCT l.data_lancamento, l.valor FROM financas_lancamentos l
+            (SELECT COALESCE(SUM(l.valor), 0)::float8 FROM financas_lancamentos l
                 WHERE l.account_id = h.account_id AND l.forma_pagamento = 'Crédito'
                   AND l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Entrada'
-                  AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) p) AS pago
+                  AND l.data_lancamento >= h.vencimento - 10 AND l.data_lancamento <= $1::date) AS pago
        FROM financas_faturas_historico h LEFT JOIN pluggy_contas c ON c.account_id = h.account_id
       WHERE date_trunc('month', h.vencimento) = date_trunc('month', $1::date)${filtroResp}`,
     resp === 'casal' ? [hoje] : [hoje, resp],

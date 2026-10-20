@@ -320,8 +320,9 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista) VALUES
       ('n3-4', '2044-05-26', 120, 'Parcelamento de Fatura', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Saída', '2044-05-02', 'n3-cartao-a', '2044-06')`);
     const b = await queries.getProjecaoBase('casal', '2044-05-16');
-    // cartão A venceu em 02/05 (o resto foi parcelado): 0; cartão B: 800 − 300 (uma vez só)
-    expect(b.mesCorrente.faturaRestante).toBe(500);
+    // cartão A venceu em 02/05 (o resto foi parcelado): 0; cartão B: 800 − 300 − 300. 19/10: dois pagamentos iguais
+    // no mesmo dia são dois — a cópia "só data" do Nubank já sai na ingestão (semGemeosDePagamento, #42)
+    expect(b.mesCorrente.faturaRestante).toBe(200);
     // a parcela do parcelamento de fatura vence com a fatura de junho
     expect(b.creditoPorVencimento['2044-06']).toBeCloseTo(120, 2);
     // mês sem nenhuma fatura no histórico: indefinido (a previsão volta à conta antiga)
@@ -338,7 +339,6 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('n4-h3', 'n4-neon', '2047-10-05', 170)`);
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id) VALUES
       ('n4-1', '2047-10-02', 200, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2047-10-02', 'n4-nu'),
-      ('n4-2', '2047-10-02', 200, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2047-10-02', 'n4-nu'),
       ('n4-3', '2047-10-02', 280, 'Crédito de parcelamento', 'Credit card payment', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2047-10-02', 'n4-nu'),
       ('n4-4', '2047-10-02', 170, 'Pagamento Fatura', 'Credit card payment', 'Crédito', 'Neon', 'Ariane', 'pagamento_fatura', 'Entrada', '2047-10-02', 'n4-neon')`);
     const fs = await queries.getFaturas('casal', '2047-10-13');
@@ -348,6 +348,14 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(fs.find((f) => f.id === 'n4-sem')!.ultima).toBeNull();
     // filtro por pessoa
     expect((await queries.getFaturas('Matheus', '2047-10-13')).map((f) => f.id)).toEqual(['n4-sem']);
+    // 19/10: dois pagamentos iguais no mesmo dia são dois (a cópia do Nubank sai na ingestão)
+    await pool.query(`INSERT INTO financas_faturas (id_conta, banco, responsavel, limite_total, limite_disponivel, valor_fatura_atual, data_vencimento) VALUES
+      ('n4-dois', 'Nubank', 'Matheus', 900, 900, 0, '2047-10-02')`);
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES ('n4-h4', 'n4-dois', '2047-10-02', 500)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id) VALUES
+      ('n4-5', '2047-10-01', 250, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'Nubank', 'Matheus', 'pagamento_fatura', 'Entrada', '2047-10-01', 'n4-dois'),
+      ('n4-6', '2047-10-01', 250, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'Nubank', 'Matheus', 'pagamento_fatura', 'Entrada', '2047-10-01', 'n4-dois')`);
+    expect((await queries.getFaturas('Matheus', '2047-10-13')).find((f) => f.id === 'n4-dois')!.ultima).toMatchObject({ pago: 500, situacao: 'paga' });
   });
 
   it('N9: compromissos parcelados separam os planos da mesma dívida; parcela atual vem do campo', async () => {

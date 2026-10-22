@@ -156,6 +156,7 @@ export async function getSerie(resp: Resp, per: Periodo, meses = 6): Promise<Ser
 
 export interface OrcItem { item: string; emoji: string; teto: number; gasto: number; categorias: string[]; }
 
+/** N7/M3 (22/10): o gasto de cada teto pela categoria efetiva (regras do casal), como Gastos e a lista do cartão. */
 export async function getOrcamento(resp: Resp, per: Periodo): Promise<OrcItem[]> {
   const r = rf(resp, 2);
   const rows = await q<any>(
@@ -165,7 +166,7 @@ export async function getOrcamento(resp: Resp, per: Periodo): Promise<OrcItem[]>
               WHERE l.classe='despesa'
                 AND l.data_lancamento >= $1::date AND l.data_lancamento < (date_trunc('month',$1::date) + interval '1 month')
                 AND l.data_lancamento <= ${HOJE}
-                AND l.categoria = ANY(o.categorias)${r.sql.replace('responsavel', 'l.responsavel')}
+                AND categoria_efetiva(l.descricao, l.categoria, l.contraparte_doc) = ANY(o.categorias)${r.sql.replace('responsavel', 'l.responsavel')}
             ),0) AS gasto
      FROM financas_orcamento o WHERE o.ativo = true ORDER BY o.item`,
     [`${per.mesAnchor}-01`, ...r.p],
@@ -848,7 +849,7 @@ export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{
   const rows = await q<any>(
     `SELECT o.item, COALESCE(o.emoji, '') AS emoji, o.teto::float8 AS teto, COALESCE(SUM(l.valor), 0)::float8 AS gasto
        FROM financas_orcamento o
-       LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND l.categoria = ANY(o.categorias)
+       LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND categoria_efetiva(l.descricao, l.categoria, l.contraparte_doc) = ANY(o.categorias)
             AND l.data_lancamento >= $1::date AND l.data_lancamento <= $2::date
       WHERE o.ativo = true GROUP BY 1, 2, 3 ORDER BY 1`,
     [`${hoje.slice(0, 7)}-01`, hoje],
@@ -1914,7 +1915,7 @@ export async function getDadosAvisos(hoje: string = currentDateSP()): Promise<Da
                    COALESCE(SUM(l.valor) FILTER (WHERE l.data_lancamento <= $3::date), 0)::float8 AS ate_anteontem,
                    COALESCE(SUM(l.valor), 0)::float8 AS ate_ontem
               FROM financas_orcamento o
-              LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND l.categoria = ANY(o.categorias)
+              LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND categoria_efetiva(l.descricao, l.categoria, l.contraparte_doc) = ANY(o.categorias)
                    AND l.data_lancamento >= $1::date AND l.data_lancamento <= $2::date
              WHERE o.ativo = true GROUP BY 1, 2, 3`, [iniMes, ontem, anteontem]),
     q<any>(`WITH ref AS (

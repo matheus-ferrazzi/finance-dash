@@ -59,7 +59,8 @@ describe.skipIf(!url)('meta de gastos (integração)', () => {
       ].join(',')}`);
     // a categoria efetiva de produção aplica as regras do painel; aqui, só a regra que o teste precisa
     await pool.query(`CREATE OR REPLACE FUNCTION categoria_efetiva(desc_ text, cat_ text, doc_ text DEFAULT NULL) RETURNS text
-      LANGUAGE sql IMMUTABLE AS $$ SELECT CASE WHEN desc_ ILIKE 'Encerramento de d%' THEN 'Loans and financing' ELSE cat_ END $$`);
+      LANGUAGE sql IMMUTABLE AS $$ SELECT CASE WHEN desc_ ILIKE 'Encerramento de d%' THEN 'Loans and financing'
+        WHEN desc_ = 'PIX FEIRA DO SABADO' THEN 'Groceries' ELSE cat_ END $$`);
     await pool.query(`INSERT INTO financas_orcamento (item, emoji, categorias, teto) VALUES ('Mercado', '🛒', ARRAY['Groceries'], 500)`);
     queries = await import('../../src/lib/queries');
   });
@@ -71,6 +72,18 @@ describe.skipIf(!url)('meta de gastos (integração)', () => {
 
   it('orçamento do mês até hoje: crédito conta (é gasto da categoria), futuro não', async () => {
     expect(await queries.getOrcamentoMes('2031-03-15')).toEqual([{ item: 'Mercado', emoji: '🛒', teto: 500, gasto: 400 }]);
+  });
+  // auditoria 17/10 (N7/M3), 22/10: o orçamento usava a categoria crua; Gastos e a lista do próprio cartão usam a
+  // efetiva (com as regras do casal). Um Pix que a regra faz "Mercado" ficava fora do teto
+  it('orçamento pela categoria efetiva (a regra do casal conta no teto e nos alertas)', async () => {
+    // a regra do teste (categoria_efetiva acima): 'PIX FEIRA DO SABADO' é Groceries
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('or1', '2031-04-05', 25, 'PIX FEIRA DO SABADO', 'Transfer - PIX', 'Débito', 'B', 'Matheus', 'despesa', 'Saída', '2031-04-05'),
+      ('or2', '2025-02-05', 25, 'PIX FEIRA DO SABADO', 'Transfer - PIX', 'Débito', 'B', 'Matheus', 'despesa', 'Saída', '2025-02-05')`);
+    expect(await queries.getOrcamentoMes('2031-04-15')).toEqual([{ item: 'Mercado', emoji: '🛒', teto: 500, gasto: 25 }]);
+    // a tela só conta até o hoje de verdade: mês passado
+    const tela = await queries.getOrcamento('casal', queries.resolvePeriodo(undefined, '2025-02'));
+    expect(tela.find((o: any) => o.item === 'Mercado')).toMatchObject({ gasto: 25 });
   });
 
   it('gastos do mês até hoje: débito + crédito, parcela do mês, menos estorno de compra; fora casa, dívida (efetiva) e espelho', async () => {

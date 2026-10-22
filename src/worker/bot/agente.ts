@@ -34,7 +34,31 @@ const SISTEMA = (quem: string, hoje: string) => [
   'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
   'Num pedido de lançar ou mudar algo, chame a ferramenta de proposta mesmo que a data ou o valor pareçam fora do permitido: ela responde o motivo, e você repassa esse motivo.',
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
+  // 22/10: explicar as mensagens do próprio Zeca
+  'Se a pergunta vier com uma "Mensagem citada", ela é uma mensagem sua: explique-a com os números dela (pode copiá-los).',
+  'Se perguntarem de uma mensagem sua sem citar ("explica o diário", "o que foi aquele alerta?"), use mensagens_do_zeca.',
+  'Ao explicar uma mensagem: NÃO repita a mensagem. Diga, em frases simples, o que cada número quer dizer e por que a linha tem aquela bolinha, usando o glossário abaixo.',
+  'A cor de cada linha é a bolinha que está nela na mensagem: nunca diga outra cor. Se a pergunta afirmar algo que a mensagem não diz (ex.: "fecha no azul" quando a linha diz vermelho e o valor é negativo), a primeira linha da resposta corrige, direto: "Na verdade não fecha no azul: pela média fecha em -R$ X (🔴)."',
+  'Na explicação, o emoji do começo de cada linha é só um: 👉 (nada antes nem depois dele). As bolinhas 🟢🟡🔴 só aparecem no meio da frase, quando você cita a cor de uma linha da mensagem.',
+  'O que cada termo das suas mensagens quer dizer:',
+  '- Bolinhas: 🟢 bom, 🟡 atenção, 🔴 ruim; a primeira linha da mensagem é o assunto e o tom.',
+  '- "Hoje dá pra gastar": o que sobra para o dia a dia até o fim do mês (saldo nas contas + o que ainda entra − contas, faturas e fixos que faltam), dividido pelos dias que faltam contando hoje. Só débito e PIX.',
+  '- "Ritmo": quanto o gasto do dia a dia (débito e PIX, fora casa e fixos) deu por dia neste mês até hoje.',
+  '- "Nesse passo fecha em": onde o mês fecha se o ritmo de até hoje continuar todos os dias que faltam.',
+  '- "Pela média dos outros meses fecha em": a previsão do painel; usa como vocês costumam gastar no resto do mês (o fim do mês costuma ser mais leve). Por isso costuma ser melhor que o "nesse passo"; pode dar verde quando o ritmo dá vermelho, mas também pode ser vermelho.',
+  '- O "hoje dá pra gastar" e o "nesse passo" usam a mesma conta: se o ritmo for maior que o "dá pra gastar", o mês fecha no vermelho nesse passo. Quanto maior o ritmo, menor o "dá pra gastar" dos dias seguintes.',
+  '- "Atenção · Fora do padrão": um gasto bem maior do que costuma ser naquele lugar.',
+  '- "Meta de gastos": débito + crédito (compra parcelada conta a parcela do mês), fora contas da casa e dívida antiga; a meta é a média dos 6 meses fechados menos 10%.',
+  '- "Dívida antiga fora do total": renegociação, parcelamento de fatura, empréstimo, juros e encargos de atraso não entram no total de gastos; aparecem à parte.',
+  '- "Gasto grande": um gasto a partir de 500 reais, sem aluguel, contas fixas nem dívida antiga.',
+  '- "Semana acima/abaixo da média": o gasto do dia a dia da semana comparado com a média das 4 semanas anteriores.',
+  '- "Aviso técnico": algo do sistema falhou (conexão de banco parada, backup, rodada de atualização).',
 ].join('\n');
+
+/** 22/10: a pergunta com a mensagem citada (respondida) na frente, para o modelo saber de qual mensagem se fala. */
+const comCitada = (p: Pergunta) => (p.citada ? `Mensagem citada:\n"""\n${p.citada}\n"""\n\nPergunta: ${p.texto}` : p.texto);
+/** Percentuais escritos no texto (a trava só aceita % que veio de dado). */
+const pctsDoTexto = (t: string) => [...t.matchAll(/(-?\d+(?:,\d+)?)\s*%/g)].map((m) => Number(m[1].replace(',', '.')));
 
 export async function responder(p: Pergunta, d: {
   groq: Pick<ClienteGroq, 'chat'>; painel: (caminho: string) => Promise<{ ok: boolean; dados: any }>;
@@ -45,7 +69,8 @@ export async function responder(p: Pergunta, d: {
 }): Promise<RespostaBot> {
   const t0 = Date.now();
   const ferramentas: RespostaBot['ferramentas'] = [];
-  const resultados: unknown[] = [];
+  // 22/10: a mensagem citada vale como dado conferido (o Zeca explica com os números dela)
+  const resultados: unknown[] = p.citada ? [{ citada: p.citada, pct: pctsDoTexto(p.citada) }] : [];
   let ultima: { nome: string; dados: any } | null = null;
   // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
   // mostra todas, com um link só (o da última), em vez de só a última
@@ -65,7 +90,7 @@ export async function responder(p: Pergunta, d: {
     ...d.contexto.flatMap((c): MsgChat[] => [
       { role: 'user', content: c.pessoa ? `${c.pessoa}: ${c.pergunta}` : c.pergunta }, { role: 'assistant', content: c.resposta },
     ]),
-    { role: 'user', content: p.texto },
+    { role: 'user', content: comCitada(p) },
   ];
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
     texto, svg: ultima ? graficoDaFerramenta(ultima.nome, ultima.dados) : null, ferramentas, modelo: null,
@@ -78,7 +103,8 @@ export async function responder(p: Pergunta, d: {
       modelo = r.modelo;
       if (!r.toolCalls.length) {
         const texto = (r.content ?? '').trim();
-        if (!ferramentas.length) return fimCom(SEM_FERRAMENTA, { modelo, semFerramenta: true });
+        // com mensagem citada, explicar sem ferramenta vale (os números passam pela trava contra o texto citado)
+        if (!ferramentas.length && !p.citada) return fimCom(SEM_FERRAMENTA, { modelo, semFerramenta: true });
         // E2: proposta e lista são textos do sistema — o modelo não reescreve
         if (proposta) return fimCom(proposta, { modelo, svg: null });
         if (ultima?.dados?.lista) return fimCom(ultima.dados.lista, { modelo, svg: null });

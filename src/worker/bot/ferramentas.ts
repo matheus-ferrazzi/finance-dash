@@ -31,9 +31,11 @@ export const TOOLS = [
   fn('propor_gasto_dinheiro', 'Propõe lançar um gasto pago em dinheiro vivo (NÃO grava: o casal confirma). Não entra no saldo do banco.',
     { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: { type: 'string', enum: CATEGORIAS_GASTO },
       data: { type: 'string', description: 'AAAA-MM-DD; padrão hoje' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['valor', 'descricao', 'categoria']),
+  // 22/10: para explicar uma mensagem do Zeca que a pessoa não citou
+  fn('mensagens_do_zeca', 'As mensagens que você (Zeca) mandou no grupo nas últimas 36 horas: diário, semanal, mensal, meta, alertas e gasto grande, com o horário. Use para explicar uma delas.'),
 ];
-// E2/E3: rodam no worker (busca guarda refs; propostas não gravam)
-export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro'];
+// E2/E3: rodam no worker (busca guarda refs; propostas não gravam); 22/10: mensagens do Zeca
+export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro', 'mensagens_do_zeca'];
 export const NOMES_FERRAMENTAS = TOOLS.map((t) => t.function.name);
 
 const ROTA: Record<string, string> = {
@@ -129,6 +131,14 @@ export function formatar(nome: string, d: any, painel: string): string {
       for (const t of d.porTipo ?? []) l.push(`• ${t.tipo}: ${brl(t.total)}`);
       for (const m of (d.maiores ?? []).slice(0, 5)) l.push(`🔝 ${m.nome}: ${brl(m.valor)}`);
       break;
+    case 'mensagens_do_zeca': {
+      // 22/10: reserva quando a explicação do modelo não passa na trava — o título de cada mensagem enviada
+      const NOME: Record<string, string> = { diario: 'diário', semanal: 'semanal', mensal: 'mensal', meta: 'meta', 'alerta-meta': 'alerta da meta', gasto: 'gasto grande' };
+      const ms: { tipo: string; quando: string; texto: string }[] = d.mensagens ?? [];
+      if (!ms.length) l.push('📨 Nenhuma mensagem minha nas últimas 36 horas.');
+      else l.push('📨 O que mandei nas últimas 36 horas:', ...ms.map((m) => `• ${m.quando} (${NOME[m.tipo] ?? m.tipo}): ${m.texto.split('\n')[0]}`));
+      break;
+    }
     default:
       return 'Não sei responder isso.';
   }

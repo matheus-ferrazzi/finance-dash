@@ -57,3 +57,12 @@ describe('--png (D2)', () => {
     expect(lerArgs(['notif-diario', '--dry-run', '--png', 'd.png']).png).toBe('/tmp/d.png');
   });
 });
+
+// 22/10: pergunta ao Zeca pela linha de comando (não manda, não grava)
+describe('bot-perguntar', () => {
+  it('pergunta e a mensagem citada opcional', async () => {
+    const { lerArgs } = await import('../../src/worker/cli');
+    expect(lerArgs(['bot-perguntar', 'por que vermelho?', '--citada', '🔴 linha'])).toEqual({ tarefa: 'bot-perguntar', dryRun: true, pergunta: 'por que vermelho?', citada: '🔴 linha' });
+    expect(() => lerArgs(['bot-perguntar'])).toThrow('precisa da pergunta');
+  });
+});

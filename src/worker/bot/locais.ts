@@ -17,8 +17,15 @@ const somaDias =(dt: string, n: number) => new Date(Date.parse(`${dt}T12:00:00Z`
 export function criarLocais(d: {
   pessoa: string; hoje: string; refs: Map<string, { quando: number; itens: Map<string, Item> }>;
   painel: (c: string) => Promise<Res>; painelPost: (c: string, corpo: object) => Promise<Res>; acoes: Pick<PgAcoes, 'criar'>;
+  /** 22/10: o que o Zeca mandou no grupo nas últimas 36 h (sem o aviso técnico, que é do privado) */
+  mensagens?: () => Promise<{ tipo: string; quando: string; texto: string }[]>;
 }): Record<string, (args: any) => Promise<Res>> {
   return {
+    async mensagens_do_zeca() {
+      if (!d.mensagens) return { ok: false, dados: { erro: 'mensagens indisponíveis' } };
+      const mensagens = await d.mensagens();
+      return { ok: true, dados: { mensagens, ...(mensagens.length ? {} : { aviso: 'nenhuma mensagem nas últimas 36 horas' }) } };
+    },
     async buscar_lancamentos(a) {
       const q = new URLSearchParams();
       if (a.texto) q.set('texto', String(a.texto));

@@ -75,6 +75,14 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
     expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx1', 'gx7']);
     expect(await f.ritmo()).toEqual({ mesLabel: 'm' });
     expect(await f.saude()).toHaveProperty('h_lancamentos');
+    // 22/10: a saúde traz qual tarefa falhou, quando e o erro (o aviso dizia só "Ingestão (worker)")
+    await pool.query(`INSERT INTO pluggy_execucoes (tarefa, modo, inicio, fim, ok, erro) VALUES
+      ('tesouro', 'real', now() - interval '2 hours', now() - interval '2 hours', false, 'fetch failed'),
+      ('transacoes', 'dry-run', now() - interval '1 hours', now() - interval '1 hours', false, 'x')`);
+    const falhas = ((await f.saude()) as any).falhas;
+    expect(falhas).toHaveLength(1);
+    expect(falhas[0]).toMatchObject({ tarefa: 'tesouro', erro: 'fetch failed' });
+    expect(falhas[0].quando).toMatch(/^\d{2}\/\d{2} às \d{2}h\d{2}$/);
     // 17/10: conexão parada pela Pluggy — sem auto-sync: aviso depois de 20 h; com auto-sync, só depois de 30 h
     await pool.query(`INSERT INTO pluggy_itens (item_id, banco, responsavel, last_updated_at, next_auto_sync_at) VALUES
       ('i1', 'Inter', 'M', now() - interval '77 hours', NULL),

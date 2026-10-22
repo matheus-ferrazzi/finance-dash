@@ -21,7 +21,7 @@ import { PluggyClient } from './pluggy';
 import { PgRepo } from './repositorio';
 import { reporPerdidas } from './repor';
 import { TAREFAS } from './tarefas';
-import { URL_PRECOS_TESOURO } from './tesouro';
+import { comTentativas, URL_PRECOS_TESOURO } from './tesouro';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -47,11 +47,12 @@ async function main() {
   const modo = lerModo(process.env.WORKER_MODO);
   // cliente (e chave da Pluggy) novo a cada rodada: a chave vence em ~2h e o processo vive dias
   // 17/10: preços públicos do Tesouro (títulos de conexão desligada); ~14 MB, 2 min de folga
-  const tesouro = async () => {
+  // 22/10: até 3 tentativas, 30 s entre elas (em 21/10 às 23h o download falhou uma vez por rede e a rodada se perdeu)
+  const tesouro = () => comTentativas(async () => {
     const r = await fetch(URL_PRECOS_TESOURO, { signal: AbortSignal.timeout(120000) });
     if (!r.ok) throw new Error(`Tesouro Transparente HTTP ${r.status}`);
     return r.text();
-  };
+  }, 3, 30000);
   const base = () => ({ pluggy: new PluggyClient(creds), repo, agora: () => new Date(), log, tesouro });
 
   // notificações (C2): sem token/chat do Telegram, tudo em sombra (registra, não envia)

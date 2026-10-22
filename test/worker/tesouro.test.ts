@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lerPrecosTesouro, precoDoTitulo, tituloDoNome } from '../../src/worker/tesouro';
+import { comTentativas, lerPrecosTesouro, precoDoTitulo, tituloDoNome } from '../../src/worker/tesouro';
 
 // 17/10: título do Tesouro de conexão desligada (o Inter saiu do Meu Pluggy) — valor bruto pelo preço público
 const CSV = [
@@ -40,5 +40,18 @@ describe('lerPrecosTesouro / precoDoTitulo', () => {
   it('sem preço ou ambíguo (dois vencimentos no ano): null', () => {
     expect(precoDoTitulo(precos, { tipo: 'Tesouro Selic', ano: 2031 })).toBeNull();
     expect(precoDoTitulo(precos, { tipo: 'Tesouro Renda+ Aposentadoria Extra', ano: 2030 })).toBeNull();
+  });
+});
+
+// 22/10: o download do Tesouro falhou uma vez às 23h ("fetch failed", rede) e a rodada inteira se perdeu
+describe('comTentativas', () => {
+  it('tenta de novo depois de esperar; devolve a primeira que dá certo', async () => {
+    let n = 0; const esperas: number[] = [];
+    const r = await comTentativas(async () => { n++; if (n < 3) throw new Error('fetch failed'); return 'ok'; }, 3, 30000, async (ms) => { esperas.push(ms); });
+    expect(r).toBe('ok');
+    expect(esperas).toEqual([30000, 30000]);
+  });
+  it('todas falham: lança o último erro, dizendo quantas tentativas', async () => {
+    await expect(comTentativas(async () => { throw new Error('fetch failed'); }, 3, 1, async () => {})).rejects.toThrow('fetch failed (3 tentativas)');
   });
 });

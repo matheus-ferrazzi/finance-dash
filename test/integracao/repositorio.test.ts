@@ -81,6 +81,32 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     expect(await repo.parearTransferencias('2026-09-01')).toBe(0);
   });
 
+  // auditoria 17/10 (L4), 22/10: Pix do dono para ele mesmo em outro banco (o outro lado já é transferência interna)
+  // ficava como despesa. Casa a saída com a entrada interna de outra conta do casal, mesmo valor, ±1 dia, e o
+  // destinatário da saída tem que ser o dono da entrada — sem isso, Pix a terceiros de mesmo valor casaria (medido: 2)
+  it('L4: saída "despesa" para si mesmo vira transferência; Pix a terceiro de mesmo valor não; reingestão não desfaz', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, account_id) VALUES
+      ('p-sai', '2026-03-03', 432.1, 'PIX ENVIADO - Cp :0000-Matheus Fulano', 'Transfer - PIX', 'Débito', 'BancoA', 'Matheus', 'despesa', 'Saída', 'conta-a'),
+      ('p-ent', '2026-03-03', 432.1, 'PIX TRANSF MATHEUS03/03', 'Same person transfer', 'Débito', 'BancoB', 'Matheus', 'transferencia_interna', 'Entrada', 'conta-b'),
+      ('p-terc', '2025-05-05', 88.8, 'PIX ENVIADO Beltrana Silva', 'Transfer - PIX', 'Débito', 'BancoA', 'Ariane', 'despesa', 'Saída', 'conta-c'),
+      ('p-ent2', '2025-05-05', 88.8, 'TRANSF RECEBIDA', 'Same person transfer', 'Débito', 'BancoB', 'Ariane', 'transferencia_interna', 'Entrada', 'conta-d'),
+      ('p-conta', '2026-03-03', 432.1, 'PAGAMENTO BOLETO Matheus', 'Electricity', 'Débito', 'BancoA', 'Matheus', 'despesa', 'Saída', 'conta-a')`);
+    expect(await repo.parearTransferencias('2025-01-01')).toBe(1);
+    const r = await pool.query(`SELECT id_transacao, classe, par_transferencia FROM financas_lancamentos WHERE id_transacao IN ('p-sai','p-terc','p-conta') ORDER BY 1`);
+    expect(r.rows).toEqual([
+      { id_transacao: 'p-conta', classe: 'despesa', par_transferencia: null },
+      { id_transacao: 'p-sai', classe: 'transferencia_interna', par_transferencia: 'p-ent' },
+      { id_transacao: 'p-terc', classe: 'despesa', par_transferencia: null },
+    ]);
+    // a Pluggy reenvia a saída como despesa: o par segura; a sombra vê a classe crua (despesa)
+    const reenvio = { ...linha('p-sai', '2026-03-03'), valor: 432.1, tipo_movimento: 'Saída', classe: 'despesa', forma_pagamento: 'Débito', banco: 'BancoA', account_id: 'conta-a' } as Lancamento;
+    await repo.aplicarConta([reenvio], []);
+    expect((await pool.query(`SELECT classe FROM financas_lancamentos WHERE id_transacao = 'p-sai'`)).rows[0].classe).toBe('transferencia_interna');
+    const contaA: Conta = { ...conta, account_id: 'conta-a', banco: 'BancoA', forma: 'Débito' };
+    expect((await repo.lancamentosDaConta(contaA, '2026-01-01')).get('p-sai')!.classe).toBe('despesa');
+    expect(await repo.parearTransferencias('2025-01-01')).toBe(0);
+  });
+
   it('registrarSync só escreve no log quando o lastUpdatedAt muda', async () => {
     await repo.registrarSync('Itaú', 'Matheus', '2026-10-08T18:52:00Z');
     await repo.registrarSync('Itaú', 'Matheus', '2026-10-08T18:52:00Z');

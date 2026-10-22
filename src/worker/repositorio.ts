@@ -82,7 +82,7 @@ export class PgRepo implements Repo {
     // que montarLinha produz, e o par não é diferença da ingestão
     const r = await this.pool.query<LinhaBanco>(
       `SELECT id_transacao, to_char(data_lancamento, 'YYYY-MM-DD') AS data_lancamento, valor::float8 AS valor,
-              tipo_movimento, CASE WHEN par_transferencia IS NOT NULL THEN 'receita' ELSE classe END AS classe,
+              tipo_movimento, CASE WHEN par_transferencia IS NOT NULL THEN (CASE WHEN tipo_movimento = 'Saída' THEN 'despesa' ELSE 'receita' END) ELSE classe END AS classe,
               descricao, categoria, forma_pagamento, banco, responsavel, status_pluggy
          FROM financas_lancamentos
         WHERE data_lancamento >= $1::date
@@ -111,7 +111,8 @@ export class PgRepo implements Repo {
         // N2: linha pareada como transferência interna continua transferência quando a Pluggy reenvia "receita"
         const atualiza = NOMES_LINHA.filter((n) => n !== 'id_transacao')
           .map((n) => (n === 'classe'
-            ? `classe = CASE WHEN financas_lancamentos.par_transferencia IS NOT NULL AND EXCLUDED.classe = 'receita' THEN financas_lancamentos.classe ELSE EXCLUDED.classe END`
+            // L4 (22/10): vale também para a saída pareada que a Pluggy reenvia como "despesa"
+            ? `classe = CASE WHEN financas_lancamentos.par_transferencia IS NOT NULL AND EXCLUDED.classe IN ('receita', 'despesa') THEN financas_lancamentos.classe ELSE EXCLUDED.classe END`
             : `${n} = EXCLUDED.${n}`))
           .join(', ');
         await cli.query(
@@ -246,7 +247,32 @@ export class PgRepo implements Repo {
          FROM r WHERE r.re = 1 AND r.rs = 1 AND l.id_transacao = r.eid`,
       [desde],
     );
-    return r.rowCount ?? 0;
+    // L4 (22/10): o espelho — saída "despesa" (Pix do dono para ele mesmo em outro banco) × entrada interna de OUTRA
+    // conta do casal, mesmo valor, ±1 dia, categoria de transferência E o destinatário é o dono da entrada (o nome
+    // dele, da coluna responsavel, está na descrição ou na contraparte). Sem essa última, 2 Pix a terceiros de mesmo
+    // valor casariam (medido em 22/10). Mesma regra 1:1.
+    const s = await this.pool.query(
+      `WITH c AS (
+         SELECT s.id_transacao AS sid, e.id_transacao AS eid, abs(e.data_lancamento - s.data_lancamento) AS d
+           FROM financas_lancamentos s
+           JOIN financas_lancamentos e
+             ON e.classe = 'transferencia_interna' AND e.tipo_movimento = 'Entrada' AND e.forma_pagamento = 'Débito'
+            AND abs(s.valor - e.valor) < 0.005 AND abs(e.data_lancamento - s.data_lancamento) <= 1
+            AND COALESCE(s.account_id, s.banco || '/' || s.responsavel) <> COALESCE(e.account_id, e.banco || '/' || e.responsavel)
+            AND (s.descricao ILIKE '%' || e.responsavel || '%' OR COALESCE(s.contraparte_nome, '') ILIKE '%' || e.responsavel || '%')
+            AND NOT EXISTS (SELECT 1 FROM financas_lancamentos u WHERE u.par_transferencia = e.id_transacao)
+          WHERE s.classe = 'despesa' AND s.tipo_movimento = 'Saída' AND s.forma_pagamento = 'Débito'
+            AND categoria_efetiva(s.descricao, s.categoria, s.contraparte_doc) IN ('Transfers', 'Transfer - PIX', 'Transfer - Bank Slip', 'Same person transfer')
+            AND s.par_transferencia IS NULL AND s.data_lancamento >= $1::date
+       ), r AS (
+         SELECT sid, eid, row_number() OVER (PARTITION BY sid ORDER BY d, eid) AS rs,
+                row_number() OVER (PARTITION BY eid ORDER BY d, sid) AS re FROM c
+       )
+       UPDATE financas_lancamentos l SET classe = 'transferencia_interna', par_transferencia = r.eid
+         FROM r WHERE r.rs = 1 AND r.re = 1 AND l.id_transacao = r.sid`,
+      [desde],
+    );
+    return (r.rowCount ?? 0) + (s.rowCount ?? 0);
   }
 
   async registrarSync(banco: string, responsavel: string, lastSync: string) {

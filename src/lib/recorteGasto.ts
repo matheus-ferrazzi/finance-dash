@@ -31,8 +31,14 @@ export const PALAVRAS_ESTORNO_FINANCEIRO = ['PARCELAMENTO', 'ANTECIPA', 'RENEG',
 // Transfers e só a regra do painel o faz dívida; pela crua, ele entrava como gasto
 export const CAT_EF = 'categoria_efetiva(descricao, categoria, contraparte_doc)';
 const lista = (xs: readonly string[]) => xs.map((c) => `'${c.replace(/'/g, "''")}'`).join(',');
+/**
+ * Dívida antiga (renegociação, parcelamento de fatura, empréstimo, juros e encargos de atraso), pela categoria efetiva.
+ * 20/10 (L2): fora da meta, do gasto de Gastos/Visão geral e das respostas do Zeca — aparece à parte. A Previsão a
+ * conta (é dinheiro saindo).
+ */
+export const DIVIDA_ANTIGA = sqlDividaOuAtraso('descricao', CAT_EF);
 export const GASTO_META = `forma_pagamento IN ('Débito', 'Crédito') AND NOT (COALESCE(${CAT_EF}, '') = ANY(ARRAY[${lista(CASA_CATS)}]))
-  AND ${SEM_ESPELHO} AND NOT ${sqlDividaOuAtraso('descricao', CAT_EF)}
+  AND ${SEM_ESPELHO} AND NOT ${DIVIDA_ANTIGA}
   AND (classe = 'despesa' OR (classe = 'estorno' AND NOT (translate(upper(descricao), 'ÁÀÂÃÉÊÍÓÔÕÚÜÇ', 'AAAAEEIOOOUUC')
        LIKE ANY (ARRAY[${PALAVRAS_ESTORNO_FINANCEIRO.map((p) => `'%${p}%'`).join(',')}]))))`;
 export const VALOR_GASTO = `CASE WHEN classe = 'estorno' THEN -valor ELSE valor END`;

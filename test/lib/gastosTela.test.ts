@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { seta } from '../../src/lib/seta';
-import { ateODia, cabeNoMes, diaADia, gruposDoPeriodo, mediaPorGrupo, noCredito, type LancGasto } from '../../src/lib/gastosTela';
+import { ateODia, cabeNoMes, diaADia, gruposDoPeriodo, mediaPorGrupo, noCredito, separarDivida, type LancGasto } from '../../src/lib/gastosTela';
 
 const l = (categoria: string, valor: number, extra: Partial<LancGasto> = {}): LancGasto =>
   ({ id: `${categoria}-${valor}`, data: '2026-10-05', valor, descricao: 'x', categoria, banco: 'B', responsavel: 'Matheus', forma: 'Débito', ...extra });
@@ -46,5 +46,24 @@ describe('data vinda do banco como Date', () => {
     const d = (s: string) => new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
     const ls = [l('Groceries', 1, { data: d('2026-09-05') as any }), l('Groceries', 2, { data: d('2026-09-20') as any })];
     expect(ateODia(ls, 14).map((x) => x.valor)).toEqual([1]);
+  });
+});
+
+// auditoria 17/10 (L2), decisão do Matheus em 20/10: dívida antiga (renegociação, parcelamento de fatura, empréstimo,
+// juros e encargos de atraso) fica fora do total de Gastos e da Visão geral — o mesmo recorte da meta; aparece à parte
+describe('separarDivida', () => {
+  const l = (id: string, descricao: string, categoria: string, valor: number): LancGasto =>
+    ({ id, data: '2031-03-02', valor, descricao, categoria, banco: 'B', responsavel: 'Matheus', forma: 'Crédito' });
+  it('pela categoria (efetiva) e pela descrição; compra parcelada comum fica no consumo', () => {
+    const r = separarDivida([
+      l('a', 'MERCADO', 'Groceries', 100),
+      l('b', 'Renegociação de pendências 3/7', 'Transfers', 640),
+      l('c', 'Pagamento de boleto', 'Loans and financing', 300),
+      l('d', 'ENCARGOS DE ATRASO', 'Bank fees', 12.5),
+      l('e', 'LOJA 2/3', 'Shopping', 80),
+    ]);
+    expect(r.consumo.map((x) => x.id)).toEqual(['a', 'e']);
+    expect(r.divida.map((x) => x.id)).toEqual(['b', 'c', 'd']);
+    expect(r.totalDivida).toBe(952.5);
   });
 });

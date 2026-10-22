@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getContasDoMes, getDespesas, getFaturas, getMovimentosDiarios, getProjecaoBase, getCalibracaoPara, diasNoMes, computeProjecao, computeRitmo, resolvePeriodo, getTrilhaDados, getMetaMes, Resp } from '@/lib/queries';
 import { brl, currentDateSP, currentMonthSP } from '@/lib/format';
 import { agruparGastos } from '@/lib/grupos';
+import { separarDivida } from '@/lib/gastosTela';
 import { linkPara, mesValido } from '@/lib/links';
 import { serieDoMes } from '@/lib/linhaDoMes';
 import { cartaoDestaque, contasResumo, textosCartoes, topGrupos } from '@/lib/home';
@@ -54,7 +55,8 @@ export default async function Home({ searchParams }: { searchParams: { resp?: st
   });
 
   const porCat = new Map<string, number>();
-  for (const d of despesas) porCat.set(d.categoria, (porCat.get(d.categoria) ?? 0) + d.valor);
+  // 20/10 (L2): o "Para onde vai" sem a dívida antiga, a mesma regra de Gastos e da meta
+  for (const d of separarDivida(despesas).consumo) porCat.set(d.categoria, (porCat.get(d.categoria) ?? 0) + d.valor);
   const grupos = topGrupos(agruparGastos(porCat, 0));
   const cartao = cartaoDestaque(faturas);
   const txtCartoes = textosCartoes(cartao);

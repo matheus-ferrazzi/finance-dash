@@ -6,7 +6,7 @@ import { categoriaNoFiltro, GRUPOS_VALIDOS } from '@/lib/grupos';
 import { linkPara } from '@/lib/links';
 import { brl, currentDateSP, mesLabel } from '@/lib/format';
 import { addMonths } from '@/lib/previsao';
-import { ateODia, cabeNoMes, diaADia, gruposDoPeriodo, mediaPorGrupo, noCredito, type LancGasto } from '@/lib/gastosTela';
+import { ateODia, cabeNoMes, diaADia, gruposDoPeriodo, mediaPorGrupo, noCredito, separarDivida, type LancGasto } from '@/lib/gastosTela';
 import { CardResposta } from '../components/CardResposta';
 import { Elo } from '../components/Elo';
 import { GruposGastos } from '../components/GruposGastos';
@@ -33,8 +33,9 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
     corrente ? getProjecaoBase(resp) : Promise.resolve(null),
     ...(porMes ? [1, 2, 3].map((k) => getDespesas(resp, resolvePeriodo(undefined, addMonths(per.mesAnchor, -k)))) : []),
   ]);
-  // E3: gasto em dinheiro vivo entra na lista e nos totais (com 💵), nunca nas contas do banco
-  const todas: LancGasto[] = [...doBanco, ...paraLancamentos(din)];
+  // E3: gasto em dinheiro vivo entra na lista e nos totais (com 💵), nunca nas contas do banco.
+  // 20/10 (L2): a dívida antiga sai do total e dos grupos (a mesma regra da meta) e aparece numa linha à parte
+  const { consumo: todas, totalDivida } = separarDivida<LancGasto>([...doBanco, ...paraLancamentos(din)]);
   // filtros da URL (links da home e do bot): ?grupo=Mercado, ?tipo=livre, ?forma=debito; valor desconhecido não filtra
   const soDebito = searchParams.forma === 'debito';
   const despesas = todas.filter((d) => categoriaNoFiltro(d.categoria, { grupo: searchParams.grupo, tipo: searchParams.tipo })
@@ -47,7 +48,7 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
 
   // no mês em andamento a média é dos 3 meses anteriores ATÉ O MESMO DIA (meio mês × mês inteiro sempre daria "abaixo")
   const diaHoje = Number(hoje.slice(8, 10));
-  const meses = (anteriores as LancGasto[][]).map((ls) => (corrente ? ateODia(ls, diaHoje) : ls));
+  const meses = (anteriores as LancGasto[][]).map((ls) => separarDivida(corrente ? ateODia(ls, diaHoje) : ls).consumo);
   const grupos = gruposDoPeriodo(despesas, porMes ? mediaPorGrupo(meses) : null);
   const total = Math.round(despesas.reduce((s, d) => s + d.valor, 0) * 100) / 100;
   const totalDinheiro = despesas.reduce((s, d) => s + (d.dinheiroId ? d.valor : 0), 0);
@@ -89,6 +90,12 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
           💳 <span className="money">{brl(credito)}</span> foram no crédito
         </Elo>
       )}
+      {/* 20/10 (L2): a dívida antiga fica fora do total; aqui, quanto foi para ela (só sem filtro de grupo) */}
+      {totalDivida > 0 && !filtroAtivo && (
+        <Elo href={linkPara('trilha', { resp })} acao="ver dívidas">
+          🏦 <span className="money">{brl(totalDivida)}</span> pagando dívida antiga (fora do total)
+        </Elo>
+      )}
     </>
   );
 
@@ -108,7 +115,7 @@ export default async function Gastos({ searchParams }: { searchParams: { resp?: 
           <div className="hidden md:block">{rodape}</div>
         </div>
         <div>
-          <GruposGastos grupos={grupos} total={total} titulo={`Tudo que saiu · ${per.label.toLowerCase()}`}
+          <GruposGastos grupos={grupos} total={total} titulo={`Gastos · ${per.label.toLowerCase()}`}
             hrefs={Object.fromEntries(grupos.map((g) => [g.nome, linkPara('gastos', { resp, mes: searchParams.mes, grupo: g.nome })]))}
             periodo={<PeriodoGastos />} />
           <div className="md:hidden">{rodape}</div>

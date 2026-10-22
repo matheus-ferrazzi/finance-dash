@@ -22,6 +22,9 @@ describe('formatar (texto montado da trava)', () => {
   it('gasto_periodo', () => {
     expect(formatar('gasto_periodo', { periodo: 'out/26', pessoa: 'casal', grupo: null, total: 450, itens: [{ nome: 'Mercado', valor: 400 }, { nome: 'Comer fora', valor: 50 }], link: '/gastos' }, 'https://p'))
       .toBe([`💰 Gasto em out/26 (casal): *${brl(450)}*`, `• Mercado: ${brl(400)}`, `• Comer fora: ${brl(50)}`, '', '👉 https://p/gastos'].join('\n'));
+    // 20/10 (L2): a dívida antiga vem fora do total e o Zeca diz quanto foi, à parte
+    expect(formatar('gasto_periodo', { periodo: 'out/26', pessoa: 'casal', grupo: null, total: 450, divida: 640, itens: [{ nome: 'Mercado', valor: 450 }], link: '/gastos' }, 'https://p'))
+      .toContain(`• Mercado: ${brl(450)}\n🏦 Fora do total: ${brl(640)} pagando dívida antiga`);
   });
   it('situacao_mes, simular_compra (cabe e não cabe), trilha', () => {
     expect(formatar('situacao_mes', { mesLabel: 'out/26', dapraGastarHoje: 50, ritmoAtualDia: 80, diasRestantes: 10, fechaCom: -500, saiDoVermelho: null, link: '/' }, 'https://p'))

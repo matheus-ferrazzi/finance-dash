@@ -277,6 +277,17 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(d.dividas).toEqual([{ chave: 'parcelamento de fatura|B3', nome: 'parcelamento de fatura', banco: 'B3', plano: null, valorParcela: 70, restantes: 1, fim: '2039-05' }]);
     expect(d.atrasos).toContainEqual({ mes: '2039-03', motivo: 'juros' });
   });
+  // W2 (22/10): plano sem número de parcela com data antiga (cartão Bradesco repete a data da operação) ficava fora da
+  // janela de 2 meses da trilha e a dívida sumia. Entra o plano ainda no prazo; o juro antigo não vira atraso de agora
+  it('W2: plano ainda no prazo com data antiga entra na trilha; juro fora da janela não', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, parcela_total) VALUES
+      ('w2-1', '2049-07-15', 120, 'RENEGOCIACAO  DE DIVIDA', 'Loans', 'Crédito', 'BW', 'Matheus', 'despesa', 'Saída', '2049-10-09', 30),
+      ('w2-2', '2049-07-15', 120, 'RENEGOCIACAO  DE DIVIDA', 'Loans', 'Crédito', 'BW', 'Matheus', 'despesa', 'Saída', '2049-10-09', 30),
+      ('w2-3', '2049-06-20', 15, 'JUROS DE MORA', 'Interests charged', 'Crédito', 'BW', 'Matheus', 'despesa', 'Saída', '2049-06-20', 2)`);
+    const d = await queries.getTrilhaDados('2049-10-22');
+    expect(d.dividas).toContainEqual({ chave: 'renegociacao de divida|BW', nome: 'renegociacao de divida', banco: 'BW', plano: 30, valorParcela: 120, restantes: 26, fim: '2051-12' });
+    expect(d.atrasos).not.toContainEqual({ mes: '2049-06', motivo: 'juros' });
+  });
   // auditoria 13/10 (N1): "GASTOS CARTAO" no débito é o pagamento da fatura de um cartão sem histórico
   // de fatura na Pluggy (Bradesco) — dinheiro que sai de verdade, não espelho como "MORA CARTAO"
   it('N1: pagamento de cartão sem histórico entra no realizado; MORA CARTAO continua fora', async () => {

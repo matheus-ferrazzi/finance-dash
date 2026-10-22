@@ -1491,7 +1491,10 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
          -- parcelamento de fatura e encargos do cartão o classificador grava como pagamento_fatura:
          -- entram só os do cartão (saída no crédito), nunca o pagamento da fatura pela conta
          AND (classe = 'despesa' OR (classe = 'pagamento_fatura' AND forma_pagamento = 'Crédito' AND tipo_movimento = 'Saída'))
-         AND data_lancamento >= $1::date
+         -- W2 (22/10): além da janela, o plano parcelado ainda no prazo (o cartão Bradesco repete a data da operação
+         -- em todas as parcelas: a renegociação de 30× ficava toda em julho, fora da janela, e sumia)
+         AND (data_lancamento >= $1::date
+              OR (COALESCE(parcela_total, 0) > 1 AND data_lancamento >= ($2::date - make_interval(months => parcela_total))::date))
          AND (data_lancamento <= $2::date OR criado_em::date <= $2::date)`,
       [desde, hoje],
     ),
@@ -1520,7 +1523,8 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor),
     parcelaTotal: x.parcelaTotal == null ? null : Number(x.parcelaTotal), parcelaNumero: x.parcelaNumero == null ? null : Number(x.parcelaNumero),
   }));
-  const juros = lancs.filter((l) => l.data <= hoje && ehAtraso(l.descricao, l.categoria)).map((l) => l.data.slice(0, 7));
+  // juros só da janela de atraso (W2: a busca agora traz também plano parcelado antigo, que não é atraso de agora)
+  const juros = lancs.filter((l) => l.data >= desde && l.data <= hoje && ehAtraso(l.descricao, l.categoria)).map((l) => l.data.slice(0, 7));
   const porMes = new Map(aplRows.map((x) => [x.mes as string, Math.round(Number(x.liq) * 100) / 100]));
   return {
     hoje,

@@ -53,6 +53,10 @@ export function chaveDivida(descricao: string, banco: string): string {
   return `${nomeDivida(descricao)}|${banco}`;
 }
 
+/** Meses de `de` (exclusive) até `ate` (inclusive), AAAA-MM; negativo se `ate` já passou. */
+const mesesEntre = (de: string, ate: string) =>
+  (Number(ate.slice(0, 4)) * 12 + Number(ate.slice(5, 7))) - (Number(de.slice(0, 4)) * 12 + Number(de.slice(5, 7)));
+
 /** Dívidas ainda em aberto: parcelas depois de hoje; prestação no débito (sem data futura) fica sem fim. */
 export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: MarcasDivida = SEM_MARCAS): DividaAtiva[] {
   // agrupa por dívida (chave da marcação) E por plano (parcela_total): dois planos não se fundem
@@ -81,6 +85,13 @@ export function agruparDividas(lancs: LancDivida[], hoje: string, marcas: Marcas
       out.push({ chave: k, nome, banco, plano, valorParcela: ult.valor, restantes: futuras.length, fim: ult.data.slice(0, 7) });
     } else if (faltamDepois > 0) {
       out.push({ chave: k, nome, banco, plano, valorParcela: ultVista.valor, restantes: faltamDepois, fim: addMonths(ultVista.data.slice(0, 7), faltamDepois) });
+    } else if (plano && plano > 1 && !ls.some((l) => l.parcelaNumero)) {
+      // W2 (22/10): plano sem número de parcela (cartão Bradesco: repete a data da operação em todas) — conta pelos
+      // meses desde a primeira parcela, que aguentam data repetida e parcela que a busca não trouxe
+      const inicio = [...ls].sort((a, b) => a.data.localeCompare(b.data))[0].data.slice(0, 7);
+      const fim = addMonths(inicio, plano - 1);
+      const restantes = mesesEntre(hoje.slice(0, 7), fim);
+      if (restantes > 0) out.push({ chave: k, nome, banco, plano, valorParcela: ultVista.valor, restantes, fim });
     } else if (ls.some((l) => l.forma === 'Débito')) {
       const ult = [...ls].sort((a, b) => a.data.localeCompare(b.data))[ls.length - 1];
       out.push({ chave: k, nome, banco, plano, valorParcela: ult.valor, restantes: null, fim: null });

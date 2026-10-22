@@ -215,6 +215,16 @@ describe('pendências do F3 (auditoria 13/10)', () => {
     const r = agruparDividas([{ ...l, data: '2026-09-06', parcelaNumero: 2 }, { ...l, data: '2026-10-06', parcelaNumero: 3 }], '2026-10-15');
     expect(r).toEqual([{ chave: 'renegociação de pendências|B', nome: 'renegociação de pendências', banco: 'B', plano: 8, valorParcela: 100, restantes: 5, fim: '2027-03' }]);
   });
+  // W2 (auditoria 17/10), 22/10: o cartão Bradesco manda o total de parcelas sem o número e repete a data da operação
+  // em todas (3 parcelas em julho). Sem número nem futuras, a dívida sumia da trilha. Conta pelos meses desde a 1ª:
+  // plano de 30 começado em jul/26 está em out/26 na 4ª parcela → faltam 26, até dez/28
+  it('plano conhecido sem número de parcela: conta pelos meses desde a primeira', () => {
+    const l = { descricao: 'RENEGOCIACAO DE DIVIDA', categoria: 'Loans', banco: 'B', forma: 'Crédito', valor: 120, parcelaTotal: 30 };
+    const r = agruparDividas([{ ...l, data: '2026-07-15' }, { ...l, data: '2026-07-15' }, { ...l, data: '2026-07-16' }], '2026-10-22');
+    expect(r).toEqual([{ chave: 'renegociacao de divida|B', nome: 'renegociacao de divida', banco: 'B', plano: 30, valorParcela: 120, restantes: 26, fim: '2028-12' }]);
+    // plano que já passou do fim pelos meses: não aparece
+    expect(agruparDividas([{ ...l, parcelaTotal: 3, data: '2026-01-10' }], '2026-10-22')).toEqual([]);
+  });
 });
 
 // F3 (d): na fase 4 a faixa do topo não dizia quanto já se aplica

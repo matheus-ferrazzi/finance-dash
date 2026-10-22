@@ -105,7 +105,14 @@ export interface SaudeDados {
    * atualização automática (sem nextAutoSyncAt), só quem é dono da conexão destrava, no Meu Pluggy.
    */
   conexoes?: { banco: string; responsavel: string; horas: number }[] | null;
+  /** 22/10: as rodadas que falharam nas últimas 24h, com a tarefa, quando (SP) e o erro; ausente = fonte antiga */
+  falhas?: { tarefa: string; quando: string; erro: string | null }[] | null;
 }
+
+const NOME_TAREFA: Record<string, string> = {
+  transacoes: 'Ingestão dos lançamentos', faturas: 'Ingestão das faturas', saldos: 'Ingestão dos saldos',
+  investimentos: 'Ingestão dos investimentos', itens: 'Status das conexões', tesouro: 'Preço do Tesouro',
+};
 /** As linhas de problema da saúde (usadas também no aviso técnico do D). */
 export function linhasSaude(s: SaudeDados): string[] {
   const LIM = 36;
@@ -114,7 +121,11 @@ export function linhasSaude(s: SaudeDados): string[] {
   if ((s.h_investimentos ?? 999) > LIM) probs.push(`• Investimentos: sem atualizar há ${s.h_investimentos}h`);
   if ((s.h_lancamentos ?? 999) > 72) probs.push(`• Lançamentos: nada novo há ${s.h_lancamentos}h (pode ser normal se sem gastos)`);
   if ((s.h_worker_ok ?? 999) > 19) probs.push(`• Ingestão (worker): última rodada completa há ${s.h_worker_ok ?? '—'}h`);
-  if ((s.worker_falhas_24h ?? 0) > 0) probs.push(`• Ingestão (worker): ${s.worker_falhas_24h} rodada(s) com falha nas últimas 24h`);
+  // 22/10: com a lista, uma linha por falha dizendo qual tarefa, quando e o erro ("Ingestão (worker)" escondia que
+  // quem falhou foi o preço do Tesouro); sem a lista, a contagem antiga
+  if (s.falhas?.length) {
+    for (const f of s.falhas) probs.push(`• ${NOME_TAREFA[f.tarefa] ?? f.tarefa}: falhou em ${f.quando}${f.erro ? ` (${f.erro})` : ''}`);
+  } else if ((s.worker_falhas_24h ?? 0) > 0) probs.push(`• Ingestão (worker): ${s.worker_falhas_24h} rodada(s) com falha nas últimas 24h`);
   for (const c of s.conexoes ?? []) {
     const quanto = c.horas >= 48 ? `${Math.floor(c.horas / 24)} dias` : `${Math.round(c.horas)} h`;
     probs.push(`• ${c.banco} (${c.responsavel}): sem atualizar há ${quanto}, abrir o Meu Pluggy e atualizar a conexão`);

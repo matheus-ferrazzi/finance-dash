@@ -51,3 +51,19 @@ export function precoDoTitulo(precos: ReturnType<typeof lerPrecosTesouro>, t: Ti
   const achados = Array.from(precos.values()).filter((p) => p.tipo === t.tipo && p.vencimento.startsWith(`${t.ano}-`));
   return achados.length === 1 ? { data: achados[0].data, pu: achados[0].pu } : null;
 }
+
+/**
+ * 22/10: tenta `fn` até `n` vezes, esperando `esperaMs` entre elas (o download do Tesouro falhou uma vez às 23h por
+ * rede e a rodada inteira se perdeu). Todas falham: lança o último erro, dizendo quantas tentativas.
+ */
+export async function comTentativas<T>(
+  fn: () => Promise<T>, n: number, esperaMs: number,
+  dormir: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<T> {
+  let ultimo: unknown;
+  for (let i = 1; i <= n; i++) {
+    try { return await fn(); } catch (e) { ultimo = e; if (i < n) await dormir(esperaMs); }
+  }
+  const msg = ultimo instanceof Error ? ultimo.message : String(ultimo);
+  throw new Error(`${msg} (${n} tentativas)`);
+}

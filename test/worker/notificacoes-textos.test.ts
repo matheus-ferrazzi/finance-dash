@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emBlocos, montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude } from '../../src/worker/notificacoes/textos';
+import { emBlocos, linhasSaude, montarBackup, montarFatura, montarGasto, montarRitmo, montarSaude } from '../../src/worker/notificacoes/textos';
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -90,5 +90,16 @@ describe('backup', () => {
 describe('emBlocos', () => {
   it('texto solto é um bloco; lista fica junta; vazio, nulo e lista vazia somem', () => {
     expect(emBlocos(['A', ['b1', 'b2'], null, [], '', false, ['', 'c'], 'D'])).toBe('A\n\nb1\nb2\n\nc\n\nD');
+  });
+});
+
+// 22/10: o aviso dizia "Ingestão (worker): 1 rodada(s) com falha" quando quem falhou foi o preço do Tesouro (download
+// do site público às 23h). Agora diz qual tarefa, quando e o erro; sem a lista (fonte antiga), a linha antiga
+describe('falhas nomeadas', () => {
+  const ok = { h_lancamentos: 5, h_investimentos: 5, h_faturas: 5, h_worker_ok: 5, worker_falhas_24h: 1, ultimo_lancamento: 'x' };
+  it('uma linha por falha, com o nome da tarefa, quando e o erro', () => {
+    const l = linhasSaude({ ...ok, falhas: [{ tarefa: 'tesouro', quando: '21/10 às 23h00', erro: 'fetch failed' }, { tarefa: 'transacoes', quando: '22/10 às 16h05', erro: null }] });
+    expect(l).toEqual(['• Preço do Tesouro: falhou em 21/10 às 23h00 (fetch failed)', '• Ingestão dos lançamentos: falhou em 22/10 às 16h05']);
+    expect(linhasSaude(ok)).toEqual(['• Ingestão (worker): 1 rodada(s) com falha nas últimas 24h']);
   });
 });

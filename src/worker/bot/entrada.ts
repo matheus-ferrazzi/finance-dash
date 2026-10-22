@@ -1,7 +1,8 @@
 // E1: filtro do webhook. Nada aqui loga ou grava: o que não é do grupo, de membro e chamando o bot some.
 import { lerResposta } from './acoesTextos';
 export interface ConfigEntrada { grupo: string; membros: Record<string, string[]>; botJids: string[] }
-export interface Pergunta { id: string; pessoa: string; texto: string }
+/** `citada` (22/10): o texto da mensagem que a pessoa citou (respondeu), para o Zeca explicar a mensagem dele */
+export interface Pergunta { id: string; pessoa: string; texto: string; citada?: string }
 export type Entrada = { tipo: 'pergunta'; p: Pergunta } | { tipo: 'resposta'; p: Pergunta } | { tipo: 'nao_texto'; pessoa: string } | { tipo: 'ignorar' };
 
 const IGNORAR: Entrada = { tipo: 'ignorar' };
@@ -49,11 +50,17 @@ export function lerWebhook(corpo: unknown, cfg: ConfigEntrada, enviados: Readonl
   // E1-M9: imagem/vídeo com legenda "bot ..."/"zeca ..." chama o bot (que ainda só lê texto)
   const legenda: string | null = m.imageMessage?.caption ?? m.videoMessage?.caption ?? null;
   if (texto === null) return mencionou || (legenda !== null && prefixo.test(legenda)) ? { tipo: 'nao_texto', pessoa } : IGNORAR;
+  // 22/10: a mensagem citada (respondida) — citar uma mensagem do Zeca é chamar o Zeca, e o texto vai junto
+  const q = ctx?.quotedMessage;
+  const citadaTxt: string | null = q?.conversation ?? q?.extendedTextMessage?.text ?? q?.imageMessage?.caption ?? null;
+  const citada = citadaTxt && citadaTxt.trim() ? citadaTxt.trim() : null;
+  const citouZeca = !!citada && typeof ctx?.participant === 'string' && cfg.botJids.some((b) => usuario(b) === usuario(ctx.participant));
   // E2: "sim/não/número" sem "bot" — o bot decide se há proposta/lista pendente; frase comum segue ignorada
   if (!prefixo.test(texto) && !mencionou) {
     const r = lerResposta(texto);
-    return r !== null && r !== 'desfaz' ? { tipo: 'resposta', p: { id: String(key.id ?? ''), pessoa, texto: texto.trim() } } : IGNORAR;
+    if (r !== null && r !== 'desfaz') return { tipo: 'resposta', p: { id: String(key.id ?? ''), pessoa, texto: texto.trim() } };
+    if (!citouZeca) return IGNORAR;
   }
   const limpo = texto.replace(prefixo, '').replace(/@\d+\s*/g, '').trim();
-  return { tipo: 'pergunta', p: { id: String(key.id ?? ''), pessoa, texto: limpo || 'oi' } };
+  return { tipo: 'pergunta', p: { id: String(key.id ?? ''), pessoa, texto: limpo || 'oi', ...(citada ? { citada } : {}) } };
 }

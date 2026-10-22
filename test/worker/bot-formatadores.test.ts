@@ -6,7 +6,7 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 describe('ferramentas', () => {
   it('8 ferramentas, schema com nome e parâmetros', () => {
     expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra', 'investimentos',
-      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro']);
+      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro', 'mensagens_do_zeca']);
     expect(TOOLS.every((t: any) => t.type === 'function' && t.function.parameters)).toBe(true);
   });
   it('caminho: query com período, pessoa ("eu" vira quem perguntou) e grupo; nome desconhecido → null', () => {
@@ -156,5 +156,21 @@ describe('simular com os dois cenários', () => {
     const t = formatar('simular_compra', { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: true, mesQueFura: null, aprofunda: 0, cabeProvavel: true, link: '/simulador' }, 'https://p');
     expect(t).toContain('✅ Cabe');
     expect(t).not.toContain('provável');
+  });
+});
+
+// 22/10: reserva de mensagens_do_zeca (quando a explicação do modelo não passa na trava): a lista do que ele mandou
+describe('mensagens_do_zeca (texto montado)', () => {
+  it('uma linha por mensagem: quando, tipo e a primeira linha (o título)', () => {
+    expect(formatar('mensagens_do_zeca', { mensagens: [
+      { tipo: 'diario', quando: '22/10 08:00', texto: '🔴 *Ritmo acima do que cabe* · nesse passo out/26 fecha no vermelho\n\n☀️ *Bom dia!*' },
+      { tipo: 'gasto', quando: '22/10 16:45', texto: '🟡 *Gasto grande* · R$ 600,00 no B (X)' },
+    ] }, 'https://p')).toBe([
+      '📨 O que mandei nas últimas 36 horas:',
+      '• 22/10 08:00 (diário): 🔴 *Ritmo acima do que cabe* · nesse passo out/26 fecha no vermelho',
+      '• 22/10 16:45 (gasto grande): 🟡 *Gasto grande* · R$ 600,00 no B (X)',
+      '', '👉 https://p/',
+    ].join('\n'));
+    expect(formatar('mensagens_do_zeca', { mensagens: [] }, 'https://p')).toContain('Nenhuma mensagem');
   });
 });

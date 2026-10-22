@@ -3,7 +3,9 @@ import { Cron } from 'croner';
 import { Pool } from 'pg';
 import { AGENDA, AGENDA_NOTIF, lerArgs, lerModo } from './cli';
 import { PgAcoes } from './bot/acoes';
+import { responder } from './bot/agente';
 import { criarBot } from './bot/bot';
+import { criarLocais } from './bot/locais';
 import { lerMembros } from './bot/entrada';
 import { ClienteGroq } from './bot/groq';
 import { PgRegistroBot } from './bot/registro';
@@ -84,6 +86,34 @@ async function main() {
     return rodarNotificacao(bot, { ...notif, modo });
   };
 
+  const painelBase = process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000';
+  const painelGet = async (c: string) => {
+    const r = await fetch(`${painelBase}${c}`, { headers: cabInterno, signal: AbortSignal.timeout(30000) });
+    return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
+  };
+  // 22/10: o que o Zeca mandou no grupo nas últimas 36 h — o técnico (privado do Matheus) fica de fora
+  const mensagensRecentes = async () => (await pool.query(
+    `SELECT bot AS tipo, to_char(criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI') AS quando, texto
+       FROM financas_notificacoes
+      WHERE modo = 'real' AND enviado AND texto IS NOT NULL AND bot <> 'tecnico' AND criado_em > now() - interval '36 hours'
+      ORDER BY id`)).rows;
+
+  // 22/10: pergunta ao Zeca pela linha de comando, com o modelo de verdade — não manda nada, não grava, não cria proposta
+  if (args.tarefa === 'bot-perguntar') {
+    if (!groq) throw new Error('sem GROQ_API_KEY');
+    const locais = criarLocais({
+      pessoa: 'Matheus', hoje: currentDateSP(), refs: new Map(), painel: painelGet,
+      painelPost: async () => ({ ok: false, dados: { erro: 'bot-perguntar não grava' } }),
+      acoes: { criar: async () => { throw new Error('bot-perguntar não cria proposta'); } }, mensagens: mensagensRecentes,
+    });
+    const r = await responder({ id: 'cli', pessoa: 'Matheus', texto: args.pergunta!, ...(args.citada ? { citada: args.citada } : {}) },
+      { groq, painel: painelGet, contexto: [], hoje: currentDateSP(), painelUrl: notif.painelUrl, locais });
+    console.log(r.texto);
+    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro }));
+    await pool.end();
+    return;
+  }
+
   if (args.tarefa === 'agendar') {
     for (const [expr, nome] of AGENDA) {
       new Cron(expr, { timezone: TZ, protect: true }, async () => {
@@ -123,21 +153,18 @@ async function main() {
     const faltando = ['GROQ_API_KEY', 'BOT_TOKEN', 'BOT_MEMBROS', 'BOT_JIDS', 'WA_GRUPO', 'WA_API_KEY'].filter((k) => !process.env[k]);
     if (faltando.length) log(`bot desligado: falta ${faltando.join(', ')}`);
     else {
-      const painelBase = process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000';
       const wa = new CanalWhatsApp(waUrl, waKey!, waInst, process.env.WA_GRUPO!);
       const bot = criarBot({
         cfg: { grupo: process.env.WA_GRUPO!, membros: lerMembros(process.env.BOT_MEMBROS!), botJids: process.env.BOT_JIDS!.split('|').filter(Boolean) },
         groq: groq!, registro: registroBot, wa, renderizar: (s) => paraPng(s), hoje: currentDateSP, painelUrl: notif.painelUrl, log,
-        painel: async (c) => {
-          const r = await fetch(`${painelBase}${c}`, { headers: cabInterno, signal: AbortSignal.timeout(30000) });
-          return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
-        },
+        painel: painelGet,
         // E2: escrita só pelas rotas /api/bot/{previa,executar,desfazer}, depois do "sim" lido pelo código
         painelPost: async (c, corpo) => {
           const r = await fetch(`${painelBase}${c}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...cabInterno }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });
           return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
         },
         acoes: new PgAcoes(pool),
+        mensagens: mensagensRecentes,
       });
       const porta = Number(process.env.BOT_PORTA ?? 8090);
       const servidor = criarServidor(process.env.BOT_TOKEN!, (c) => bot.receber(c));

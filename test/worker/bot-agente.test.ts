@@ -192,3 +192,22 @@ describe('pendências do E1 (auditoria 13/10)', () => {
     expect(r.texto.endsWith('👉 https://p/faturas')).toBe(true);
   });
 });
+
+// 22/10: explicar uma mensagem citada — os números dela valem como dado conferido (sem ferramenta); número que não
+// está nela continua barrado
+describe('mensagem citada', () => {
+  const citada = '🔴 Ritmo de R$ 162,25/dia, acima do que cabe: nesse passo fecha em *-R$ 122,22*';
+  const pc = { id: 'X', pessoa: 'Matheus', texto: 'por que vermelho?', citada };
+  it('explica com os números da mensagem, sem ferramenta', async () => {
+    const g = groqRoteiro([{ content: '🔴 Vocês gastam R$ 162,25 por dia; nesse passo o mês fecha em -R$ 122,22.', toolCalls: [], modelo: 'm' }]);
+    const r = await responder(pc, { ...base, groq: g });
+    expect(r.texto).toBe('🔴 Vocês gastam R$ 162,25 por dia; nesse passo o mês fecha em -R$ 122,22.');
+    expect(r.semFerramenta).toBe(false);
+    // o texto citado vai para o modelo junto com a pergunta
+    expect(JSON.stringify(g.vistos[0].at(-1))).toContain('nesse passo fecha em');
+  });
+  it('número que não está na mensagem nem em ferramenta: não passa', async () => {
+    const r = await responder(pc, { ...base, groq: groqRoteiro([{ content: '🔴 Vocês gastaram R$ 999,00.', toolCalls: [], modelo: 'm' }]) });
+    expect(r.texto).not.toContain('999');
+  });
+});

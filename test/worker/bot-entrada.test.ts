@@ -92,3 +92,27 @@ describe('nome do bot', () => {
     expect(lerWebhook(msg({ participant: '222@lid', tipo: { imageMessage: { caption: 'zeca o que é isso?' } } }), cfg, new Set())).toMatchObject({ tipo: 'nao_texto' });
   });
 });
+
+// 22/10 (pedido do Matheus): responder citando uma mensagem do Zeca é chamar o Zeca, e o texto citado vai junto
+describe('mensagem citada', () => {
+  const citando = (p: { participant: string; texto: string; autor: string; citada: string }) => ({
+    event: 'messages.upsert', instance: 'financas',
+    data: {
+      key: { remoteJid: G, fromMe: false, id: 'C1', participant: p.participant },
+      message: { extendedTextMessage: { text: p.texto, contextInfo: { participant: p.autor, quotedMessage: { conversation: p.citada } } } },
+    },
+  });
+  const diario = '🔴 *Ritmo acima do que cabe* · nesse passo out/26 fecha no vermelho';
+  it('citando o Zeca, sem "zeca": pergunta com o texto citado', () => {
+    expect(lerWebhook(citando({ participant: '222@lid', texto: 'por que vermelho?', autor: '111@lid', citada: diario }), cfg, new Set()))
+      .toEqual({ tipo: 'pergunta', p: { id: 'C1', pessoa: 'Ariane', texto: 'por que vermelho?', citada: diario } });
+  });
+  it('citando outra pessoa, sem "zeca": ignora; com "zeca": pergunta com o citado', () => {
+    expect(lerWebhook(citando({ participant: '222@lid', texto: 'por que?', autor: '5500000000009@s.whatsapp.net', citada: 'oi' }), cfg, new Set())).toEqual({ tipo: 'ignorar' });
+    expect(lerWebhook(citando({ participant: '222@lid', texto: 'zeca explica isso', autor: '5500000000009@s.whatsapp.net', citada: 'gastei 50' }), cfg, new Set()))
+      .toMatchObject({ tipo: 'pergunta', p: { texto: 'explica isso', citada: 'gastei 50' } });
+  });
+  it('"sim" citando a proposta do Zeca continua sendo resposta à proposta', () => {
+    expect(lerWebhook(citando({ participant: '222@lid', texto: 'sim', autor: '111@lid', citada: '📝 Proposta: ...' }), cfg, new Set())).toMatchObject({ tipo: 'resposta' });
+  });
+});

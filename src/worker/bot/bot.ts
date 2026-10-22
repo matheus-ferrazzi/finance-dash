@@ -19,6 +19,8 @@ type Item = Pergunta & { curta?: boolean };
 export function criarBot(d: {
   cfg: ConfigEntrada; groq: Pick<ClienteGroq, 'chat'>; painel: (c: string) => Promise<Res>;
   painelPost: (c: string, corpo: object) => Promise<Res>;
+  /** 22/10: mensagens que o Zeca mandou no grupo (para explicar) */
+  mensagens?: () => Promise<{ tipo: string; quando: string; texto: string }[]>;
   registro: Pick<PgRegistroBot, 'gravar' | 'contexto'>;
   acoes: Pick<PgAcoes, 'criar' | 'pendente' | 'confirmar' | 'cancelar' | 'ultimaFeita'>;
   wa: { enviarComId(t: string): Promise<string | null>; enviarImagemComId(png: Buffer, l: string): Promise<string | null> };
@@ -79,7 +81,7 @@ export function criarBot(d: {
     if (c.tratado) return;
     if (c.texto) p = { ...p, texto: c.texto };
     const contexto = await d.registro.contexto(30, 3).catch(() => []);
-    const locais = criarLocais({ pessoa: p.pessoa, hoje: d.hoje(), refs, painel: d.painel, painelPost: d.painelPost, acoes: d.acoes });
+    const locais = criarLocais({ pessoa: p.pessoa, hoje: d.hoje(), refs, painel: d.painel, painelPost: d.painelPost, acoes: d.acoes, mensagens: d.mensagens });
     const r: RespostaBot = await responder(p, { groq: d.groq, painel: d.painel, contexto, hoje: d.hoje(), painelUrl: d.painelUrl, locais });
     if (r.texto.startsWith('🔎')) listas.set(p.pessoa, Date.now());
     let erroEnvio: string | null = null;

@@ -96,3 +96,15 @@ describe('mensagem de data (E3)', () => {
     expect(await m.locais.propor_gasto_dinheiro({ valor: 5, descricao: 'x', categoria: 'Groceries', data: '2026-09-01' })).toMatchObject({ ok: false, dados: { erro: expect.stringContaining('mais de 30 dias') } });
   });
 });
+
+// 22/10: as mensagens que o Zeca mandou no grupo, para explicar uma delas
+describe('mensagens_do_zeca', () => {
+  it('devolve as mensagens recentes da fonte', async () => {
+    const locais = criarLocais({
+      pessoa: 'Matheus', hoje: '2026-10-22', refs: new Map(),
+      painel: async () => ({ ok: true, dados: {} }), painelPost: async () => ({ ok: true, dados: {} }), acoes: { criar: async () => 1 },
+      mensagens: async () => [{ tipo: 'diario', quando: '22/10 08:00', texto: '☀️ *Bom dia!*' }],
+    });
+    expect(await locais.mensagens_do_zeca({})).toEqual({ ok: true, dados: { mensagens: [{ tipo: 'diario', quando: '22/10 08:00', texto: '☀️ *Bom dia!*' }] } });
+  });
+});

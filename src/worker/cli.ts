@@ -38,17 +38,30 @@ export function lerModo(v: string | undefined): Modo {
 }
 
 export interface Args {
-  tarefa: NomeTarefa | TarefaNotif | 'agendar';
+  tarefa: NomeTarefa | TarefaNotif | 'agendar' | 'bot-perguntar';
   dryRun: boolean;
   desde?: string;
   limite?: number;
   /** D2: grava o gráfico da notificação (só com --dry-run) */
   png?: string;
+  /** 22/10: bot-perguntar "<pergunta>" [--citada "<texto>"] */
+  pergunta?: string;
+  citada?: string;
 }
 
 export function lerArgs(argv: string[]): Args {
   const [primeiro, ...resto] = argv;
   if (!primeiro || primeiro === 'agendar') return { tarefa: 'agendar', dryRun: false };
+  if (primeiro === 'bot-perguntar') {
+    const [pergunta, ...op] = resto;
+    if (!pergunta || pergunta.startsWith('--')) throw new Error('bot-perguntar precisa da pergunta');
+    const out: Args = { tarefa: 'bot-perguntar', dryRun: true, pergunta };
+    for (let i = 0; i < op.length; i++) {
+      if (op[i] === '--citada' && op[i + 1]) out.citada = op[++i];
+      else throw new Error(`opção desconhecida: ${op[i]}`);
+    }
+    return out;
+  }
   if (NOTIFS.has(primeiro)) {
     // notificação: --dry-run (monta e mostra, não grava nem envia) e --png <arquivo> (grava o gráfico)
     const out: Args = { tarefa: primeiro as TarefaNotif, dryRun: false };

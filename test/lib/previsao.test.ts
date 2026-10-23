@@ -346,3 +346,20 @@ describe('M6: conta da casa agendada', () => {
     expect(com({ Housing: 1900 }, 0).saldoProjetado).toBeCloseTo(3000, 2);    // já pago: o saldo já descontou
   });
 });
+
+// auditoria 17/10 (Z6), 22/10: às 8h o ritmo dividia pelo dia de hoje, que ainda não teve gasto lançado (a ingestão
+// é às 16h e às 22h): no dia 2 saía pela metade. Agora: gasto até ontem ÷ dias até ontem — igual às 8h e às 22h
+describe('Z6: ritmo pelos dias já fechados', () => {
+  const ritmo = (variavelJaGasto: number, variavelHoje: number | undefined, hoje: string) => {
+    const b = baseFake({ mesCorrente: { recebidoPorFonte: {}, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto, agendadoRestante: 0, faturaJaPaga: 0, casaNoMesPorCategoria: {}, ...(variavelHoje !== undefined ? { variavelHoje } : {}) } as any });
+    return computeRitmo(b, computeProjecao(b, 1, hoje)[0], hoje).ritmoAtualDia;
+  };
+  it('de manhã (nada lançado hoje) e à noite (com o gasto de hoje) dão o mesmo ritmo', () => {
+    expect(ritmo(1000, 0, '2026-08-11')).toBeCloseTo(100, 2);    // 1000 até ontem ÷ 10 dias
+    expect(ritmo(1150, 150, '2026-08-11')).toBeCloseTo(100, 2);  // hoje (150) fica fora até o dia fechar
+  });
+  it('dia 1: o que houver; sem o gasto de hoje separado (dado antigo): a conta antiga', () => {
+    expect(ritmo(80, 80, '2026-08-01')).toBeCloseTo(80, 2);
+    expect(ritmo(1100, undefined, '2026-08-11')).toBeCloseTo(100, 2); // 1100 ÷ 11
+  });
+});

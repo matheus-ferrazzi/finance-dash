@@ -103,3 +103,13 @@ describe('previstoFimGastos', () => {
     expect(previstoFimGastos({ gasto: 3000, livre: 1500, parcelasRestantes: 0, fixosFaltam: 0, diaHoje: 30, diasNoMes: 30 })).toBe(3000);
   });
 });
+
+// Z6 (22/10): o ritmo do gasto livre da meta também pelos dias já fechados
+describe('previstoFimGastos com o gasto de hoje à parte', () => {
+  it('ritmo = livre até ontem ÷ dias até ontem', () => {
+    // livre 1100, sendo 300 hoje → 800 em 10 dias = 80/dia; faltam 20 dias → 3000 + 1600 (a conta antiga dava 1100 ÷ 11 × 20)
+    expect(previstoFimGastos({ gasto: 3000, livre: 1100, livreHoje: 300, parcelasRestantes: 0, fixosFaltam: 0, diaHoje: 11, diasNoMes: 31 })).toBe(4600);
+    // sem o gasto de hoje separado: a conta antiga
+    expect(previstoFimGastos({ gasto: 3000, livre: 1100, parcelasRestantes: 0, fixosFaltam: 0, diaHoje: 11, diasNoMes: 31 })).toBe(5000);
+  });
+});

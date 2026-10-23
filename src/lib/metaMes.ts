@@ -44,9 +44,13 @@ export function metaDaMedia(meses: readonly number[]): number | null {
  * dias que faltam. Auditoria 17/10 (N2): projetar o à vista inteiro multiplicava por dia a conta mensal travada e o
  * item único, e o "fecha em" de out/26 saía bem acima do real.
  */
-export function previstoFimGastos(e: { gasto: number; livre: number; parcelasRestantes: number; fixosFaltam: number; diaHoje: number; diasNoMes: number }): number {
+export function previstoFimGastos(e: { gasto: number; livre: number; livreHoje?: number; parcelasRestantes: number; fixosFaltam: number; diaHoje: number; diasNoMes: number }): number {
   const diasRestantes = Math.max(0, e.diasNoMes - e.diaHoje);
-  const ritmo = e.diaHoje > 0 ? Math.max(0, e.livre) / e.diaHoje : 0;
+  // Z6 (22/10): pelos dias já fechados — o livre até ontem ÷ dias até ontem (de manhã, hoje ainda não tem gasto
+  // lançado e dividir por ele baixava o ritmo); dia 1 ou sem o livre de hoje separado: a conta antiga
+  const ritmo = e.livreHoje !== undefined && e.diaHoje > 1
+    ? Math.max(0, e.livre - e.livreHoje) / (e.diaHoje - 1)
+    : e.diaHoje > 0 ? Math.max(0, e.livre) / e.diaHoje : 0;
   return r2(e.gasto + e.parcelasRestantes + Math.max(0, e.fixosFaltam) + ritmo * diasRestantes);
 }
 

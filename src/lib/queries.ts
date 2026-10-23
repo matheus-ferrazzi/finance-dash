@@ -816,6 +816,8 @@ export async function getGastosMes(hoje: string = currentDateSP()) {
   return {
     gasto: r2(rows.reduce((t, x) => t + Number(x.v), 0)),
     livre: r2(rows.reduce((t, x) => t + Number(x.livre), 0)),
+    // Z6 (22/10): o livre de hoje à parte (o ritmo da meta usa só os dias já fechados)
+    livreHoje: r2(rows.filter((x) => Number(x.dia) === Number(hoje.slice(8, 10))).reduce((t, x) => t + Number(x.livre), 0)),
     fixosMes: r2(rows.reduce((t, x) => t + Number(x.fixos), 0)),
     parcelasRestantes: r2(Number(r.v)),
     porDia,
@@ -870,7 +872,7 @@ export async function getMetaMes(hoje: string = currentDateSP()) {
   const estado = estadoMeta({
     meta: metaDaMedia(meses), gasto: g.gasto,
     previstoFim: previstoFimGastos({
-      gasto: g.gasto, livre: g.livre, parcelasRestantes: g.parcelasRestantes, fixosFaltam: fixosMedia - g.fixosMes,
+      gasto: g.gasto, livre: g.livre, livreHoje: g.livreHoje, parcelasRestantes: g.parcelasRestantes, fixosFaltam: fixosMedia - g.fixosMes,
       diaHoje, diasNoMes: diasNoMes(mes),
     }),
     diaHoje, diasNoMes: diasNoMes(mes),
@@ -1219,6 +1221,12 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
            AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
            AND NOT (l.categoria = ANY($${rmc.p.length + 3}::text[]))
            AND ${SEM_ESPELHO}${rmc.sql}) AS variavel_gasto,
+       -- Z6 (22/10): a parte de hoje, que o ritmo deixa de fora até o dia fechar
+       (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, sp
+         WHERE l.classe='despesa' AND l.forma_pagamento='Débito' AND l.data_lancamento = sp.hoje
+           AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
+           AND NOT (l.categoria = ANY($${rmc.p.length + 3}::text[]))
+           AND ${SEM_ESPELHO}${rmc.sql}) AS variavel_hoje,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
@@ -1288,6 +1296,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       receitasAgendadas,
       receitasAReceber,
       variavelJaGasto: Number(mesRows[0]?.variavel_gasto ?? 0),
+      variavelHoje: Number(mesRows[0]?.variavel_hoje ?? 0),
       fixoJaGasto: Number(mesRows[0]?.fixo_gasto ?? 0),
       agendadoRestante: Number(mesRows[0]?.agendado_restante ?? 0),
       faturaJaPaga: Number(mesRows[0]?.fatura_ja_paga ?? 0),

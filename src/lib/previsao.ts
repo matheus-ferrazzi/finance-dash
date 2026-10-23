@@ -83,6 +83,8 @@ export interface ProjecaoBase {
     /** o que ainda falta entrar de cada fonte recorrente (ex.: a 2ª parte do salário) */
     receitasAReceber: ReceitaPrevista[];
     variavelJaGasto: number;               // gasto livre no débito (fora casa e fora contas travadas)
+    /** Z6 (22/10): a parte de variavelJaGasto com data de hoje (o ritmo usa só os dias já fechados) */
+    variavelHoje?: number;
     fixoJaGasto?: number;                  // contas travadas já pagas no débito neste mês
     /** N12: por categoria travada, a média mensal (meses-base) e o que já saiu neste mês */
     fixoPorCategoria?: Record<string, { media: number; pago: number; ativa?: boolean }>;
@@ -306,7 +308,11 @@ export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes, hoje: strin
     sobraParaODiaADia,
     // N11: hoje também é dia de gastar — divide entre hoje e os que faltam (no último dia, tudo hoje)
     ritmoSeguroDia: Math.max(0, sobraParaODiaADia / (diasRestantes + 1)),
-    ritmoAtualDia: diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
+    // Z6 (22/10): pelos dias já fechados — gasto até ontem ÷ dias até ontem (às 8h hoje ainda não tem gasto lançado e
+    // dividir por ele baixava o ritmo: metade no dia 2). Dia 1 ou sem o gasto de hoje separado: a conta antiga
+    ritmoAtualDia: base.mesCorrente.variavelHoje !== undefined && diaHoje > 1
+      ? Math.max(0, base.mesCorrente.variavelJaGasto - base.mesCorrente.variavelHoje) / (diaHoje - 1)
+      : diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
     fechaCom: atual.saldoProjetado,
   };
 }

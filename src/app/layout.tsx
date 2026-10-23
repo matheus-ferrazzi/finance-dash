@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { Manrope } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { MobileNav, NavTopo, RespToggle } from './components/Nav';
 import { PeriodPicker } from './components/PeriodPicker';
@@ -11,7 +11,9 @@ import { lerVersao } from '@/lib/versao';
 import { VersaoAviso } from './components/VersaoAviso';
 
 // acabamento (15/10): fonte própria (antes a do sistema: Segoe no Windows, Roboto no Android), servida pelo próprio app
-const fonte = Manrope({ subsets: ['latin'], weight: ['400', '500', '600', '700'], variable: '--font-sans', display: 'swap' });
+// 23/10: o arquivo fica no repo (fonts/, licença OFL ao lado) — baixar do Google Fonts no build derrubou um deploy
+// quando a rede da VPS falhou. Fonte variável (pesos 400–700 num arquivo só), subconjunto latin (cobre os acentos)
+const fonte = localFont({ src: './fonts/manrope-latin-wght-normal.woff2', weight: '400 700', variable: '--font-sans', display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'Finanças · Casal',

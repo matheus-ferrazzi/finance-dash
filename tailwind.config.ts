@@ -22,7 +22,7 @@ const config: Config = {
         ariane: '#ec5f9e',      // rosa
       },
       fontFamily: {
-        // Manrope via next/font (layout.tsx); o resto é o fallback enquanto carrega
+        // Manrope do repo (src/app/fonts, next/font/local em layout.tsx); o resto é o fallback enquanto carrega
         sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'sans-serif'],
       },
       boxShadow: {

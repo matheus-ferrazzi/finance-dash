@@ -81,3 +81,23 @@ describe('fatura do cartão paga por PIX QR Code (B, 10/10/2026)', () => {
     expect(classificar('Transfer - PIX', 'Pagamento de Pix QR Code LOJA EXEMPLO LTDA', true, 'Débito', 'Matheus')).toBe('despesa');
   });
 });
+
+// auditoria 17/10 (L6, L8), 22/10
+describe('L6: só o primeiro nome do parceiro faz a transferência ser do casal', () => {
+  it('família com o sobrenome dele não é conta do casal: Pix para a irmã é despesa', () => {
+    expect(classificar('Transfers', 'Transferência enviada|Fulana Jacob Ferrazzi', true, 'Débito', 'Ariane')).toBe('despesa');
+    expect(classificar('Transfer - PIX', 'Pix enviado Beltrano Bitencourt', true, 'Débito', 'Matheus')).toBe('despesa');
+    // o parceiro continua sendo do casal
+    expect(classificar('Transfer - PIX', 'Pix recebido Matheus J', false, 'Débito', 'Ariane')).toBe('transferencia_interna');
+    expect(classificar('Transfer - PIX', 'Pix enviado Ariane Bitencourt', true, 'Débito', 'Matheus')).toBe('transferencia_interna');
+  });
+});
+describe('L8: Pix devolvido é estorno, não receita', () => {
+  it('entrada com devolvido/devolução no Pix abate o gasto', () => {
+    expect(classificar('Transfer - PIX', 'PIX DEVOLVIDO   LOJA EXEMPLO LTDA', false, 'Débito', 'Ariane')).toBe('estorno');
+    expect(classificar('Transfers', 'DEVOLUCAO PIX LOJA', false, 'Débito', 'Matheus')).toBe('estorno');
+    expect(classificar('Transfer - PIX', 'Devolução de Pix', false, 'Débito', 'Matheus')).toBe('estorno');
+    // saída com "devolvido" (devolver dinheiro a alguém) continua despesa
+    expect(classificar('Transfer - PIX', 'PIX DEVOLVIDO A FULANO', true, 'Débito', 'Matheus')).toBe('despesa');
+  });
+});

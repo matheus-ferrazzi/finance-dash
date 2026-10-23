@@ -101,3 +101,19 @@ describe('L8: Pix devolvido é estorno, não receita', () => {
     expect(classificar('Transfer - PIX', 'PIX DEVOLVIDO A FULANO', true, 'Débito', 'Matheus')).toBe('despesa');
   });
 });
+
+// auditoria 17/10 (L7/W4), 23/10: juros, multa e encargo cobrados SOBRE o parcelamento de fatura são custo (despesa,
+// categoria de atraso), não pagamento de fatura — o "parc"+"fatura" do texto os mandava para pagamento_fatura
+describe('L7/W4: encargo do parcelamento de fatura', () => {
+  it('vira despesa; a parcela do parcelamento continua pagamento_fatura', () => {
+    for (const d of ['ENC ATRASO PARC FATURA', 'MULTA CONT PARC FATURA', 'JUROS MORA DE PARC FATURA', 'Juros de atraso de parcelamento de fatura'])
+      expect(classificar('Automotive', d, true, 'Crédito', 'Matheus')).toBe('despesa');
+    expect(classificar('Credit card payment', 'PARCELAMENTO DE FATURA 4/6', true, 'Crédito', 'Matheus')).toBe('pagamento_fatura');
+  });
+  it('a categoria vira a de atraso (a Pluggy manda "Automotive")', () => {
+    expect(corrigirCategoria('Automotive', 'ENC ATRASO PARC FATURA')).toBe('Late payment and overdraft costs');
+    expect(corrigirCategoria('Automotive', 'MULTA CONT PARC FATURA')).toBe('Late payment and overdraft costs');
+    expect(corrigirCategoria('Automotive', 'JUROS MORA PARC FATURA')).toBe('Late payment and overdraft costs');
+    expect(corrigirCategoria('Groceries', 'MERCADO')).toBe('Groceries');
+  });
+});

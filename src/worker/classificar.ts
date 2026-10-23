@@ -8,6 +8,9 @@ export function corrigirCategoria(cat: string | null | undefined, desc: string |
     return /\d\/\d/.test(d) ? 'Gaming' : 'Digital services';
   }
   if (d.includes('kaza ribeiro')) return 'Housing';
+  // L7 (23/10): juros, multa ou encargo cobrados sobre o parcelamento de fatura ("ENC ATRASO PARC FATURA", a Pluggy
+  // manda "Automotive"): é atraso. A mesma regra está em classificar (as funções são lidas sozinhas pela equivalência)
+  if (d.includes('fatura') && /juros|multa|\benc\b|encargo|\bmora\b|\biof\b/.test(d)) return 'Late payment and overdraft costs';
   // B 10/10/2026: "BRADESCO ADMINISTRADORA D(e consórcios)" — o n8n tratava como fatura de cartão
   if (d.includes('bradesco adminis') || d.includes('consorcio') || d.includes('consórcio')) return 'Consortium';
   if (d.includes('google') && (d.includes('play') || d.includes('pokemon') || d.includes('youtube'))) return 'Digital services';
@@ -28,6 +31,8 @@ export function classificar(cat: string | null | undefined, desc: string | null 
   const espelhoCartao = d.includes('cart') && d.includes('cred');
   // B 10/10/2026: fatura do cartão Santander paga por PIX QR no Itaú (o cartão registra "PAGAMENTO DE FATURA")
   const faturaPorQr = d.includes('qr code') && d.includes('banco santander');
+  // W4 (23/10): encargo cobrado no cartão sobre o parcelamento de fatura é custo — antes do "parc"+"fatura" abaixo
+  if (saida && forma === 'Crédito' && d.includes('fatura') && /juros|multa|\benc\b|encargo|\bmora\b|\biof\b/.test(d)) return 'despesa';
   if (c === 'Credit card payment' || c === 'Credit card fees' || d.includes('neon pagamen') || d.includes('nu pagamentos') || (d.includes('fatura') && (d.includes('pag') || d.includes('parc'))) || (forma === 'Débito' && espelhoCartao) || faturaPorQr)
     return 'pagamento_fatura';
   if (forma === 'Crédito' && !saida) return d.includes('pagamento') ? 'pagamento_fatura' : 'estorno';

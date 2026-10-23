@@ -206,3 +206,15 @@ describe('tesouro', () => {
     expect(ex.ok).toBe(true);
   });
 });
+
+// W3 (23/10): a reconciliação abortada era só uma contagem — a rodada ficava ok e ninguém era avisado
+describe('W3: reconciliação abortada vira falha', () => {
+  it('a conta que abortou entra nas falhas da rodada, com quantas e de quantas', async () => {
+    const c = ctx('real');
+    for (const id of ['k1', 'k2', 'k3', 'k4', 'k5']) c.repo.banco.set(id, linhaBancoFake(id));
+    c.pluggy.txs.set('acc-1', [txFake('novo')]);
+    const ex = await TAREFAS.transacoes(c, {});
+    expect(ex.ok).toBe(false);
+    expect(ex.contagens.falhas).toEqual(['Nubank/Matheus/Crédito: conferência abortada (acima_do_limite): sumiriam 5 de 5 lançamentos']);
+  });
+});

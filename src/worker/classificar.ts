@@ -37,7 +37,11 @@ export function classificar(cat: string | null | undefined, desc: string | null 
   if (['Salary', 'Income', 'Government aid', 'Cashback', 'Proceeds interests and dividends'].includes(c)) return 'receita';
   if (c === 'Taxes on investments') return 'despesa';
   if (['Transfers', 'Transfer - PIX', 'Transfer - Bank Slip'].includes(c)) {
-    const parc = dono === 'Ariane' ? ['matheus', 'ferrazzi', 'jacob'] : ['ariane', 'bitencourt'];
+    // L8 (22/10): Pix que volta (devolvido/devolução) abate o gasto — antes virava receita
+    if (!saida && /devolvid|devolu[cç][aã]o|dev pix/.test(d)) return 'estorno';
+    // L6 (22/10): só o primeiro nome do parceiro — o sobrenome sozinho pegava a família dele (Pix para a irmã sumia
+    // do gasto como transferência do casal)
+    const parc = dono === 'Ariane' ? ['matheus'] : ['ariane'];
     if (parc.some((p) => d.includes(p))) return 'transferencia_interna';
     return saida ? 'despesa' : 'receita';
   }

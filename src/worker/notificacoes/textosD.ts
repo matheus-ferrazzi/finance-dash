@@ -206,7 +206,7 @@ export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, l
  */
 export function montarAlertasMeta(
   r: { mes: string; mesLabel: string; estado: EstadoMeta | null; orcamento: { item: string; emoji: string; teto: number; gasto: number }[] },
-  anterior: MemoriaAlertas | null, link: string,
+  anterior: MemoriaAlertas | null, link: string | ((temMeta: boolean) => string),
 ): { texto: string | null; estado: MemoriaAlertas; temMeta: boolean } {
   const { alertas, memoria } = alertasDaMeta(r.estado, r.orcamento ?? [], anterior, r.mes);
   const linha = (a: Alerta) => {
@@ -221,7 +221,9 @@ export function montarAlertasMeta(
   const temMeta = alertas.some((a) => a.tipo !== 'orcamento');
   if (!alertas.length) return { texto: null, estado: memoria, temMeta };
   // cada aviso é um bloco (são assuntos diferentes: meta, ritmo, teto)
-  return { texto: emBlocos([tituloAlertas(alertas), ...alertas.map(linha), `👉 ${link}`]), estado: memoria, temMeta };
+  // Z4 (23/10): o link pode depender de ter aviso da meta (home) ou só de teto (orçamento)
+  const destino = typeof link === 'function' ? link(temMeta) : link;
+  return { texto: emBlocos([tituloAlertas(alertas), ...alertas.map(linha), `👉 ${destino}`]), estado: memoria, temMeta };
 }
 
 /** 19/10: o título é o aviso mais grave (estourou > teto estourado > 80% > ritmo > teto em 80%); os outros, contados. */

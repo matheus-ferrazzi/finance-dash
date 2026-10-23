@@ -120,7 +120,7 @@ describe('destinos (D)', () => {
     const f = fontes({ semanal: async () => ({ semana: { inicio: '2026-10-05', fim: '2026-10-11' }, total: 0, mediaTotal: 0, grupos: [], trilha: { fase: 1, titulo: 'T', proximoPasso: 'P' } }) });
     await rodarNotificacao('semanal', { fontes: f, registro: reg, canais: { grupo: grupo.canal, matheus: null, telegram: null }, modo: 'real', painelUrl: 'https://painel.exemplo/' });
     // N19: o link do semanal abre a semana da mensagem
-    expect(grupo.enviados[0]).toContain('https://painel.exemplo/gastos?p=sem-2026-10-05');
+    expect(grupo.enviados[0]).toMatch(/https:\/\/painel\.exemplo\/gastos\?[^\s]*p=sem-2026-10-05/);
     expect(grupo.enviados[0]).not.toContain('exemplo//');
   });
   it('bots do C2 seguem no Telegram; o gasto grande vai para o grupo (19/10)', async () => {
@@ -277,5 +277,40 @@ describe('resvg carregado sob demanda (revisão D2)', () => {
   it('o módulo do PNG não carrega o resvg ao ser importado', async () => {
     const fonte = (await import('node:fs')).readFileSync('src/worker/notificacoes/png.ts', 'utf8');
     expect(fonte).not.toMatch(/^import .*@resvg\/resvg-js/m);
+  });
+});
+
+// auditoria 17/10 (Z2, Z4, Z7), 23/10
+describe('links das mensagens e memória do alerta-meta', () => {
+  const estado = { meta: 4000, gasto: 3300, pct: 83, falta: 700, porDia: 46.67, diasRestantes: 14, previstoFim: 3900, acimaNoRitmo: 0, situacao: 'passou_80' };
+  const meta = { mes: '2026-10', mesLabel: 'out/26', estado, orcamento: [], serie: [], diasNoMes: 31 };
+  const rodar = async (bot: any, dados: unknown, reg = registroFake().reg) => {
+    const grupo = canalFake();
+    await rodarNotificacao(bot, { fontes: fontes({ [bot]: async () => dados }), registro: reg, canais: { grupo: grupo.canal, matheus: null, telegram: null }, modo: 'real', painelUrl: 'https://p' });
+    return grupo.enviados[0] ?? '';
+  };
+  it('Z2: o link do semanal abre a semana no recorte do "dia a dia" da mensagem', async () => {
+    const t = await rodar('semanal', { semana: { inicio: '2026-10-05', fim: '2026-10-11' }, total: 0, mediaTotal: 0, grupos: [], trilha: { fase: 1, titulo: 'T', proximoPasso: 'P' } });
+    expect(t).toMatch(/https:\/\/p\/gastos\?[^\s]*p=sem-2026-10-05/);
+    expect(t).toMatch(/https:\/\/p\/gastos\?[^\s]*tipo=livre/);
+  });
+  it('Z4: meta e alerta da meta abrem a home (o card da meta); alerta só de teto abre o Orçamento', async () => {
+    expect((await rodar('meta', meta)).trimEnd().endsWith('https://p/')).toBe(true);
+    expect((await rodar('alerta-meta', meta)).trimEnd().endsWith('https://p/')).toBe(true);
+    const soTeto = { ...meta, estado: null, orcamento: [{ item: 'Mercado', emoji: '🛒', teto: 100, gasto: 120 }] };
+    expect((await rodar('alerta-meta', soTeto)).trimEnd().endsWith('https://p/orcamento')).toBe(true);
+  });
+  it('Z7: sem aviso novo e com o mesmo estado (o jsonb volta com as chaves em outra ordem), não grava linha', async () => {
+    const { reg, linhas } = registroFake();
+    await rodar('alerta-meta', meta, reg);
+    expect(linhas).toHaveLength(1);
+    // o Postgres devolve o jsonb com as chaves reordenadas
+    const original = reg.ultimoEstado.bind(reg);
+    reg.ultimoEstado = async (b: any) => {
+      const e: any = await original(b);
+      return e && Object.fromEntries(Object.entries(e).reverse());
+    };
+    await rodar('alerta-meta', meta, reg);
+    expect(linhas).toHaveLength(1);
   });
 });

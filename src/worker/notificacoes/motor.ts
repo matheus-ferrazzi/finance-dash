@@ -49,15 +49,16 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
   const url = (tela: Parameters<typeof linkPara>[0], mes?: string) => base + linkPara(tela, mes ? { mes } : {}, '');
   switch (bot) {
     case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: null, svg: seguro(() => graficoDiario(dados)) };
-    // N19: o link abre a semana da mensagem, não o mês
-    case 'semanal': return { texto: montarSemanal(dados, { gastos: base + linkPara('gastos', { semana: dados?.semana?.inicio }, ''), trilha: url('trilha') }), estado: null, svg: seguro(() => graficoSemanal(dados)) };
+    // N19: o link abre a semana da mensagem, não o mês. Z2 (23/10): no recorte do "dia a dia" (tipo=livre), o número da mensagem
+    case 'semanal': return { texto: montarSemanal(dados, { gastos: base + linkPara('gastos', { semana: dados?.semana?.inicio, tipo: 'livre' }, ''), trilha: url('trilha') }), estado: null, svg: seguro(() => graficoSemanal(dados)) };
     case 'mensal': return { texto: montarMensal(dados, url('previsao', dados?.mes)), estado: null, svg: seguro(() => graficoMensal(dados)) };
     case 'tecnico': return { texto: montarTecnico(dados), estado: null };
     case 'ritmo': return { texto: montarRitmo(dados), estado: null };
     // meta de gastos (débito + crédito desde 17/10) — andamento (sem memória) e alertas (memória do mês no estado)
-    case 'meta': return { texto: montarMeta(dados, url('gastos')), estado: null, svg: seguro(() => graficoMeta(dados)) };
+    // Z4 (23/10): o número da meta só existe no card da home; o teto do orçamento, só no /orcamento
+    case 'meta': return { texto: montarMeta(dados, url('inicio')), estado: null, svg: seguro(() => graficoMeta(dados)) };
     case 'alerta-meta': {
-      const a = montarAlertasMeta(dados, estado, url('gastos'));
+      const a = montarAlertasMeta(dados, estado, (temMeta) => url(temMeta ? 'inicio' : 'orcamento'));
       return { texto: a.texto, estado: a.estado, svg: a.texto ? seguro(() => (a.temMeta ? graficoMeta(dados) : graficoOrcamento(dados?.orcamento ?? []))) : null };
     }
     case 'fatura': return montarFatura(dados ?? [], estado);
@@ -68,6 +69,12 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
 }
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** JSON com as chaves dos objetos em ordem alfabética (listas na ordem delas): igual para o mesmo conteúdo. */
+function jsonOrdenado(x: unknown): string {
+  const ord = (v: unknown): unknown => (Array.isArray(v) ? v.map(ord)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, ord((v as any)[k])])) : v);
+  return JSON.stringify(ord(x) ?? null);
+}
 
 const LIMITE_LEGENDA = 1000;
 type Renderizar = (svg: string) => Buffer | Promise<Buffer>;
@@ -122,7 +129,8 @@ export async function rodarNotificacao(
     return { bot, modo, texto: null, enviado: false, erro };
   }
   if (modo === 'dry-run') return { bot, modo, texto: m.texto, enviado: false, erro: null, svg: m.svg ?? null };
-  const estadoMudou = m.estado !== null && JSON.stringify(m.estado) !== JSON.stringify(anterior);
+  // Z7 (23/10): o jsonb volta do Postgres com as chaves em outra ordem — comparar com as chaves ordenadas
+  const estadoMudou = m.estado !== null && jsonOrdenado(m.estado) !== jsonOrdenado(anterior);
   if (m.texto === null) {
     if (estadoMudou) await d.registro.gravar({ bot, modo, texto: null, enviado: false, erro: null, estado: m.estado });
     return { bot, modo, texto: null, enviado: false, erro: null };

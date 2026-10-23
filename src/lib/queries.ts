@@ -1273,9 +1273,10 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   );
   const receitasAgendadas = agendRows.map((x) => ({ dia: Number(x.dia), valor: Math.round(Number(x.valor) * 100) / 100 }));
 
-  const casaNoMesPorCategoria = await getCasaNoMes(resp, hoje);
+  const casaNoMes = await getCasaNoMes(resp, hoje);
+  const casaNoMesPorCategoria = casaNoMes.porCategoria;
   // visão individual: o que o casal já pagou da casa, para abater os compromissos do casal
-  const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : await getCasaNoMes('casal', hoje);
+  const casaNoMesCasalPorCategoria = resp === 'casal' ? undefined : (await getCasaNoMes('casal', hoje)).porCategoria;
 
   return {
     patrimonioAtual,
@@ -1293,6 +1294,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       ...(faturaRestante !== undefined ? { faturaRestante } : {}),
       fixoPorCategoria,
       casaNoMesPorCategoria,
+      casaAgendadoRestante: casaNoMes.agendado,
       ...(casaNoMesCasalPorCategoria ? { casaNoMesCasalPorCategoria } : {}),
     },
     fontesReceita,
@@ -1310,11 +1312,12 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
 }
 
 /** Casa do mês de `hoje` por categoria: o que já saiu e o que já está agendado (conhecido em hoje). */
-async function getCasaNoMes(resp: Resp, hoje: string): Promise<Record<string, number>> {
+async function getCasaNoMes(resp: Resp, hoje: string): Promise<{ porCategoria: Record<string, number>; agendado: number }> {
   const rcm = rf(resp, 2);
   const hcm = `$${rcm.p.length + 2}::date`;
   const rows = await q<any>(
-    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, ROUND(SUM(valor),2) AS total,
+            ROUND(COALESCE(SUM(valor) FILTER (WHERE data_lancamento > ${hcm}), 0),2) AS agendado
      FROM financas_lancamentos
      -- N10: casa paga no crédito sai do caixa pela fatura; aqui só o que saiu da conta
      WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($1::text[])
@@ -1326,7 +1329,8 @@ async function getCasaNoMes(resp: Resp, hoje: string): Promise<Record<string, nu
   );
   const porCategoria: Record<string, number> = {};
   rows.forEach((x) => { porCategoria[x.categoria] = Number(x.total); });
-  return porCategoria;
+  // M6 (22/10): o agendado (data depois de hoje) à parte — abate o compromisso, mas ainda sai do saldo
+  return { porCategoria, agendado: Math.round(rows.reduce((s, x) => s + Number(x.agendado), 0) * 100) / 100 };
 }
 
 /**

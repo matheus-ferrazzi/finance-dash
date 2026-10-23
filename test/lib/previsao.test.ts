@@ -328,3 +328,21 @@ describe('resumoMudanca (P1)', () => {
     expect(resumoMudanca(jaVermelho, jaVermelho, '2026-12')).toMatchObject({ vermelhoPorCausa: null, vermelhoSemMudar: true });
   });
 });
+
+// auditoria 17/10 (M6), 22/10: conta da casa agendada (débito com data futura) abatia o compromisso como paga, mas o
+// saldo de hoje ainda não a descontou e o "agendado restante" exclui a casa: o boleto não saía de lugar nenhum e o
+// "fecha em" ficava alto pelo valor dele. Agora o agendado da casa entra como saída que ainda falta no mês
+describe('M6: conta da casa agendada', () => {
+  const compromisso = { id: 1, nome: 'Aluguel', categoria: 'Housing', valor: 1900, responsavel: 'Matheus', dataInicio: '2026-01-01', mesesTotais: null, observacao: null, dataFim: null };
+  const com = (casaNoMes: Record<string, number>, agendado: number) => computeProjecao(baseFake({
+    despesaCasaPorCategoria: {}, compromissosManuais: [compromisso], fontesReceita: [],
+    mesCorrente: { recebidoPorFonte: {}, receitaAgendada: 0, receitasAReceber: [], variavelJaGasto: 0, agendadoRestante: 0, faturaJaPaga: 0,
+      casaNoMesPorCategoria: casaNoMes, casaAgendadoRestante: agendado } as any,
+    despesaVariavelMediaMensal: 0, saldoContasAtual: 3000,
+  }), 1, '2026-08-05')[0];
+  it('agendado: abate o compromisso e sai como saída restante (conta uma vez)', () => {
+    expect(com({}, 0).saldoProjetado).toBeCloseTo(1100, 2);           // não pago nem agendado: falta o compromisso
+    expect(com({ Housing: 1900 }, 1900).saldoProjetado).toBeCloseTo(1100, 2); // agendado: sai uma vez
+    expect(com({ Housing: 1900 }, 0).saldoProjetado).toBeCloseTo(3000, 2);    // já pago: o saldo já descontou
+  });
+});

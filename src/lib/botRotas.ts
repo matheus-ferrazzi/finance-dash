@@ -18,8 +18,14 @@ const somaDias = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`)
  * de dias ("out até dia 12" × "set até dia 12", não × setembro inteiro).
  */
 export function alinharPeriodos(a: Per, b: Per, hoje: string): { a: Per; b: Per } {
+  // Z1 (23/10): vale nas duas ordens — o período em andamento (termina hoje) manda no corte, seja ele A ou B
+  const amanha = somaDias(hoje, 1);
+  if (b.fimExcl === amanha && a.fimExcl !== amanha) {
+    const r = alinharPeriodos(b, a, hoje);
+    return { a: r.b, b: r.a };
+  }
   const n = dias(a);
-  if (a.fimExcl !== somaDias(hoje, 1) || dias(b) <= n) return { a, b };
+  if (a.fimExcl !== amanha || dias(b) <= n) return { a, b };
   const corta = { ...b, fimExcl: somaDias(b.inicio, n) };
   if (a.inicio.endsWith('-01') && b.inicio.endsWith('-01')) {
     const rot = ` (dias 1 a ${n})`;

@@ -25,6 +25,20 @@ describe('alinharPeriodos (comparação justa)', () => {
     const b = { inicio: '2026-09-01', fimExcl: '2026-10-01', label: 'set/26' };
     expect(alinharPeriodos(a, b, '2026-10-12')).toEqual({ a: { ...a, label: 'out/26 (dias 1 a 12)' }, b: { inicio: '2026-09-01', fimExcl: '2026-09-13', label: 'set/26 (dias 1 a 12)' } });
   });
+  // auditoria 17/10 (Z1), 23/10: na ordem "setembro × outubro" (B em andamento) nada era cortado — setembro inteiro
+  // contra 12 dias de outubro, e o mesmo pedido dava +45% ou −13% só pela ordem
+  it('B em andamento: A é que é cortado; o resultado não depende da ordem', async () => {
+    const { alinharPeriodos } = await import('../../src/lib/botRotas');
+    const set = { inicio: '2026-09-01', fimExcl: '2026-10-01', label: 'set/26' };
+    const out = { inicio: '2026-10-01', fimExcl: '2026-10-13', label: 'out/26' };
+    expect(alinharPeriodos(set, out, '2026-10-12')).toEqual({
+      a: { inicio: '2026-09-01', fimExcl: '2026-09-13', label: 'set/26 (dias 1 a 12)' }, b: { ...out, label: 'out/26 (dias 1 a 12)' },
+    });
+    // semana passada × esta semana (até quarta): a passada vai até quarta também
+    const passada = { inicio: '2026-10-05', fimExcl: '2026-10-12', label: 'semana passada' };
+    const esta = { inicio: '2026-10-12', fimExcl: '2026-10-15', label: 'esta semana' };
+    expect(alinharPeriodos(passada, esta, '2026-10-14').a).toEqual({ inicio: '2026-10-05', fimExcl: '2026-10-08', label: 'semana passada' });
+  });
   it('A fechado ou B mais curto: nada muda', async () => {
     const { alinharPeriodos } = await import('../../src/lib/botRotas');
     const a = { inicio: '2026-08-01', fimExcl: '2026-09-01', label: 'ago/26' };

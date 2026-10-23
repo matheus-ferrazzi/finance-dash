@@ -83,6 +83,11 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
     expect(falhas).toHaveLength(1);
     expect(falhas[0]).toMatchObject({ tarefa: 'tesouro', erro: 'fetch failed' });
     expect(falhas[0].quando).toMatch(/^\d{2}\/\d{2} às \d{2}h\d{2}$/);
+    // 23/10: falha que uma rodada seguinte da mesma tarefa resolveu não é mais aviso (nem na lista nem na contagem)
+    await pool.query(`INSERT INTO pluggy_execucoes (tarefa, modo, inicio, fim, ok) VALUES ('tesouro', 'real', now() - interval '30 minutes', now() - interval '30 minutes', true)`);
+    const depois = (await f.saude()) as any;
+    expect(depois.falhas).toEqual([]);
+    expect(Number(depois.worker_falhas_24h)).toBe(0);
     // 17/10: conexão parada pela Pluggy — sem auto-sync: aviso depois de 20 h; com auto-sync, só depois de 30 h
     await pool.query(`INSERT INTO pluggy_itens (item_id, banco, responsavel, last_updated_at, next_auto_sync_at) VALUES
       ('i1', 'Inter', 'M', now() - interval '77 hours', NULL),

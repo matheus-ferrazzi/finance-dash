@@ -125,7 +125,7 @@ export function linhasSaude(s: SaudeDados): string[] {
   // quem falhou foi o preço do Tesouro); sem a lista, a contagem antiga
   if (s.falhas?.length) {
     for (const f of s.falhas) probs.push(`• ${NOME_TAREFA[f.tarefa] ?? f.tarefa}: falhou em ${f.quando}${f.erro ? ` (${f.erro})` : ''}`);
-  } else if ((s.worker_falhas_24h ?? 0) > 0) probs.push(`• Ingestão (worker): ${s.worker_falhas_24h} rodada(s) com falha nas últimas 24h`);
+  } else if (!Array.isArray(s.falhas) && (s.worker_falhas_24h ?? 0) > 0) probs.push(`• Ingestão (worker): ${s.worker_falhas_24h} rodada(s) com falha nas últimas 24h`);
   for (const c of s.conexoes ?? []) {
     const quanto = c.horas >= 48 ? `${Math.floor(c.horas / 24)} dias` : `${Math.round(c.horas)} h`;
     probs.push(`• ${c.banco} (${c.responsavel}): sem atualizar há ${quanto}, abrir o Meu Pluggy e atualizar a conexão`);

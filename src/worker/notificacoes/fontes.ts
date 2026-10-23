@@ -34,11 +34,14 @@ const SQL_SAUDE = `SELECT json_build_object(
   'h_investimentos', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(atualizado_em)))/3600,1) FROM financas_investimentos),
   'h_faturas', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(atualizado_em)))/3600,1) FROM financas_faturas),
   'h_worker_ok', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(fim)))/3600,1) FROM pluggy_execucoes WHERE tarefa='transacoes' AND modo='real' AND ok),
-  'worker_falhas_24h', (SELECT COUNT(*) FROM pluggy_execucoes WHERE modo='real' AND NOT ok AND inicio > NOW() - INTERVAL '24 hours'),
-  -- 22/10: qual tarefa falhou, quando (SP) e o erro, para o aviso dizer o que foi
-  'falhas', (SELECT json_agg(json_build_object('tarefa', tarefa,
-                 'quando', to_char(inicio AT TIME ZONE 'America/Sao_Paulo', 'DD/MM "às" HH24"h"MI'), 'erro', left(erro, 80)) ORDER BY inicio)
-             FROM pluggy_execucoes WHERE modo='real' AND NOT ok AND inicio > NOW() - INTERVAL '24 hours'),
+  -- 23/10: falha que uma rodada seguinte da mesma tarefa resolveu (ok depois) não é mais aviso
+  'worker_falhas_24h', (SELECT COUNT(*) FROM pluggy_execucoes x WHERE x.modo='real' AND NOT x.ok AND x.inicio > NOW() - INTERVAL '24 hours'
+                          AND NOT EXISTS (SELECT 1 FROM pluggy_execucoes y WHERE y.tarefa = x.tarefa AND y.modo = 'real' AND y.ok AND y.inicio > x.inicio)),
+  -- 22/10: qual tarefa falhou, quando (SP) e o erro, para o aviso dizer o que foi ([] = nenhuma pendente)
+  'falhas', (SELECT COALESCE(json_agg(json_build_object('tarefa', x.tarefa,
+                 'quando', to_char(x.inicio AT TIME ZONE 'America/Sao_Paulo', 'DD/MM "às" HH24"h"MI'), 'erro', left(x.erro, 80)) ORDER BY x.inicio), '[]'::json)
+             FROM pluggy_execucoes x WHERE x.modo='real' AND NOT x.ok AND x.inicio > NOW() - INTERVAL '24 hours'
+               AND NOT EXISTS (SELECT 1 FROM pluggy_execucoes y WHERE y.tarefa = x.tarefa AND y.modo = 'real' AND y.ok AND y.inicio > x.inicio)),
   'ultimo_lancamento', (SELECT TO_CHAR(MAX(data_lancamento),'DD/MM/YYYY') FROM financas_lancamentos WHERE status_pluggy='POSTED'),
   -- S2 (13/10) e 17/10: conexão parada, pela Pluggy. Fora da atualização automática (sem next_auto_sync_at) e
   -- parada há 20 h já é aviso (cada conexão atualiza 1x/dia); com ela ligada, só depois de 30 h

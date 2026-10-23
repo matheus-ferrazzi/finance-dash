@@ -9,8 +9,9 @@ export const AGENDA: readonly [string, NomeTarefa][] = [
   ['25 16,22 * * *', 'investimentos'],
   ['35 16,22 * * *', 'saldos'],
   ['9 14-22 * * *', 'itens'],
-  // 17/10: títulos do Tesouro de conexão desligada (o arquivo do dia sai à tarde)
-  ['0 23 * * *', 'tesouro'],
+  // 17/10: títulos do Tesouro de conexão desligada (o arquivo do dia sai à tarde). 23/10: também ao meio-dia — às 23h
+  // o download falhou duas noites seguidas (rede); rodar de novo é inofensivo (só atualiza o valor)
+  ['0 12,23 * * *', 'tesouro'],
 ];
 
 /**

@@ -91,6 +91,8 @@ export interface ProjecaoBase {
     /** fatura do mês que ainda sai, vista por cartão (vencida = 0); ausente = sem fatura no histórico */
     faturaRestante?: number;
     casaNoMesPorCategoria: Record<string, number>; // inclui o que já saiu e o que está agendado
+    /** M6 (22/10): a parte agendada (data depois de hoje) da casa no débito — ainda não saiu do saldo */
+    casaAgendadoRestante?: number;
     /** visão individual: o mesmo, somando as duas pessoas (abate os compromissos do casal) */
     casaNoMesCasalPorCategoria?: Record<string, number>;
   };
@@ -411,7 +413,9 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
     const fixoQueFalta = mc.fixoPorCategoria
       ? Object.values(mc.fixoPorCategoria).reduce((s, c) => s + (c.pago > 0 || c.ativa === false ? 0 : c.media), 0)
       : Math.max(0, (base.despesaFixaDebitoMedia ?? 0) - (mc.fixoJaGasto ?? 0));
-    const despesaFixa = mc.agendadoRestante + fixoQueFalta;
+    // M6 (22/10): a conta da casa agendada (data futura, já conhecida) abate o compromisso acima, mas o saldo de hoje
+    // ainda não a descontou e o agendadoRestante exclui a casa: entra aqui, como saída que ainda falta no mês
+    const despesaFixa = mc.agendadoRestante + (mc.casaAgendadoRestante ?? 0) + fixoQueFalta;
     // o que ainda falta entrar de cada fonte recorrente (a 2ª parte do salário, etc) + o já agendado
     const receita = mc.receitasAReceber.reduce((s, r) => s + r.valor, 0) + mc.receitaAgendada;
     // fatura que vence neste mês: vista por cartão quando há fatura no histórico (vencida não sai de novo);

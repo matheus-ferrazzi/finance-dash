@@ -1931,15 +1931,23 @@ export async function getDadosAvisos(hoje: string = currentDateSP()): Promise<Da
               LEFT JOIN financas_lancamentos l ON l.classe = 'despesa' AND categoria_efetiva(l.descricao, l.categoria, l.contraparte_doc) = ANY(o.categorias)
                    AND l.data_lancamento >= $1::date AND l.data_lancamento <= $2::date
              WHERE o.ativo = true GROUP BY 1, 2, 3`, [iniMes, ontem, anteontem]),
+    // Z5 (23/10): pela CHEGADA no banco, não pela data — metade das despesas entra depois das 8h do dia seguinte e
+    // nunca era "ontem" no diário. Candidata: gravada nas 24 h antes das 8h de hoje (SP; criado_em é UTC), com data
+    // dos últimos 15 dias (carga histórica não vira aviso). A mediana é dos 90 dias antes dessa janela (a compra
+    // candidata não puxa a própria referência)
     q<any>(`WITH ref AS (
               SELECT categoria, percentile_cont(0.5) WITHIN GROUP (ORDER BY valor)::float8 AS mediana, COUNT(*) AS n
                 FROM financas_lancamentos
-               WHERE classe = 'despesa' AND data_lancamento >= $1::date - 90 AND data_lancamento < $1::date
-               GROUP BY 1)
+               WHERE classe = 'despesa' AND data_lancamento >= $1::date - 105 AND data_lancamento < $1::date - 15
+               GROUP BY 1),
+            janela AS (SELECT (($1::date + time '08:00') AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'UTC' AS fim)
             SELECT l.descricao, l.valor::float8 AS valor, l.categoria, ref.mediana
-              FROM financas_lancamentos l JOIN ref ON ref.categoria = l.categoria
-             WHERE l.classe = 'despesa' AND l.data_lancamento = $1::date AND l.valor > 100
-               AND ref.n >= 5 AND l.valor > 3 * ref.mediana`, [ontem]),
+              FROM financas_lancamentos l JOIN ref ON ref.categoria = l.categoria, janela
+             WHERE l.classe = 'despesa' AND l.valor > 100
+               AND l.criado_em >= janela.fim - interval '1 day' AND l.criado_em < janela.fim
+               AND l.data_lancamento >= $1::date - 15 AND l.data_lancamento <= $1::date
+               AND ref.n >= 5 AND l.valor > 3 * ref.mediana
+             ORDER BY l.data_lancamento, l.valor`, [hoje]),
   ]);
   return {
     saldos: saldos.map((x) => ({ banco: x.banco, responsavel: x.responsavel, saldo: Number(x.saldo) })),

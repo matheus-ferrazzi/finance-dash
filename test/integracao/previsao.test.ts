@@ -429,11 +429,21 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await ins('av-4', '2052-05-15', 100, 'IFD*Y', 'Food delivery');
     for (let i = 1; i <= 6; i++) await ins(`av-m${i}`, `2052-04-${String(10 + i).padStart(2, '0')}`, 60, 'LOJA', 'Shopping');
     await ins('av-5', '2052-05-15', 900, 'LOJA GRANDE', 'Shopping');
+    // Z5 (23/10): "fora do padrão" pela chegada no banco — 24 h antes das 8h de hoje (SP), data dos últimos 15 dias.
+    // Chegou atrasada (compra de 12/05 gravada em 15/05): agora avisa; chegou depois das 8h de hoje: fica pro diário de amanhã
+    const quando = (id: string, criado: string) => pool.query(`UPDATE financas_lancamentos SET criado_em = $2::timestamp WHERE id_transacao = $1`, [id, criado]);
+    await quando('av-5', '2052-05-15 23:00');
+    await ins('av-6', '2052-05-12', 700, 'LOJA ATRASADA', 'Shopping'); await quando('av-6', '2052-05-15 22:00');
+    await ins('av-7', '2052-05-15', 800, 'LOJA DEPOIS DAS 8H', 'Shopping'); await quando('av-7', '2052-05-16 12:00');
+    await ins('av-8', '2052-04-01', 650, 'LOJA CARGA ANTIGA', 'Shopping'); await quando('av-8', '2052-05-15 21:00');
     const d = await queries.getDadosAvisos('2052-05-16');
     expect(d.saldos).toContainEqual({ banco: 'AV', responsavel: 'Ariane', saldo: -42.5 });
     expect(d.encargos).toEqual([{ banco: 'AV', responsavel: 'Matheus', valor: 6.5 }]);
     expect(d.orcamento.find((o) => o.item === 'Delivery av')).toMatchObject({ teto: 600, ateAnteontem: 400, ateOntem: 500 });
-    expect(d.foraDoPadrao).toEqual([{ descricao: 'LOJA GRANDE', valor: 900, categoria: 'Shopping', mediana: 60 }]);
+    expect(d.foraDoPadrao).toEqual([
+      { descricao: 'LOJA ATRASADA', valor: 700, categoria: 'Shopping', mediana: 60 },
+      { descricao: 'LOJA GRANDE', valor: 900, categoria: 'Shopping', mediana: 60 },
+    ]);
   });
 
   // D2-M10: o gráfico do diário (gasto livre por dia) e o ritmo (variavelJaGasto) têm que somar o mesmo

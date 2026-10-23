@@ -118,6 +118,11 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
         if (ctx.modo !== 'dry-run') await ctx.repo.gravarCruas(txs);
         if (ctx.modo === 'real') await ctx.repo.aplicarConta(linhas, plano.remover);
         porConta[chave(c)] = { pluggy: txs.length, ...dif, remover: plano.remover.length, abortado: plano.abortado };
+        // W3 (23/10): abortar a conferência é falha da rodada (o aviso técnico diz qual conta), não só uma contagem
+        if (plano.abortado) {
+          const sumiriam = candidatos.filter((id) => !uteis.some((t) => t.id === id)).length;
+          falhas.push(`${chave(c)}: conferência abortada (${plano.abortado}): sumiriam ${sumiriam} de ${candidatos.length} lançamentos`);
+        }
       } catch (e) {
         falhas.push(`${chave(c)}: ${msg(e)}`);
       }

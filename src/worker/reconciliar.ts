@@ -57,7 +57,9 @@ export function planejarReconciliacao(
   if (idsCandidatos.length === 0) return { remover: [], abortado: null };
   if (idsPluggy.size === 0) return { remover: [], abortado: 'pluggy_vazio' };
   const remover = idsCandidatos.filter((id) => !idsPluggy.has(id));
-  if (remover.length > limiteFracao * idsCandidatos.length) return { remover: [], abortado: 'acima_do_limite' };
+  // W3 (23/10): a fração só vale com volume — até 3 linhas sempre passa (em conta pequena, 1 cancelamento já era > 20%
+  // e a linha cancelada nunca mais saía)
+  if (remover.length > Math.max(3, limiteFracao * idsCandidatos.length)) return { remover: [], abortado: 'acima_do_limite' };
   return { remover, abortado: null };
 }
 

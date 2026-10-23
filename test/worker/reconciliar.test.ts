@@ -36,8 +36,15 @@ describe('planejarReconciliacao', () => {
   it('Pluggy vazia com linhas no banco: não remove nada', () => {
     expect(planejarReconciliacao(new Set(), ids(3))).toEqual({ remover: [], abortado: 'pluggy_vazio' });
   });
-  it('acima de 20% aborta', () => {
-    expect(planejarReconciliacao(new Set(ids(7)), ids(10))).toEqual({ remover: [], abortado: 'acima_do_limite' });
+  it('acima de 20% (e de 3 linhas) aborta', () => {
+    expect(planejarReconciliacao(new Set(ids(6)), ids(10))).toEqual({ remover: [], abortado: 'acima_do_limite' });
+  });
+  // W3 (23/10): em conta pequena, 1 cancelamento já passava de 20% (4 candidatas: 25%) e a linha nunca mais saía.
+  // A fração só vale com volume: até 3 linhas sempre passa
+  it('conta pequena: até 3 remoções passam mesmo acima de 20%; 4 de 4 aborta', () => {
+    expect(planejarReconciliacao(new Set(ids(3)), ids(4)).remover).toEqual(['id3']);
+    expect(planejarReconciliacao(new Set(ids(1)), ids(4)).remover).toHaveLength(3);
+    expect(planejarReconciliacao(new Set(['outro']), ids(4))).toEqual({ remover: [], abortado: 'acima_do_limite' });
   });
   it('exatamente 20% passa; limite ajustável', () => {
     expect(planejarReconciliacao(new Set(ids(8)), ids(10)).remover).toHaveLength(2);

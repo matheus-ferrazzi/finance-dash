@@ -103,3 +103,11 @@ describe('falhas nomeadas', () => {
     expect(linhasSaude(ok)).toEqual(['• Ingestão (worker): 1 rodada(s) com falha nas últimas 24h']);
   });
 });
+
+// 23/10: lista de falhas vazia (todas resolvidas por uma rodada seguinte) não volta para a contagem antiga
+describe('falhas resolvidas', () => {
+  it('lista vazia: nenhuma linha, mesmo com a contagem antiga > 0', () => {
+    const ok = { h_lancamentos: 5, h_investimentos: 5, h_faturas: 5, h_worker_ok: 5, worker_falhas_24h: 1, ultimo_lancamento: 'x' };
+    expect(linhasSaude({ ...ok, falhas: [] })).toEqual([]);
+  });
+});

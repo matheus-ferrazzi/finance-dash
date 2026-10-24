@@ -250,7 +250,8 @@ export async function getFaturas(resp: Resp, hoje: string = currentDateSP()): Pr
        LEFT JOIN LATERAL (SELECT vencimento, total FROM financas_faturas_historico x
                            WHERE x.account_id = f.id_conta AND x.vencimento IS NOT NULL
                            ORDER BY x.vencimento DESC LIMIT 1) h ON true
-      WHERE 1=1${r.sql.replace('responsavel', 'f.responsavel')}
+      -- W5 (23/10): cartão de conta desligada não aparece com a fatura congelada do último dia
+      WHERE NOT EXISTS (SELECT 1 FROM pluggy_contas c WHERE c.account_id = f.id_conta AND NOT c.ativo)${r.sql.replace('responsavel', 'f.responsavel')}
       ORDER BY h.vencimento NULLS LAST, f.banco`,
     [hoje, ...r.p],
   );
@@ -527,6 +528,10 @@ export async function getMovimentosDiarios(resp: Resp, desde: string, hoje: stri
      FROM financas_lancamentos
      WHERE forma_pagamento='Débito' AND data_lancamento >= $1::date AND data_lancamento <= $2::date
        AND ${SO_ESPELHO_REAL}${r.sql}
+       -- L5 (23/10): aplicar e resgatar da aplicação automática do Itaú é ida e volta com a aplicação, e a Pluggy
+       -- some com a aplicação e deixa o resgate: desfazer o resgate a partir do saldo de hoje baixava todo o passado.
+       -- O rendimento ("REND PAGO") é dinheiro que entra e fica
+       AND NOT (descricao ILIKE '%APLIC AUT%' AND descricao NOT ILIKE '%REND%')
      GROUP BY 1`,
     [desde, hoje, ...r.p],
   );
@@ -661,7 +666,9 @@ export async function getSaldoContas(resp: Resp): Promise<{ total: number; conta
   const r = rf(resp, 1);
   const rows = await q<any>(
     `SELECT banco, responsavel, saldo, to_char(atualizado_pluggy,'YYYY-MM-DD"T"HH24:MI:SS') AS atualizado_pluggy
-     FROM financas_saldos WHERE 1=1${r.sql} ORDER BY saldo DESC`,
+     FROM financas_saldos s
+     -- W5 (23/10): conta desligada (pluggy_contas.ativo = false) não aparece com o saldo congelado do último dia
+     WHERE NOT EXISTS (SELECT 1 FROM pluggy_contas c WHERE c.account_id = s.id_conta AND NOT c.ativo)${r.sql} ORDER BY saldo DESC`,
     r.p,
   );
   const contas = rows.map((x) => ({

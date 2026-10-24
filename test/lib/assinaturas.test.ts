@@ -105,3 +105,19 @@ describe('comerciante com mais de uma assinatura, grafias diferentes e compras p
     expect(r).toHaveLength(1);
   });
 });
+
+// auditoria 17/10 (N12), 23/10: o serviço trocou de plano (valor caiu para menos da metade) e a estimativa seguia com o
+// plano antigo; depois de 45 dias a faixa antiga sairia e a nova, com 1 mês, também — o serviço sumiria da lista
+describe('troca de plano', () => {
+  const s = (data: string, valor: number) => c('servico video', data, valor);
+  it('faixa nova que começa depois da antiga parar: uma assinatura, com o valor do plano atual', () => {
+    const r = detectarAssinaturas([s('2026-04-08', 49.9), s('2026-05-08', 49.9), s('2026-06-08', 49.9), s('2026-07-08', 49.9),
+      s('2026-08-08', 52.9), s('2026-09-08', 52.9), s('2026-10-09', 19.9)], '2026-11-20');
+    expect(r).toEqual([{ nome: 'servico video', valorMedio: 19.9, meses: 7, categoria: 'Digital services', banco: 'Nubank', ultima: '2026-10-09' }]);
+  });
+  it('duas faixas que convivem no mesmo período continuam duas assinaturas', () => {
+    const d = ['2026-07-05', '2026-08-05', '2026-09-05'];
+    const r = detectarAssinaturas([...d.map((x) => c('loja jogos', x, 20)), ...d.map((x) => c('loja jogos', x.replace('-05', '-06'), 60))]);
+    expect(r.map((a) => a.valorMedio)).toEqual([60, 20]);
+  });
+});

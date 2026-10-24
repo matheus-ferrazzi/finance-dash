@@ -60,6 +60,28 @@ function faixasDeValor(cs: readonly Cobranca[]): Cobranca[][] {
 }
 
 /**
+ * N12 (23/10): troca de plano. Faixas de valor do mesmo comerciante que se sucedem no tempo (a antiga para antes da
+ * nova começar) são uma assinatura só, que vale o plano atual; faixas que convivem (duas assinaturas da mesma loja)
+ * continuam separadas. `cs` = todas as cobranças da sequência; `atual` = as da faixa mais recente.
+ */
+function comTrocaDePlano(faixas: Cobranca[][]): { cs: Cobranca[]; atual: Cobranca[] }[] {
+  const ini = (f: Cobranca[]) => f.map((c) => c.data).sort()[0];
+  const fim = (f: Cobranca[]) => f.map((c) => c.data).sort().at(-1)!;
+  const out: { cs: Cobranca[]; atual: Cobranca[] }[] = [];
+  for (const f of [...faixas].sort((a, b) => ini(a).localeCompare(ini(b)))) {
+    // a sequência anterior que terminou antes desta começar e não tem outra faixa depois dela. O plano anterior tem
+    // que estar estabelecido (2+ cobranças): valor diferente todo mês (Pix para pessoa) não é troca de plano
+    const antes = out.find((g) => g.atual.length >= 2 && fim(g.atual) < ini(f)
+      && !out.some((o) => o !== g && ini(o.atual) > fim(g.atual) && ini(o.atual) < ini(f)));
+    if (antes && faixas.every((o) => o === f || !(ini(o) < ini(f) && fim(o) >= ini(f)))) {
+      antes.cs = [...antes.cs, ...f];
+      antes.atual = f;
+    } else out.push({ cs: f, atual: f });
+  }
+  return out;
+}
+
+/**
  * Assinatura = aparece em 3+ meses, no máximo uma cobrança por mês, valor estável e nunca parcela.
  * A regra antiga ("mesma descrição em 3+ meses") pegava parcelamento já terminado (o número some
  * da descrição) e lugar onde se compra sempre (mercado, delivery, PIX recorrente).
@@ -77,15 +99,16 @@ export function detectarAssinaturas(cobrancas: readonly Cobranca[], hoje?: strin
   }
   const grupos = [...porComerciante.values()]
     .filter((cs) => cs.length / new Set(cs.map((c) => c.data.slice(0, 7))).size <= COBRANCAS_POR_MES_MAX)
-    .flatMap(faixasDeValor);
+    .flatMap((cs) => comTrocaDePlano(faixasDeValor(cs)));
 
   const out: Assinatura[] = [];
-  for (const cs of grupos) {
+  for (const { cs, atual } of grupos) {
     const porMes = new Map<string, number>();
     for (const c of cs) porMes.set(c.data.slice(0, 7), (porMes.get(c.data.slice(0, 7)) ?? 0) + 1);
     if (porMes.size < MESES_MINIMOS) continue;
     if (Math.max(...porMes.values()) > 1) continue;
-    const valores = cs.map((c) => c.valor);
+    // N12 (23/10): o valor e a variação são do plano atual (a última faixa, se houve troca de plano)
+    const valores = atual.map((c) => c.valor);
     const tipico = mediana(valores);
     if (tipico < VALOR_MINIMO) continue;
     if ((Math.max(...valores) - Math.min(...valores)) / tipico > VARIACAO_MAXIMA) continue;

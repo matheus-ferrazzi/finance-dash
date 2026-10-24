@@ -55,7 +55,7 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
     expect((await pool.query(`SELECT count(*)::int n FROM financas_notificacoes`)).rows[0].n).toBe(antes);
   });
 
-  it('fontes: faturas na janela 0–3 dias, gastos ≥ 500 dos últimos 3 dias, saúde, backup e o painel', async () => {
+  it('fontes: faturas na janela 0–3 dias, gastos ≥ 500 dos últimos 7 dias, saúde, backup e o painel', async () => {
     await pool.query(`INSERT INTO financas_faturas (id_conta, banco, responsavel, valor_fatura_atual, data_vencimento) VALUES
       ('fx1','B1','X',100,(now() AT TIME ZONE 'America/Sao_Paulo')::date + 2), ('fx2','B2','X',100,(now() AT TIME ZONE 'America/Sao_Paulo')::date + 9)`);
     // 19/10: gasto grande no recorte da meta — conta da casa, travado (consórcio), dívida antiga e espelho não avisam
@@ -67,12 +67,16 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
       ('gx4', ${hoje}, 800, 'BOLETO', 'Consortium', 'Débito', 'despesa', 'B', 'X', now()),
       ('gx5', ${hoje}, 640, 'Renegociação de pendências 1/3', 'Loans and financing', 'Crédito', 'despesa', 'B', 'X', now()),
       ('gx6', ${hoje}, 950, 'MORA CARTAO', 'Groceries', 'Débito', 'despesa', 'B', 'X', now()),
-      ('gx7', ${hoje}, 620, 'LOJA', 'Shopping', 'Crédito', 'despesa', 'B', 'X', now())`);
+      ('gx7', ${hoje}, 620, 'LOJA', 'Shopping', 'Crédito', 'despesa', 'B', 'X', now()),
+      -- 23/10: janela de 7 dias pela chegada (com 3, uma queda da VPS fez o alerta de uma compra sair da janela antes
+      -- da primeira rodada que conseguiria mandá-lo); a marca d'água continua impedindo repetir
+      ('gx8', ${hoje} - 5, 710, 'LOJA ATRASADA', 'Shopping', 'Débito', 'despesa', 'B', 'X', now() - interval '5 days'),
+      ('gx9', ${hoje} - 8, 730, 'LOJA ANTIGA', 'Shopping', 'Débito', 'despesa', 'B', 'X', now() - interval '8 days')`);
     await pool.query(`INSERT INTO financas_backup (feito_em, ok, n8n_ok, n8n_workflows, puxado_em, tamanho_bytes, tabelas)
       VALUES (now() - interval '2 hours', true, true, 20, now() - interval '5 hours', 1048576, 30)`);
     const f = criarFontes(pool, 'http://painel', (async (u: string) => ({ ok: u.endsWith('/api/previsao'), status: 200, json: async () => ({ mesLabel: 'm' }) })) as any);
     expect(((await f.fatura()) as any[]).map((x) => [x.banco, x.dias])).toEqual([['B1', 2]]);
-    expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx1', 'gx7']);
+    expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx8', 'gx1', 'gx7']);
     expect(await f.ritmo()).toEqual({ mesLabel: 'm' });
     expect(await f.saude()).toHaveProperty('h_lancamentos');
     // 22/10: a saúde traz qual tarefa falhou, quando e o erro (o aviso dizia só "Ingestão (worker)")

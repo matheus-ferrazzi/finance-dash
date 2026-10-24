@@ -25,7 +25,9 @@ const SQL_GASTO = `SELECT COALESCE(json_agg(t ORDER BY t.criado_em),'[]') AS txs
   FROM financas_lancamentos
   -- 19/10: no recorte da meta (sem casa, travado, dívida antiga e espelho): aluguel e consórcio não são exceção
   WHERE ${GASTO_GRANDE} AND valor >= 500
-    AND criado_em >= NOW() - interval '3 days'
+    -- 23/10: 7 dias (eram 3) — uma queda da VPS fez a compra sair da janela antes da primeira rodada que a mandaria;
+    -- a marca d'água (lastCriadoEm no estado) continua impedindo repetir o aviso
+    AND criado_em >= NOW() - interval '7 days'
     AND data_lancamento <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
 ) t`;
 

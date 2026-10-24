@@ -75,6 +75,16 @@ describe.skipIf(!url)('meta de gastos (integração)', () => {
   });
   // auditoria 17/10 (N7/M3), 22/10: o orçamento usava a categoria crua; Gastos e a lista do próprio cartão usam a
   // efetiva (com as regras do casal). Um Pix que a regra faz "Mercado" ficava fora do teto
+  // auditoria 17/10 (N11/M4), 23/10: criado_em é UTC; a rodada das 22h05 SP grava com a data UTC do dia seguinte, e a
+  // parcela futura ficava "desconhecida" até a meia-noite. "Conhecido em hoje" é pelo dia de São Paulo
+  it('parcela gravada às 22h05 SP (01h05 UTC do dia seguinte) já conta como conhecida naquela noite', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, parcela_total, parcela_numero) VALUES
+      ('n11', '2034-05-25', 140, 'LOJA X 2/3', 'Shopping', 'Crédito', 'B', 'Matheus', 'despesa', 'Saída', '2034-05-17 01:05', 3, 2)`);
+    expect((await queries.getGastosMes('2034-05-16')).parcelasRestantes).toBe(140);
+    // e o que é gravado depois da meia-noite de SP continua desconhecido no dia anterior
+    await pool.query(`UPDATE financas_lancamentos SET criado_em = '2034-05-17 03:30' WHERE id_transacao = 'n11'`);
+    expect((await queries.getGastosMes('2034-05-16')).parcelasRestantes).toBe(0);
+  });
   it('orçamento pela categoria efetiva (a regra do casal conta no teto e nos alertas)', async () => {
     // a regra do teste (categoria_efetiva acima): 'PIX FEIRA DO SABADO' é Groceries
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES

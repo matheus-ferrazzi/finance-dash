@@ -40,6 +40,9 @@ const COLUNAS_LINHA = `id_transacao text, data_lancamento date, valor numeric, t
   tipo_operacao text, transferencia_casal boolean, categoria_banco text`;
 const NOMES_LINHA = COLUNAS_LINHA.split(',').map((c) => c.trim().split(/\s+/)[0]);
 
+/** N8 (23/10): categorias que não dizem o que foi — uma nova sincronização com elas não apaga a categoria específica */
+const CATS_VAGAS = ['Transfers', 'Transfer - PIX', 'Transfer - Bank Slip', 'Outros', 'Others'].map((c) => `'${c}'`).join(', ');
+
 export class PgRepo implements Repo {
   constructor(private readonly pool: Pool) {}
 
@@ -113,7 +116,12 @@ export class PgRepo implements Repo {
           .map((n) => (n === 'classe'
             // L4 (22/10): vale também para a saída pareada que a Pluggy reenvia como "despesa"
             ? `classe = CASE WHEN financas_lancamentos.par_transferencia IS NOT NULL AND EXCLUDED.classe IN ('receita', 'despesa') THEN financas_lancamentos.classe ELSE EXCLUDED.classe END`
-            : `${n} = EXCLUDED.${n}`))
+            // N8 (23/10): a Pluggy às vezes rebaixa a categoria numa nova sincronização (delivery virou "Transfers"):
+            // categoria vaga não troca uma específica já gravada; outra específica troca normalmente
+            : n === 'categoria'
+              ? `categoria = CASE WHEN EXCLUDED.categoria IN (${CATS_VAGAS}) AND financas_lancamentos.categoria IS NOT NULL
+                   AND financas_lancamentos.categoria NOT IN (${CATS_VAGAS}) THEN financas_lancamentos.categoria ELSE EXCLUDED.categoria END`
+              : `${n} = EXCLUDED.${n}`))
           .join(', ');
         await cli.query(
           `INSERT INTO financas_lancamentos (${NOMES_LINHA.join(', ')}, visto_pluggy_em)

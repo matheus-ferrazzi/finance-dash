@@ -107,6 +107,20 @@ describe.skipIf(!url)('PgRepo (integração)', () => {
     expect(await repo.parearTransferencias('2025-01-01')).toBe(0);
   });
 
+  // auditoria 17/10 (N8), 23/10: a Pluggy recategorizou um delivery para "Transfers" numa nova sincronização e o
+  // upsert sobrescrevia: o alerta já enviado deixava de bater com a tela. Categoria vaga não rebaixa uma específica
+  it('N8: reenvio com categoria vaga não troca a específica; outra específica troca', async () => {
+    await repo.aplicarConta([{ ...linha('n8', '2026-10-10'), categoria: 'Eating out' }], []);
+    await repo.aplicarConta([{ ...linha('n8', '2026-10-10'), categoria: 'Transfers' }], []);
+    const cat = async () => (await pool.query(`SELECT categoria FROM financas_lancamentos WHERE id_transacao = 'n8'`)).rows[0].categoria;
+    expect(await cat()).toBe('Eating out');
+    await repo.aplicarConta([{ ...linha('n8', '2026-10-10'), categoria: 'Food delivery' }], []);
+    expect(await cat()).toBe('Food delivery');
+    // linha nova com categoria vaga grava a vaga normalmente
+    await repo.aplicarConta([{ ...linha('n8b', '2026-10-10'), categoria: 'Transfer - PIX' }], []);
+    expect((await pool.query(`SELECT categoria FROM financas_lancamentos WHERE id_transacao = 'n8b'`)).rows[0].categoria).toBe('Transfer - PIX');
+  });
+
   it('registrarSync só escreve no log quando o lastUpdatedAt muda', async () => {
     await repo.registrarSync('Itaú', 'Matheus', '2026-10-08T18:52:00Z');
     await repo.registrarSync('Itaú', 'Matheus', '2026-10-08T18:52:00Z');

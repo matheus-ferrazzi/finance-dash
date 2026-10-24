@@ -121,3 +121,13 @@ describe('troca de plano', () => {
     expect(r.map((a) => a.valorMedio)).toEqual([60, 20]);
   });
 });
+
+// 23/10, no dado real: um pagamento avulso de valor diferente NO MESMO MÊS da cobrança de sempre não é troca de plano
+// (a regra juntava as duas e a assinatura sumia por ter 2 cobranças no mês)
+describe('avulso no mesmo mês não é troca de plano', () => {
+  it('a cobrança mensal continua com o valor de sempre', () => {
+    const p = (data: string, valor: number) => c('pix fornecedor', data, valor);
+    const r = detectarAssinaturas([p('2026-08-03', 93.5), p('2026-09-01', 93.5), p('2026-10-04', 93.5), p('2026-10-20', 185.5)], '2026-10-24');
+    expect(r).toEqual([{ nome: 'pix fornecedor', valorMedio: 93.5, meses: 3, categoria: 'Digital services', banco: 'Nubank', ultima: '2026-10-04' }]);
+  });
+});

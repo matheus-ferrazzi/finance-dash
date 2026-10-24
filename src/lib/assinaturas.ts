@@ -71,7 +71,8 @@ function comTrocaDePlano(faixas: Cobranca[][]): { cs: Cobranca[]; atual: Cobranc
   for (const f of [...faixas].sort((a, b) => ini(a).localeCompare(ini(b)))) {
     // a sequência anterior que terminou antes desta começar e não tem outra faixa depois dela. O plano anterior tem
     // que estar estabelecido (2+ cobranças): valor diferente todo mês (Pix para pessoa) não é troca de plano
-    const antes = out.find((g) => g.atual.length >= 2 && fim(g.atual) < ini(f)
+    // E substitui: começa num mês depois do último do plano anterior (avulso no mesmo mês da cobrança não é troca)
+    const antes = out.find((g) => g.atual.length >= 2 && fim(g.atual).slice(0, 7) < ini(f).slice(0, 7)
       && !out.some((o) => o !== g && ini(o.atual) > fim(g.atual) && ini(o.atual) < ini(f)));
     if (antes && faixas.every((o) => o === f || !(ini(o) < ini(f) && fim(o) >= ini(f)))) {
       antes.cs = [...antes.cs, ...f];

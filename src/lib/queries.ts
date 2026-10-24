@@ -88,6 +88,9 @@ function rf(resp: Resp, idx: number): { sql: string; p: string[] } {
   if (resp === 'Matheus' || resp === 'Ariane') return { sql: ` AND responsavel = $${idx}`, p: [resp] };
   return { sql: '', p: [] };
 }
+// N11/M4 (23/10): criado_em é timestamp sem fuso gravado em UTC; "conhecido em hoje" compara o dia de São Paulo
+// (((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date) — a rodada das 22h05 SP grava com a data
+// UTC do dia seguinte e ficava de fora até a meia-noite
 // regra única: nunca contar lançamento com data no futuro (parcela agendada)
 const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
 
@@ -814,7 +817,7 @@ export async function getGastosMes(hoje: string = currentDateSP()) {
     q<any>(
       `SELECT COALESCE(SUM(${VALOR_GASTO}), 0)::float8 AS v FROM financas_lancamentos
         WHERE ${GASTO_META} AND parcela_total > 1 AND data_lancamento > $1::date AND data_lancamento < $2::date
-          AND criado_em::date <= $1::date`,
+          AND ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= $1::date`,
       [hoje, fim],
     ),
   ]);
@@ -1052,7 +1055,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     `WITH chaves_parceladas AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave
        FROM financas_lancamentos
-       WHERE classe='despesa' AND data_lancamento > ${hcn} AND criado_em::date <= ${hcn}
+       WHERE classe='despesa' AND data_lancamento > ${hcn} AND ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= ${hcn}
      )
      SELECT ROUND(AVG(m.total),2) AS media FROM (
        SELECT date_trunc('month',l.data_lancamento) AS mes, SUM(l.valor) AS total
@@ -1111,7 +1114,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
      WHERE (l.classe = 'despesa' OR (l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Saída')
             OR (l.classe = 'estorno' AND l.tipo_movimento = 'Entrada' AND ${ESTORNO_ABATE_FATURA.replace(/descricao/g, 'l.descricao')}))
        AND l.forma_pagamento = 'Crédito'
-       AND (l.data_lancamento <= $1::date OR l.criado_em::date <= $1::date)${r3.sql}
+       AND (l.data_lancamento <= $1::date OR ((l.criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= $1::date)${r3.sql}
      GROUP BY 1`,
     [hoje, ...r3.p],
   );
@@ -1217,11 +1220,11 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
      chaves AS (
        SELECT DISTINCT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS ch
        FROM financas_lancamentos, sp
-       WHERE classe='despesa' AND data_lancamento > sp.hoje AND criado_em::date <= sp.hoje
+       WHERE classe='despesa' AND data_lancamento > sp.hoje AND ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= sp.hoje
      )
      SELECT
        (SELECT COALESCE(SUM(valor),0) FROM financas_lancamentos, lim, sp
-         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim AND criado_em::date <= sp.hoje${rmc.sql}) AS receita_agendada,
+         WHERE classe='receita' AND data_lancamento > sp.hoje AND data_lancamento < lim.fim AND ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= sp.hoje${rmc.sql}) AS receita_agendada,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
            AND l.data_lancamento >= lim.ini AND l.data_lancamento <= sp.hoje
@@ -1241,7 +1244,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
            AND ${SEM_ESPELHO}${rmc.sql}) AS fixo_gasto,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
          WHERE l.classe='despesa' AND l.forma_pagamento='Débito'
-           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim AND l.criado_em::date <= sp.hoje
+           AND l.data_lancamento > sp.hoje AND l.data_lancamento < lim.fim AND ((l.criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= sp.hoje
            AND NOT (l.categoria = ANY($${rmc.p.length + 1}::text[]))
            AND ${SEM_ESPELHO}${rmc.sql}) AS agendado_restante,
        (SELECT COALESCE(SUM(l.valor),0) FROM financas_lancamentos l, lim, sp
@@ -1282,7 +1285,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
        FROM financas_lancamentos
       WHERE classe = 'receita' AND data_lancamento > $1::date
         AND data_lancamento < date_trunc('month', $1::date) + interval '1 month'
-        AND criado_em::date <= $1::date${rra.sql}
+        AND ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= $1::date${rra.sql}
       GROUP BY 1 ORDER BY 1`,
     [hoje, ...rra.p],
   );
@@ -1339,7 +1342,7 @@ async function getCasaNoMes(resp: Resp, hoje: string): Promise<{ porCategoria: R
      WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($1::text[])
        AND data_lancamento >= date_trunc('month',${hcm})
        AND data_lancamento <  date_trunc('month',${hcm}) + interval '1 month'
-       AND (data_lancamento <= ${hcm} OR criado_em::date <= ${hcm})${rcm.sql}
+       AND (data_lancamento <= ${hcm} OR ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= ${hcm})${rcm.sql}
      GROUP BY 1`,
     [CASA_CATS, ...rcm.p, hoje],
   );
@@ -1516,7 +1519,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
          -- em todas as parcelas: a renegociação de 30× ficava toda em julho, fora da janela, e sumia)
          AND (data_lancamento >= $1::date
               OR (COALESCE(parcela_total, 0) > 1 AND data_lancamento >= ($2::date - make_interval(months => parcela_total))::date))
-         AND (data_lancamento <= $2::date OR criado_em::date <= $2::date)`,
+         AND (data_lancamento <= $2::date OR ((criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= $2::date)`,
       [desde, hoje],
     ),
     // aplicação líquida por mês: aplicar soma, resgatar subtrai; rendimento (receita) fica fora. Auditoria 17/10 (M2):

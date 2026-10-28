@@ -12,14 +12,21 @@ const DINHEIRO = new Set([
 // valor negativo dito sem sinal só vale se a linha disser que é negativo
 const DIZ_NEGATIVO = /-|negativ|vermelho|falt/i;
 
-function achados(texto: string): { v: number; linha: string }[] {
+// 28/10: valor em reais escrito sem R$ ("*1.086,14*") também é dinheiro — com centavos, para não pegar dias,
+// parcelas e milhares soltos ("1.234 compras"); o que já foi lido como R$ ou % sai antes
+const RE_SOLTO = /(-?)\s*(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})(?![\d,]|\.\d)/g;
+const apaga = (t: string, re: RegExp) => t.replace(re, (x) => ' '.repeat(x.length));
+
+function achados(texto: string, soltos = false): { v: number; linha: string }[] {
   const out: { v: number; linha: string }[] = [];
-  for (const m of texto.matchAll(RE_BRL)) {
-    const n = Number(m[3].replace(/\./g, '').replace(',', '.'));
+  const ler = (m: RegExpMatchArray, numero: string, negativo: boolean) => {
+    const n = Number(numero.replace(/\./g, '').replace(',', '.'));
     const ini = texto.lastIndexOf('\n', m.index ?? 0) + 1;
     const fim = texto.indexOf('\n', m.index ?? 0);
-    out.push({ v: m[1] || m[2] ? -n : n, linha: texto.slice(ini, fim < 0 ? undefined : fim) });
-  }
+    out.push({ v: negativo ? -n : n, linha: texto.slice(ini, fim < 0 ? undefined : fim) });
+  };
+  for (const m of texto.matchAll(RE_BRL)) ler(m, m[3], !!(m[1] || m[2]));
+  if (soltos) for (const m of apaga(apaga(texto, RE_BRL), RE_PCT).matchAll(RE_SOLTO)) ler(m, m[2], !!m[1]);
   return out;
 }
 
@@ -71,7 +78,7 @@ export function respostaConfere(resposta: string, resultados: unknown[]): boolea
   const din: number[] = [], pct: number[] = [], rotulos: Rotulo[] = [];
   coletar(resultados, null, din, pct);
   coletarRotulos(resultados, rotulos);
-  const reais = achados(resposta).every(({ v, linha }) => din.some((n) => perto(Math.abs(v), Math.abs(n))
+  const reais = achados(resposta, true).every(({ v, linha }) => din.some((n) => perto(Math.abs(v), Math.abs(n))
     && (n === 0 || Math.sign(v) === Math.sign(n) || (n < 0 && v > 0 && DIZ_NEGATIVO.test(linha))))
     && (() => {
       const deles = rotulos.filter((r) => r.v !== 0 && perto(Math.abs(v), Math.abs(r.v)));

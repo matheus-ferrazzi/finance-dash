@@ -84,3 +84,24 @@ describe('trava (E3)', () => {
     expect(respostaConfere('💵 R$ 50,00', [{ itens: [{ dinheiro: 50 }] }])).toBe(true);
   });
 });
+
+// 28/10 (produção): "*1.086,14* foi o gasto total com comer fora" — valor sem R$ não passava por conferência nenhuma
+describe('valor em reais escrito sem R$', () => {
+  const res = [{ total: 1086.14, itens: [{ nome: 'Restaurante', valor: 681.99 }, { nome: 'Delivery', valor: 362.45 }], pct: 35.2 }];
+  it('vale se veio da ferramenta', () => {
+    expect(respostaConfere('📊 *1.086,14* no mês.\n🍽️ Restaurante *681,99*, Delivery *362,45*.', res)).toBe(true);
+  });
+  it('inventado ou somado: não passa', () => {
+    expect(respostaConfere('📊 *1.086,15* no mês.', res)).toBe(false);
+    expect(respostaConfere('🍽️ juntos dá 1.044,44', res)).toBe(false);
+  });
+  it('porcentagem, inteiros (dias, parcelas, milhar sem centavos) e datas seguem livres', () => {
+    expect(respostaConfere('🔺 35,2% a mais, em 1.234 compras, 10 parcelas, 5 dias, até 28/10.', res)).toBe(true);
+  });
+  it('sinal e rótulo valem como no R$', () => {
+    const r2 = [{ ritmoAtualDia: 190.69, fechaCom: -72.86, nessePassoFechaEm: -818.33 }];
+    expect(respostaConfere('👉 O mês fecha em -818,33.', r2)).toBe(false);
+    expect(respostaConfere('👉 Se o ritmo continuar, fecha em -818,33.', r2)).toBe(true);
+    expect(respostaConfere('👉 Sobra de 72,86 no fim do mês.', r2)).toBe(false);
+  });
+});

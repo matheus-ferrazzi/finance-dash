@@ -1,6 +1,6 @@
 // E1: o agente — o Groq escolhe ferramentas e escreve; números só das ferramentas (trava); até 4 rodadas.
 import { caminhoDa, formatar, graficoDaFerramenta } from './ferramentas';
-import { escolherGrupos, ferramentasDe, type Grupo } from './escolha';
+import { escolherGrupos, ferramentasDe, TODOS_GRUPOS, type Grupo } from './escolha';
 import type { ClienteGroq, MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
@@ -107,11 +107,23 @@ async function contaDaCitada(citada: string, d: DepsResponder): Promise<ContaCit
   } catch { return null; }
 }
 
+/**
+ * 27/10 (fase 1): o conjunto reduzido de ferramentas (escolha.ts) pode errar — "aquele pix do fulano é mercado" não
+ * tem palavra de correção. Sem nenhuma ferramenta usada, refaz uma vez com todas; nunca uma terceira.
+ */
 export async function responder(p: Pergunta, d: DepsResponder): Promise<RespostaBot> {
+  const t0 = Date.now();
+  const grupos = escolherGrupos(p, d.contexto);
+  const r = await tentar(p, d, grupos);
+  if (!r.semFerramenta || grupos.size >= TODOS_GRUPOS.size) return r;
+  const r2 = await tentar(p, d, TODOS_GRUPOS);
+  return { ...r2, tokens: r.tokens + r2.tokens, ms: Date.now() - t0 };
+}
+
+async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>): Promise<RespostaBot> {
   const t0 = Date.now();
   const ferramentas: RespostaBot['ferramentas'] = [];
   const conta = p.citada ? await contaDaCitada(p.citada, d) : null;
-  const grupos = escolherGrupos(p, d.contexto);
   // 22/10: a mensagem citada vale como dado conferido (o Zeca explica com os números dela). 27/10: com a conta de
   // agora, só ela vale — número da mensagem misturado com o de agora é de outra hora
   const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao, ...conta.fechas }]

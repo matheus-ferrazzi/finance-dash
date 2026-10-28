@@ -38,7 +38,8 @@ describe('agente', () => {
     expect(r.texto).toContain('💰 Gasto em out/26');
   });
   it('sem ferramenta: "ainda não sei"', async () => {
-    const r = await responder(p, { ...base, groq: groqRoteiro([{ content: 'Vai chover amanhã.', toolCalls: [], modelo: 'm' }]) });
+    // 27/10: dois passos — sem ferramenta, o agente refaz uma vez com todas (fase 1)
+    const r = await responder(p, { ...base, groq: groqRoteiro([{ content: 'Vai chover amanhã.', toolCalls: [], modelo: 'm' }, { content: 'Vai chover amanhã.', toolCalls: [], modelo: 'm' }]) });
     expect(r.texto).toBe(SEM_FERRAMENTA);
     expect(r.semFerramenta).toBe(true);
   });
@@ -272,5 +273,29 @@ describe('27/10: ferramentas e prompt pela pergunta (fase 1)', () => {
     await responder(p, { ...base, groq: g });
     expect(vistas[0].tools.map((t: any) => t.function.name)).not.toContain('propor_categoria');
     expect(vistas[0].msgs[0].content).not.toContain('Mensagem citada');
+  });
+});
+
+describe('27/10: sem ferramenta no conjunto reduzido, refaz com tudo (fase 1)', () => {
+  it('refaz com tudo e responde; tokens das duas somam', async () => {
+    const vistas: string[][] = [];
+    const passos = [
+      { content: 'não sei', toolCalls: [], modelo: 'm', tokens: 100 },
+      { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm', tokens: 200 },
+      { content: '🛒 Mercado: R$ 400,00 este mês.', toolCalls: [], modelo: 'm', tokens: 300 },
+    ];
+    let i = 0;
+    const g = { chat: async (_m: any, tools: any) => { vistas.push(tools.map((t: any) => t.function.name)); return passos[i++]; } };
+    const r = await responder({ ...p, texto: 'aquele pix do fulano é mercado' }, { ...base, groq: g });
+    expect(vistas[0]).not.toContain('propor_categoria');
+    expect(vistas[1]).toContain('propor_categoria');
+    expect(r.texto).toContain('R$ 400,00');
+    expect(r.tokens).toBe(600);
+  });
+  it('a refeita com tudo também sem ferramenta: SEM_FERRAMENTA, sem terceira chamada', async () => {
+    let n = 0;
+    const g = { chat: async () => { n++; return { content: 'não sei', toolCalls: [], modelo: 'm', tokens: 0 }; } };
+    expect((await responder({ ...p, texto: 'qual a capital da França?' }, { ...base, groq: g })).texto).toBe(SEM_FERRAMENTA);
+    expect(n).toBe(2);
   });
 });

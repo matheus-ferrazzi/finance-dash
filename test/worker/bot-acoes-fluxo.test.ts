@@ -12,7 +12,8 @@ function montar(o: { pend?: any; feita?: any; confirma?: boolean; groq?: any[]; 
   const bot = criarBot({
     cfg, painel: async () => ({ ok: true, dados: { itens: o.busca ?? [] } }),
     painelPost: async (c: string, corpo: any) => { if ((ret as any).falharPost) throw new Error('fetch failed'); posts.push([c, corpo]); return { ok: true, dados: { resumo: '3 lançamento(s) → Mercado' } }; },
-    groq: { chat: async (msgs: any[]) => { perguntas.push(msgs.at(-1).content); return (o.groq ?? []).shift() ?? { content: 'Fase 1.', toolCalls: [], modelo: 'm' }; } },
+    // 27/10: sem ferramenta, o agente refaz a mesma pergunta com todas as ferramentas (fase 1) — conta uma vez
+    groq: { chat: async (msgs: any[]) => { const q = msgs.at(-1).content; if (perguntas.at(-1) !== q) perguntas.push(q); return (o.groq ?? []).shift() ?? { content: 'Fase 1.', toolCalls: [], modelo: 'm' }; } },
     registro: { gravar: async () => {}, contexto: async () => [] },
     acoes: {
       criar: async () => 1,

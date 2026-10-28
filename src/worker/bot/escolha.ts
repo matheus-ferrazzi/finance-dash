@@ -14,7 +14,8 @@ export const GRUPO_DA: Record<string, Grupo> = {
 };
 
 const PALAVRAS: [Grupo, RegExp][] = [
-  ['propostas', /corrig|categoria|muda|errad|lanc|anot|registr|dinheiro|avuls|conta nova|quero o l\d|^l\d$/],
+  // 27/10: "põe X reais nas contas" (histórico) não tinha palavra de proposta
+  ['propostas', /corrig|categoria|muda|errad|lanc|anot|registr|dinheiro|avuls|conta nova|quero o l\d|^l\d$|\b(poe|ponha|coloca|bota|adiciona|inclui)\b/],
   ['mensagens', /mensage|diario|semanal|mensal|alerta|aviso|explica|o que (voce|vc) (mandou|disse)/],
   ['compra', /compr|cabe|parcel|posso gastar|da pra pagar/],
   ['patrimonio', /trilha|fase|reserva|invest|carteira|aplica|tesouro|cdb|divida/],

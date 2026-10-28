@@ -21,3 +21,8 @@ it('compra e patrimônio', () => {
 });
 it('ferramentasDe: base tem as 6 da base, na ordem de TOOLS', () =>
   expect(ferramentasDe(new Set(['base'])).map((t: any) => t.function.name)).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes']));
+it('pôr ou adicionar uma conta: propostas (no histórico, "põe X reais nas contas" dependia da refeita)', () => {
+  expect(g('põe 50 reais de dentista nas contas')).toContain('propostas');
+  expect(g('adiciona o IPVA nas contas do mês')).toContain('propostas');
+  expect(g('bota 80 de luz pra novembro')).toContain('propostas');
+});

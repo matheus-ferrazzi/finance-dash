@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { caminhoDa, formatar, graficoDaFerramenta, NOMES_FERRAMENTAS, TOOLS } from '../../src/worker/bot/ferramentas';
+import { resolverCategoria } from '../../src/worker/bot/locais';
+import { CATEGORIAS_PAINEL, traduzCategoria } from '../../src/lib/format';
+import { CATEGORIAS_GASTO } from '../../src/lib/grupos';
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -100,10 +103,13 @@ describe('ferramentas de ação (E2)', () => {
     expect(NOMES_FERRAMENTAS).toEqual(expect.arrayContaining(['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa']));
     expect(NOMES_FERRAMENTAS.some((n) => /executar|gravar|salvar|desfaz/i.test(n))).toBe(false);
   });
-  it('propor_categoria só aceita categoria da lista (enum) e escopo este|pessoa|texto', () => {
+  // 27/10: a categoria deixou de ser enum (a lista era 40% dos tokens); quem só aceita a da lista é o código
+  it('propor_categoria: escopo este|pessoa|texto; categoria pelo nome, validada no código', () => {
     const t: any = TOOLS.find((x: any) => x.function.name === 'propor_categoria');
     expect(t.function.parameters.properties.escopo.enum).toEqual(['este', 'pessoa', 'texto']);
-    expect(t.function.parameters.properties.categoria.enum).toContain('Groceries');
+    expect(t.function.parameters.properties.categoria).toMatchObject({ type: 'string' });
+    expect(resolverCategoria('Mercado', CATEGORIAS_PAINEL)).toBe('Groceries');
+    expect(resolverCategoria('Inexistente', CATEGORIAS_PAINEL)).toBeNull();
   });
 });
 
@@ -114,19 +120,20 @@ describe('💵 nas respostas de gasto (E3)', () => {
     expect(t).toContain(`• Mercado: ${brl(350)} (💵 ${brl(50)})`);
     expect(t).toContain(`• Lazer: ${brl(20)}\n`);
   });
-  it('schema tem propor_gasto_dinheiro com categoria em enum', () => {
+  it('schema tem propor_gasto_dinheiro com categoria (pelo nome do painel) obrigatória', () => {
     const t: any = TOOLS.find((x: any) => x.function.name === 'propor_gasto_dinheiro');
-    expect(t.function.parameters.properties.categoria.enum).toContain('Groceries');
+    expect(t.function.parameters.properties.categoria).toMatchObject({ type: 'string' });
     expect(t.function.parameters.required).toEqual(['valor', 'descricao', 'categoria']);
   });
 });
 
 describe('revisão E3: categorias do gasto em dinheiro', () => {
-  it('o enum só tem categorias de gasto (sem fatura, salário, investimento)', () => {
-    const t: any = TOOLS.find((x: any) => x.function.name === 'propor_gasto_dinheiro');
-    const e: string[] = t.function.parameters.properties.categoria.enum;
-    expect(e).toContain('Groceries');
-    expect(e.some((c) => ['Credit card payment', 'Salary', 'Investments', 'Income'].includes(c))).toBe(false);
+  it('só categorias de gasto (sem fatura, salário, investimento), pelo código ou pelo nome', () => {
+    expect(resolverCategoria('Mercado', CATEGORIAS_GASTO)).toBe('Groceries');
+    for (const c of ['Credit card payment', 'Salary', 'Investments', 'Income']) {
+      expect(resolverCategoria(c, CATEGORIAS_GASTO)).toBeNull();
+      expect(resolverCategoria(traduzCategoria(c), CATEGORIAS_GASTO)).toBeNull();
+    }
   });
 });
 

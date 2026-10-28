@@ -111,7 +111,7 @@ async function main() {
     const r = await responder({ id: 'cli', pessoa: 'Matheus', texto: args.pergunta!, ...(args.citada ? { citada: args.citada } : {}) },
       { groq, painel: painelGet, contexto: [], hoje: currentDateSP(), painelUrl: notif.painelUrl, locais });
     console.log(r.texto);
-    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro }));
+    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens }));
     await pool.end();
     return;
   }

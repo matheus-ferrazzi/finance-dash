@@ -12,7 +12,8 @@ export class ClienteGroq {
 
   private semChave(s: string) { return this.apiKey ? s.split(this.apiKey).join('***') : s; }
 
-  async chat(msgs: MsgChat[], tools: object[]): Promise<{ content: string | null; toolCalls: { id: string; nome: string; args: string }[]; modelo: string }> {
+  /** 27/10: `tokens` = usage.total_tokens da chamada (0 se o Groq não mandar), para medir o gasto por pergunta */
+  async chat(msgs: MsgChat[], tools: object[]): Promise<{ content: string | null; toolCalls: { id: string; nome: string; args: string }[]; modelo: string; tokens: number }> {
     let ultimo = 'sem modelo';
     for (const modelo of this.modelos) {
       let r;
@@ -27,9 +28,10 @@ export class ClienteGroq {
         continue;
       }
       if (r.ok) {
-        const m = (await r.json())?.choices?.[0]?.message ?? {};
+        const j = await r.json();
+        const m = j?.choices?.[0]?.message ?? {};
         return {
-          content: m.content ?? null, modelo,
+          content: m.content ?? null, modelo, tokens: Number(j?.usage?.total_tokens) || 0,
           toolCalls: (m.tool_calls ?? []).map((t: any) => ({ id: t.id, nome: t.function?.name, args: t.function?.arguments ?? '{}' })),
         };
       }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { criarLocais } from '../../src/worker/bot/locais';
+import { criarLocais, resolverCategoria } from '../../src/worker/bot/locais';
 import { explicacaoDaConta } from '../../src/lib/previsao';
+import { CATEGORIAS_PAINEL, traduzCategoria } from '../../src/lib/format';
+import { CATEGORIAS_GASTO } from '../../src/lib/grupos';
 
 const itens = [{ id: 'T1', data: '10/10', valor: 50, descricao: 'PIX FULANO', pessoa: 'Matheus', categoria: 'Transferências' }, { id: 'T2', data: '03/10', valor: 50, descricao: 'PIX FULANO', pessoa: 'Ariane', categoria: 'Transferências' }];
 function montar(busca = itens) {
@@ -120,5 +122,36 @@ describe('mensagens_do_zeca', () => {
       { tipo: 'diario', quando: '27/10 08:00', texto: 'D', explicacao: explicacaoDaConta(conta), pelaMediaFechaEm: 100, nessePassoFechaEm: 50 },
       { tipo: 'meta', quando: '27/10 09:00', texto: 'M' },
     ]);
+  });
+});
+
+describe('27/10: categoria pelo nome do painel', () => {
+  it('resolve código, nome em português, sem acento e sem caixa; desconhecida é null', () => {
+    const v = ['Groceries', 'Health'];
+    expect(resolverCategoria('Groceries', v)).toBe('Groceries');
+    expect(resolverCategoria(traduzCategoria('Groceries').toLowerCase(), v)).toBe('Groceries');
+    expect(resolverCategoria(traduzCategoria('Health').normalize('NFD').replace(/\p{M}/gu, ''), v)).toBe('Health');
+    expect(resolverCategoria('Xyz', v)).toBeNull();
+  });
+  it('propor_gasto_dinheiro com categoria inválida: erro listando as válidas em português, sem criar proposta', async () => {
+    const m = montar();
+    const r = await m.locais.propor_gasto_dinheiro({ valor: 10, descricao: 'feira', categoria: 'Xyz' });
+    expect(r.ok).toBe(false);
+    expect(r.dados.erro).toContain(traduzCategoria(CATEGORIAS_GASTO[0]));
+    expect(m.criadas).toEqual([]);
+  });
+  it('propor_gasto_dinheiro com o nome em português: grava o código', async () => {
+    const m = montar();
+    const r = await m.locais.propor_gasto_dinheiro({ valor: 10, descricao: 'feira', categoria: traduzCategoria('Groceries') });
+    expect(r.ok).toBe(true);
+    expect(m.criadas[0][2].categoria).toBe('Groceries');
+  });
+  it('propor_categoria com categoria inválida: mesmo erro com CATEGORIAS_PAINEL, sem chamar a prévia', async () => {
+    const m = montar();
+    await m.locais.buscar_lancamentos({ texto: 'fulano' });
+    const r = await m.locais.propor_categoria({ ref: 'L1', categoria: 'Xyz', escopo: 'este' });
+    expect(r.ok).toBe(false);
+    expect(r.dados.erro).toContain(traduzCategoria(CATEGORIAS_PAINEL[0]));
+    expect(m.posts).toEqual([]);
   });
 });

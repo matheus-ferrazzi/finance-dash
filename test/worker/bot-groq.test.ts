@@ -8,8 +8,14 @@ describe('ClienteGroq', () => {
   it('usa o primeiro modelo; devolve conteúdo e chamadas', async () => {
     const corpos: any[] = [];
     const g = new ClienteGroq('K-FALSA', ['m1', 'm2'], (async (_u: string, i: any) => { corpos.push(JSON.parse(i.body)); return resp(200, okChat); }) as any);
-    expect(await g.chat([{ role: 'user', content: 'x' }], [])).toEqual({ content: 'oi', toolCalls: [{ id: 'c1', nome: 'trilha', args: '{}' }], modelo: 'm1' });
+    expect(await g.chat([{ role: 'user', content: 'x' }], [])).toEqual({ content: 'oi', toolCalls: [{ id: 'c1', nome: 'trilha', args: '{}' }], modelo: 'm1', tokens: 0 });
     expect(corpos[0].model).toBe('m1');
+  });
+  it('27/10: devolve os tokens do usage; sem usage, 0', async () => {
+    const com = new ClienteGroq('K', ['m1'], (async () => resp(200, { ...okChat, usage: { total_tokens: 1234 } })) as any);
+    expect((await com.chat([], [])).tokens).toBe(1234);
+    const sem = new ClienteGroq('K', ['m1'], (async () => resp(200, okChat)) as any);
+    expect((await sem.chat([], [])).tokens).toBe(0);
   });
   it('modelo descontinuado (404/400 de modelo/503): tenta o próximo', async () => {
     const vistos: string[] = [];

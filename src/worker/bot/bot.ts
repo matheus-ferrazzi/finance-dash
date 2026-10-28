@@ -89,7 +89,7 @@ export function criarBot(d: {
     try { await mandar(r.texto, r.svg); } catch (e) { erroEnvio = semIdentificadores(`envio: ${e instanceof Error ? e.message : String(e)}`); }
     await d.registro.gravar({
       pessoa: p.pessoa, pergunta: p.texto, ferramentas: r.ferramentas, resposta: r.texto, modelo: r.modelo, ms: r.ms,
-      trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro ?? erroEnvio,
+      trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro ?? erroEnvio, tokens: r.tokens,
     }).catch((e) => d.log(`bot: falha ao registrar (${e instanceof Error ? e.message : String(e)})`));
     if (r.erro || erroEnvio) d.log(`bot: pergunta de ${p.pessoa} com erro (${r.erro ?? erroEnvio})`);
   }, 5, () => { void mandar(CHEIA, null).catch(() => {}); });

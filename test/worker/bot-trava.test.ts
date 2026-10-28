@@ -105,3 +105,14 @@ describe('valor em reais escrito sem R$', () => {
     expect(respostaConfere('👉 Sobra de 72,86 no fim do mês.', r2)).toBe(false);
   });
 });
+
+// 28/10 (conjunto de perguntas da fase 3)
+describe('trava: rodada 2 do conjunto', () => {
+  it('a dívida antiga paga (campo divida) é dinheiro', () => {
+    expect(respostaConfere('🏦 R$ 1.845,17 pagando dívida antiga', [{ total: 10, divida: 1845.17 }])).toBe(true);
+  });
+  it('milhar com espaço (R$ 12 524,69) é lido inteiro', () => {
+    expect(respostaConfere('📊 R$ 12 524,69 contra R$ 9 977,79', [{ totalA: 12524.69, totalB: 9977.79 }])).toBe(true);
+    expect(respostaConfere('📊 R$ 12 524,69', [{ totalA: 12.0 }])).toBe(false);
+  });
+});

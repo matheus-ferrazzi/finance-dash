@@ -1,13 +1,16 @@
 // E1: trava de número. Todo R$ e todo % da resposta do modelo têm que ter vindo de uma ferramenta, com o sinal certo.
 
 // número em R$: com milhar (1.234,56) ou sem (12345 / 1234,56); não corta um número maior pela metade
-const RE_BRL = /(-?)\s*R\$\s*(-?)\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)(?!\d|[.,]\d)/g;
+// 28/10: o modelo às vezes separa o milhar com espaço ("R$ 12 524,69"); lido inteiro, não como R$ 12
+const RE_BRL = /(-?)\s*R\$\s*(-?)\s*(\d{1,3}(?:[.   ]\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)(?!\d|[.,]\d)/g;
 const RE_PCT = /(-?\d+(?:,\d+)?)\s*%/g;
 // só estes campos das ferramentas são dinheiro (parcelas, fase, dias e pct não valem como R$)
 const DINHEIRO = new Set([
   'valor', 'total', 'totalA', 'totalB', 'a', 'b', 'diferenca', 'parcela', 'valorTotal', 'aprofunda',
   'dapraGastarHoje', 'ritmoAtualDia', 'ritmoSeguroDia', 'fechaCom', 'aplicado', 'meta', 'totalFalta',
   'dinheiro', 'totalDinheiro', 'totalDinheiroA', 'totalDinheiroB', 'nessePassoFechaEm', 'pelaMediaFechaEm',
+  // 28/10: a dívida antiga paga no período (gasto_periodo), mostrada à parte
+  'divida',
 ]);
 // valor negativo dito sem sinal só vale se a linha disser que é negativo
 const DIZ_NEGATIVO = /-|negativ|vermelho|falt/i;
@@ -20,7 +23,7 @@ const apaga = (t: string, re: RegExp) => t.replace(re, (x) => ' '.repeat(x.lengt
 function achados(texto: string, soltos = false): { v: number; linha: string }[] {
   const out: { v: number; linha: string }[] = [];
   const ler = (m: RegExpMatchArray, numero: string, negativo: boolean) => {
-    const n = Number(numero.replace(/\./g, '').replace(',', '.'));
+    const n = Number(numero.replace(/[.   ]/g, '').replace(',', '.'));
     const ini = texto.lastIndexOf('\n', m.index ?? 0) + 1;
     const fim = texto.indexOf('\n', m.index ?? 0);
     out.push({ v: negativo ? -n : n, linha: texto.slice(ini, fim < 0 ? undefined : fim) });

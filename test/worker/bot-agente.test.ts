@@ -463,3 +463,39 @@ describe('fase 3: correções do conjunto de perguntas', () => {
     expect(sistema).toContain('Use o mínimo de ferramentas');
   });
 });
+
+describe('fase 3: rodada 2 do conjunto', () => {
+  it('explicar o diário com o texto barrado: a conta guardada do diário mais recente, não a lista de mensagens', async () => {
+    const explicacao = ['Origem: nas contas tem R$ 137,60.', 'Sobra para o dia a dia até o fim do mês: R$ 137,60.'];
+    const ms = [
+      { tipo: 'diario', quando: '27/10 08:00', texto: 'velho', explicacao: ['Origem: nas contas tem R$ 1,00.'] },
+      { tipo: 'meta', quando: '27/10 09:00', texto: 'meta' },
+      { tipo: 'diario', quando: '28/10 08:00', texto: 'novo', explicacao },
+    ];
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'mensagens_do_zeca', args: '{}' }], modelo: 'm' },
+      { content: '👉 123,45 × 4 = 493,80', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder({ ...p, texto: 'me explica o diário de hoje' }, { ...base, groq: g, locais: { mensagens_do_zeca: async () => ({ ok: true, dados: { mensagens: ms } }) } });
+    expect(r.texto).toBe(explicacao.map((l) => `👉 ${l}`).join('\n'));
+    expect(r.trava).toBe(true);
+  });
+  it('prompt: no vermelho ou ritmo alto, buscar o que puxou o ritmo é obrigatório', async () => {
+    const g = groqRoteiro([{ content: 'oi', toolCalls: [], modelo: 'm' }, { content: 'oi', toolCalls: [], modelo: 'm' }]);
+    await responder(p, { ...base, groq: g });
+    const sistema = String(g.vistos[0][0].content);
+    expect(sistema).toContain('quais gastos puxaram o ritmo');
+    expect(sistema).toContain('R$ 1.234,56');
+  });
+});
+
+it('fase 3: "o último alerta" barrado não vira a conta do diário', async () => {
+  const ms = [{ tipo: 'diario', quando: '28/10 08:00', texto: 'd', explicacao: ['Origem: R$ 1,00.'] }, { tipo: 'alerta-meta', quando: '28/10 08:05', texto: '🔴 Meta estourada · R$ 10,00 acima' }];
+  const g = groqRoteiro([
+    { content: null, toolCalls: [{ id: 'c1', nome: 'mensagens_do_zeca', args: '{}' }], modelo: 'm' },
+    { content: '👉 R$ 999,99', toolCalls: [], modelo: 'm' },
+  ]);
+  const r = await responder({ ...p, texto: 'me explica o ultimo alerta' }, { ...base, groq: g, locais: { mensagens_do_zeca: async () => ({ ok: true, dados: { mensagens: ms } }) } });
+  expect(r.texto).not.toContain('Origem: R$ 1,00');
+  expect(r.texto).toContain('O que mandei');
+});

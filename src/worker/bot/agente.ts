@@ -76,7 +76,9 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
   'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
   '"explicacao" e a conta das mensagens são fonte de dados, não texto para copiar. Ao explicar a sobra ou o vermelho, comece pelo dinheiro que há nas contas e pelo que ainda sai.',
-  'Para dizer o que puxou o ritmo do dia a dia, use consultar com o_que dia_a_dia, periodo este_mes, agrupar loja e limite 3 (o aluguel e as contas fixas não entram no ritmo).',
+  // 28/10 (conjunto de perguntas): como sugestão o modelo não buscava, e a resposta do vermelho ficava sem o porquê
+  'Pergunta de por que está no vermelho ou por que o ritmo está alto: chame situacao_mes E consultar (o_que dia_a_dia, periodo este_mes, agrupar loja, limite 3) e diga quais gastos puxaram o ritmo, com os valores. O aluguel e as contas fixas não entram no ritmo.',
+  'Não refaça as contas da "explicacao" (elas já vêm prontas) nem invente conta nova: se precisar de uma, use calcular. Valores sempre no formato R$ 1.234,56.',
   'Na explicação: até 12 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
   ...(grupos.has('mensagens') ? MENSAGENS : []),
 ].join('\n');
@@ -231,10 +233,20 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
           // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta;
           // 28/10: só quando a situação é a única ferramenta (com a compra junto, a resposta da compra sumia)
-          if (texto && ultima?.nome === 'situacao_mes' && respondidas.size === 1 && Array.isArray(ultima.dados?.explicacao)) {
-            const frases = ultima.dados.explicacao.map((l: string) => `👉 ${l}`).join('\n');
-            return fimCom(comLink(frases, d.painelUrl, ultima.dados.link), { modelo, trava: true });
+          //        com a consulta do dia a dia junto (o que puxou o ritmo), ela vem depois das frases
+          const sit = respondidas.get('situacao_mes');
+          if (texto && sit && Array.isArray(sit.explicacao) && [...respondidas.keys()].every((k) => k === 'situacao_mes' || k === 'consultar')) {
+            const frases = sit.explicacao.map((l: string) => `👉 ${l}`).join('\n');
+            const cons = respondidas.get('consultar');
+            const extra = cons ? `\n\n${formatar('consultar', cons, d.painelUrl).replace(/\n\n👉 \S+$/, '')}` : '';
+            return fimCom(comLink(frases + extra, d.painelUrl, sit.link), { modelo, trava: true });
           }
+          // 28/10: explicando uma mensagem sem citar, a conta guardada da mais recente que tem conta (não a lista)
+          //        — só se a pergunta fala do diário ou a mais recente é ela ("o último alerta" não vira a conta do diário)
+          const ms: any[] = ultima?.nome === 'mensagens_do_zeca' ? ultima.dados?.mensagens ?? [] : [];
+          const comConta = /di[áa]rio/i.test(p.texto) || Array.isArray(ms.at(-1)?.explicacao)
+            ? [...ms].reverse().find((m) => Array.isArray(m.explicacao)) : null;
+          if (texto && comConta) return fimCom(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n'), { modelo, trava: true });
           if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
           // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
           if (conta) return fimCom(conta.explicacao.map((l) => `👉 ${l}`).join('\n'), { modelo, trava: !!texto });

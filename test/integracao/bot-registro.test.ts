@@ -20,6 +20,7 @@ describe.skipIf(!url)('registro do bot (integração)', () => {
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/009_bot.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/016_bot_tokens.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {
@@ -31,7 +32,7 @@ describe.skipIf(!url)('registro do bot (integração)', () => {
 
   it('grava, devolve contexto recente na ordem, conta falhas e limpa antigas', async () => {
     const reg = new PgRegistroBot(pool);
-    const base = { ferramentas: [], modelo: 'm', ms: 10, trava: false, semFerramenta: false };
+    const base = { ferramentas: [], modelo: 'm', ms: 10, trava: false, semFerramenta: false, tokens: 0 };
     await reg.gravar({ ...base, pessoa: 'Matheus', pergunta: 'p1', resposta: 'r1', erro: null });
     await reg.gravar({ ...base, pessoa: 'Ariane', pergunta: 'p2', resposta: 'r2', erro: null });
     await reg.gravar({ ...base, pessoa: 'Ariane', pergunta: 'p3', resposta: null, erro: 'Groq fora' });

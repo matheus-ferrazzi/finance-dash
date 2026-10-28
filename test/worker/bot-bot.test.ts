@@ -67,7 +67,7 @@ describe('E1-M4: erro de envio sem identificadores', () => {
     const bot = criarBot({
       cfg, painel: async () => ({ ok: true, dados: {} }), painelPost: async () => ({ ok: true, dados: {} }),
       acoes: { criar: async () => 1, pendente: async () => null, confirmar: async () => false, cancelar: async () => {}, ultimaFeita: async () => null },
-      groq: { chat: async () => ({ content: 'x', toolCalls: [], modelo: 'm' }) },
+      groq: { chat: async () => ({ content: 'x', toolCalls: [], modelo: 'm', tokens: 0 }) },
       registro: { gravar: async (l: any) => { gravados.push(l); }, contexto: async () => [] },
       wa: { enviarComId: async () => { throw new Error('WhatsApp HTTP 400: G@g.us sem permissão para 5511999998888'); }, enviarImagemComId: async () => 'I' },
       renderizar: async () => Buffer.from('png'), hoje: () => '2026-10-11', painelUrl: 'https://p', log: (x) => logs.push(x),

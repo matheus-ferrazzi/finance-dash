@@ -21,6 +21,8 @@ function comLink(texto: string, painelUrl: string, link: string | undefined): st
 export interface RespostaBot {
   texto: string; svg: string | null; ferramentas: { nome: string; args: unknown; ok: boolean }[];
   modelo: string | null; trava: boolean; semFerramenta: boolean; erro: string | null; ms: number;
+  /** 27/10: tokens do Groq somados em todas as rodadas */
+  tokens: number;
 }
 
 const SISTEMA = (quem: string, hoje: string) => [
@@ -125,15 +127,17 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
     ]),
     { role: 'user', content: comCitada(p, conta) },
   ];
+  let tokens = 0;
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
     texto, svg: ultima ? graficoDaFerramenta(ultima.nome, ultima.dados) : null, ferramentas, modelo: null,
-    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, ...extra,
+    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, ...extra,
   });
   let modelo: string | null = null;
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
       const r = await d.groq.chat(msgs, TOOLS);
       modelo = r.modelo;
+      tokens += r.tokens ?? 0;
       if (!r.toolCalls.length) {
         const texto = (r.content ?? '').trim();
         // com mensagem citada, explicar sem ferramenta vale (os números passam pela trava contra o texto citado)

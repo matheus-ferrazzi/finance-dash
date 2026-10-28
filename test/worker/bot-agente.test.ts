@@ -21,6 +21,13 @@ describe('agente', () => {
     expect(JSON.stringify(g.vistos[0])).toContain('Ariane');
     expect(JSON.stringify(g.vistos[0])).toContain('2026-10-11');
   });
+  it('27/10: soma os tokens de todas as rodadas', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm', tokens: 3000 },
+      { content: '🛒 Mercado: R$ 400,00 este mês.', toolCalls: [], modelo: 'm', tokens: 3500 },
+    ]);
+    expect((await responder(p, { ...base, groq: g })).tokens).toBe(6500);
+  });
   it('R$ inventado: trava troca pelo texto montado', async () => {
     const g = groqRoteiro([
       { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' },

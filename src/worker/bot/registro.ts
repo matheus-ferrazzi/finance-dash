@@ -3,6 +3,8 @@ import type { Pool } from 'pg';
 export interface LinhaBot {
   pessoa: string; pergunta: string; ferramentas: { nome: string; args: unknown; ok: boolean }[];
   resposta: string | null; modelo: string | null; ms: number; trava: boolean; semFerramenta: boolean; erro: string | null;
+  /** 27/10: tokens do Groq na pergunta (migração 016) */
+  tokens: number;
 }
 
 /** financas_bot_conversas: perguntas que passaram pelo filtro (grupo, membro, chamado) e o que o bot respondeu. */
@@ -11,9 +13,9 @@ export class PgRegistroBot {
 
   async gravar(l: LinhaBot): Promise<void> {
     await this.pool.query(
-      `INSERT INTO financas_bot_conversas (pessoa, pergunta, ferramentas, resposta, modelo, ms, trava, sem_ferramenta, erro)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [l.pessoa, l.pergunta, JSON.stringify(l.ferramentas), l.resposta, l.modelo, l.ms, l.trava, l.semFerramenta, l.erro],
+      `INSERT INTO financas_bot_conversas (pessoa, pergunta, ferramentas, resposta, modelo, ms, trava, sem_ferramenta, erro, tokens)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [l.pessoa, l.pergunta, JSON.stringify(l.ferramentas), l.resposta, l.modelo, l.ms, l.trava, l.semFerramenta, l.erro, l.tokens],
     );
   }
 

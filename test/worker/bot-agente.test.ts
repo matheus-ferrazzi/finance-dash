@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FALHA, responder, SEM_FERRAMENTA, textoEspera, textoLimite } from '../../src/worker/bot/agente';
+import { FALHA, responder, SEGURA, SEM_FERRAMENTA, textoEspera, textoLimite } from '../../src/worker/bot/agente';
 import { LimiteGroq } from '../../src/worker/bot/groq';
 
 const p = { id: 'X', pessoa: 'Ariane', texto: 'quanto gastei com mercado?' };
@@ -353,5 +353,72 @@ describe('fase 3: analista', () => {
     expect(sistema).toContain('dia_a_dia');
     expect(sistema).not.toContain('copie as frases');
     expect(sistema).toContain('até 12 linhas');
+  });
+});
+
+// 28/10 (fase 3): resposta com número passa pelo conferente; reprovou duas vezes, vai a segura
+describe('fase 3: conferente no agente', () => {
+  const chamaGasto = { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm1', tokens: 10 };
+  const texto = (t: string) => ({ content: t, toolCalls: [], modelo: 'm1', tokens: 10 });
+  const conferirRoteiro = (vs: { aprovado: boolean; problemas?: string[] }[]) => {
+    const vistos: any[] = [];
+    return { vistos, fn: async (x: any) => { vistos.push(x); const v = vs.shift()!; return { aprovado: v.aprovado, problemas: v.problemas ?? [], tokens: 50, esperaMs: 0, modelo: 'm2' }; } };
+  };
+  const deps = (g: any, c: any) => ({ ...base, groq: g, conferir: c.fn, modelos: ['m1', 'm2'] });
+
+  it('aprovado de primeira', async () => {
+    const c = conferirRoteiro([{ aprovado: true }]);
+    const r = await responder(p, deps(groqRoteiro([chamaGasto, texto('🛒 Mercado: R$ 400,00 este mês.')]), c));
+    expect([r.conferencia, r.texto.startsWith('🛒 Mercado: R$ 400,00'), c.vistos.length, r.tokensConferente]).toEqual(['aprovada', true, 1, 50]);
+    expect(c.vistos[0].modelos).toEqual(['m2']);
+    expect(c.vistos[0].dados).toEqual([gasto]);
+  });
+  it('reprovado e reescrito: aprovado na reescrita', async () => {
+    const c = conferirRoteiro([{ aprovado: false, problemas: ['o total é do casal, não da Ariane'] }, { aprovado: true }]);
+    const g = groqRoteiro([chamaGasto, texto('🛒 Você gastou R$ 400,00 no mercado.'), texto('🛒 O casal gastou R$ 400,00 no mercado.')]);
+    const r = await responder(p, deps(g, c));
+    expect(r.conferencia).toBe('reescrita');
+    expect(r.texto).toContain('O casal gastou');
+    expect(r.problemas).toEqual(['o total é do casal, não da Ariane']);
+    expect(JSON.stringify(g.vistos[2])).toContain('o total é do casal');
+  });
+  it('reprovado duas vezes: a segura, nunca o texto reprovado', async () => {
+    const c = conferirRoteiro([{ aprovado: false, problemas: ['a'] }, { aprovado: false, problemas: ['b'] }]);
+    const r = await responder(p, deps(groqRoteiro([chamaGasto, texto('🛒 R$ 400,00 é tudo do mês.'), texto('🛒 R$ 400,00 no mês todo.')]), c));
+    expect(r.conferencia).toBe('segura');
+    expect(r.texto.startsWith(SEGURA)).toBe(true);
+    expect(r.texto).toContain('💰 Gasto em out/26');
+    expect(r.texto).not.toContain('é tudo do mês');
+    expect(r.problemas).toEqual(['a', 'b']);
+    expect(r.erro).toBeNull();
+  });
+  it('reescrita que fura a trava: segura, sem segunda conferência', async () => {
+    const c = conferirRoteiro([{ aprovado: false, problemas: ['a'] }]);
+    const r = await responder(p, deps(groqRoteiro([chamaGasto, texto('🛒 R$ 400,00.'), texto('🛒 R$ 999,99.')]), c));
+    expect([r.conferencia, c.vistos.length]).toEqual(['segura', 1]);
+  });
+  it('sem número ou texto do sistema: não confere', async () => {
+    const c = conferirRoteiro([]);
+    const g = groqRoteiro([{ content: null, toolCalls: [{ id: 'c1', nome: 'trilha', args: '{}' }], modelo: 'm1' }, texto('🧭 Vocês estão na fase de sobrar.')]);
+    const pnl = async () => ({ ok: true, dados: { fase: 2, titulo: 'Sobrar', proximoPasso: 'x', reserva: { aplicado: 0, meta: 0 } } });
+    const r = await responder({ ...p, texto: 'em que fase estamos?' }, { ...deps(g, c), painel: pnl });
+    expect([r.conferencia, c.vistos.length]).toEqual([null, 0]);
+    const r2 = await responder({ ...p, texto: 'põe 50 de dentista nas contas' }, { ...deps(groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c', nome: 'propor_conta_avulsa', args: '{"nome":"Dentista","valor":50}' }], modelo: 'm1' }, texto('ok R$ 50,00')]), c),
+      locais: { propor_conta_avulsa: async () => ({ ok: true, dados: { proposta: '🟡 PROPOSTA R$ 50,00' } }) } });
+    expect([r2.texto, c.vistos.length]).toEqual(['🟡 PROPOSTA R$ 50,00', 0]);
+  });
+  it('mensagem citada sem ferramenta: o conferente recebe o texto citado', async () => {
+    const c = conferirRoteiro([{ aprovado: true }]);
+    const citada = '🔴 Nesse passo fecha em -R$ 818,33';
+    const r = await responder({ ...p, texto: 'por quê?', citada }, deps(groqRoteiro([texto('👉 Nesse passo, no ritmo de agora, fecha em -R$ 818,33.')]), c));
+    expect(r.conferencia).toBe('aprovada');
+    expect(JSON.stringify(c.vistos[0].dados)).toContain('818,33');
+  });
+  it('conferente indisponível duas vezes: a segura, sem erro', async () => {
+    const c = conferirRoteiro([{ aprovado: false, problemas: ['conferente indisponível'] }, { aprovado: false, problemas: ['conferente indisponível'] }]);
+    const r = await responder(p, deps(groqRoteiro([chamaGasto, texto('🛒 R$ 400,00.'), texto('🛒 R$ 400,00.')]), c));
+    expect([r.conferencia, r.erro]).toEqual(['segura', null]);
+    expect(r.texto.startsWith(SEGURA)).toBe(true);
   });
 });

@@ -4,10 +4,15 @@ import { escolherGrupos, ferramentasDe, TODOS_GRUPOS, type Grupo } from './escol
 import { LimiteGroq, type ClienteGroq, type MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
+import { modeloConferente, type conferir } from './conferente';
 
 export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alguns minutos.';
 export const SEM_FERRAMENTA = '🤷 Ainda não sei responder isso. Anotei a pergunta.';
 export const SO_TEXTO = '🎧 Por enquanto só leio texto.';
+// 28/10 (fase 3): reprovou duas vezes no conferente — vai o que o código montou, com esta linha antes
+export const SEGURA = 'Não consegui conferir a análise; os números que tenho com certeza são estes:';
+/** 28/10 (fase 3): resposta com número (R$, %, valor com centavos) passa pelo conferente */
+const TEM_NUMERO = /R\$|%|\d,\d{2}/;
 // 28/10 (fase 3): uma análise usa situação, consulta, cálculo e resposta
 const RODADAS = 6;
 const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes', 'investimentos']);
@@ -27,6 +32,10 @@ export interface RespostaBot {
   tokens: number;
   /** 28/10 (fase 2): ms esperando a cota do Groq, somados em todas as rodadas */
   esperaMs: number;
+  /** 28/10 (fase 3): veredito do conferente (null = não conferida: sem número, texto do sistema ou sem conferente) */
+  conferencia: 'aprovada' | 'reescrita' | 'segura' | null;
+  problemas: string[];
+  tokensConferente: number;
 }
 
 // 28/10 (fase 2): textos da espera e do limite do Groq (tom contido, sem termo técnico)
@@ -111,6 +120,9 @@ type DepsResponder = {
   locais?: Record<string, (args: any) => Promise<{ ok: boolean; dados: any }>>;
   /** 28/10 (fase 2): cada espera da cota do Groq (o bot avisa o grupo) */
   aoEsperar?: (ms: number) => void;
+  /** 28/10 (fase 3): o conferente e a lista de modelos (ele usa outro que não o que escreveu); sem ele, não confere */
+  conferir?: typeof conferir;
+  modelos?: string[];
 };
 
 /**
@@ -139,7 +151,7 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   const r = await tentar(p, d, grupos);
   if (!r.semFerramenta || grupos.size >= TODOS_GRUPOS.size) return r;
   const r2 = await tentar(p, d, TODOS_GRUPOS);
-  return { ...r2, tokens: r.tokens + r2.tokens, esperaMs: r.esperaMs + r2.esperaMs, ms: Date.now() - t0 };
+  return { ...r2, tokens: r.tokens + r2.tokens, esperaMs: r.esperaMs + r2.esperaMs, tokensConferente: r.tokensConferente + r2.tokensConferente, ms: Date.now() - t0 };
 }
 
 async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>): Promise<RespostaBot> {
@@ -174,10 +186,27 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
   let tokens = 0;
   let esperaMs = 0;
   const aoEsperar = (ms: number) => { esperaMs += ms; d.aoEsperar?.(ms); };
+  let conferencia: RespostaBot['conferencia'] = null;
+  const problemas: string[] = [];
+  let tokensConferente = 0;
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
     texto, svg: ultima ? graficoDaFerramenta(ultima.nome, ultima.dados) : null, ferramentas, modelo: null,
-    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, esperaMs, ...extra,
+    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, esperaMs, conferencia, problemas, tokensConferente, ...extra,
   });
+  // 28/10 (fase 3): o link é o da última ferramenta do painel que tem um (a calculadora não tem)
+  const linkFinal = () => [...respondidas.values()].reverse().find((x) => x?.link)?.link ?? ultima?.dados?.link;
+  // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia;
+  // WhatsApp usa *um* asterisco para negrito; o modelo às vezes escreve o **Markdown**
+  const polir = (t: string) => {
+    const zap = t.replace(/\*\*([^*\n]+)\*\*/g, '*$1*');
+    return /^\s*bot(?![\p{L}\p{N}])/iu.test(zap) ? `🤖 ${zap}` : zap;
+  };
+  const conferirTexto = async (t: string) => {
+    const v = await d.conferir!({ groq: d.groq, modelos: modeloConferente(modelo, d.modelos ?? []), pergunta: comCitada(p, conta), dados: resultados, resposta: t, aoEsperar });
+    tokensConferente += v.tokens;
+    problemas.push(...v.problemas);
+    return v;
+  };
   let modelo: string | null = null;
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
@@ -206,11 +235,23 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
           if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
           return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
-        // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia
-        // WhatsApp usa *um* asterisco para negrito; o modelo às vezes escreve o **Markdown**
-        const zap = texto.replace(/\*\*([^*\n]+)\*\*/g, '*$1*');
-        const final = /^\s*bot(?![\p{L}\p{N}])/iu.test(zap) ? `🤖 ${zap}` : zap;
-        return fimCom(ultima ? comLink(final, d.painelUrl, ultima.dados?.link) : final, { modelo });
+        const comLinkFinal = (t: string) => (ultima ? comLink(t, d.painelUrl, linkFinal()) : t);
+        // 28/10 (fase 3): resposta do modelo com número passa pelo conferente; uma reescrita; depois a segura
+        if (!d.conferir || !TEM_NUMERO.test(texto)) return fimCom(comLinkFinal(polir(texto)), { modelo });
+        if ((await conferirTexto(texto)).aprovado) { conferencia = 'aprovada'; return fimCom(comLinkFinal(polir(texto)), { modelo }); }
+        msgs.push({ role: 'assistant', content: texto });
+        msgs.push({ role: 'user', content: `O conferente apontou estes problemas:\n${problemas.map((x) => `- ${x}`).join('\n')}\nReescreva a resposta corrigindo só isso, com os mesmos dados.` });
+        const r2 = await d.groq.chat(msgs, [], { aoEsperar });
+        tokens += r2.tokens ?? 0;
+        const texto2 = (r2.content ?? '').trim();
+        if (texto2 && respostaConfere(texto2, resultados) && (await conferirTexto(texto2)).aprovado) {
+          conferencia = 'reescrita';
+          return fimCom(comLinkFinal(polir(texto2)), { modelo });
+        }
+        conferencia = 'segura';
+        const corpo = respondidas.size ? montadoDeTodas() : conta ? conta.explicacao.map((l) => `👉 ${l}`).join('\n') : null;
+        if (!corpo) return fimCom(FALHA, { modelo, erro: 'conferente reprovou e sem dado montável', svg: null });
+        return fimCom(`${SEGURA}\n${corpo}`, { modelo });
       }
       msgs.push({ role: 'assistant', content: r.content, tool_calls: r.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.nome, arguments: t.args } })) });
       for (const t of r.toolCalls) {

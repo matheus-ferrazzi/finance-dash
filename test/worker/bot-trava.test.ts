@@ -116,3 +116,11 @@ describe('trava: rodada 2 do conjunto', () => {
     expect(respostaConfere('📊 R$ 12 524,69', [{ totalA: 12.0 }])).toBe(false);
   });
 });
+
+// 28/10 (rodada 3): "fechará em R$ ‑6,66" com hífen não separável (U+2011) barrava um valor certo
+it('trava: hífen não separável, sinal de menos e travessão contam como menos', () => {
+  const res = [{ fechaCom: -6.66, nessePassoFechaEm: -555.55 }];
+  expect(respostaConfere('👉 Pela média dos meses, fecha em R$ ‑6,66.', res)).toBe(true);
+  expect(respostaConfere('👉 No ritmo de agora fecha em −R$ 555,55.', res)).toBe(true);
+  expect(respostaConfere('👉 No ritmo de agora fecha em –R$ 555,55.', res)).toBe(true);
+});

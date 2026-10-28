@@ -44,6 +44,8 @@ describe('respostaConfere', () => {
     const res = [{ total: 2371.8, pct: 35.2 }];
     expect(respostaConfere('📊 *2371.8* – gasto total com Mercado no mês passado.', res)).toBe(false);
     expect(respostaConfere('📊 foram 2371.80 no mercado', res)).toBe(false);
+    // produção, de novo: o ponto final logo depois do número escondia o valor cru
+    expect(respostaConfere('📊 Origem: Mercado, período: mes_passado, total: 2371.8.', res)).toBe(false);
     expect(respostaConfere('📊 R$ 2.371,80 em 1.234 compras, 35,2% a mais', res)).toBe(true);
   });
   it('sem R$: confere', () => {

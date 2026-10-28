@@ -64,7 +64,7 @@ function coletarRotulos(x: unknown, out: Rotulo[]): void {
 }
 
 /** 27/10: valor cru no formato americano ("2371.8"): sem R$ a trava não o via, e no grupo sai sem formato */
-const CRU = /(?<![\d.,])\d+\.\d{1,2}(?![\d.,])/;
+const CRU = /(?<![\d.,])\d+\.\d{1,2}(?!\d|[.,]\d)/;
 
 export function respostaConfere(resposta: string, resultados: unknown[]): boolean {
   if (CRU.test(resposta)) return false;

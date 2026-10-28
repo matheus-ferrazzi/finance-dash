@@ -24,8 +24,11 @@ export function criarLocais(d: {
   return {
     async mensagens_do_zeca() {
       if (!d.mensagens) return { ok: false, dados: { erro: 'mensagens indisponíveis' } };
-      // 27/10: só o diário tem conta guardada — vira a explicação em frases, com os números daquela hora
-      const mensagens = (await d.mensagens()).map(({ conta, ...m }) => (conta ? { ...m, explicacao: explicacaoDaConta(conta) } : m));
+      // 27/10: só o diário tem conta guardada — vira a explicação em frases, com os números daquela hora (os dois
+      // "fecha em" rotulados, para a trava não aceitar um no lugar do outro)
+      const mensagens = (await d.mensagens()).map(({ conta, ...m }) => (conta ? {
+        ...m, explicacao: explicacaoDaConta(conta), pelaMediaFechaEm: conta.pelaMediaFechaEm, nessePassoFechaEm: conta.nessePassoFechaEm,
+      } : m));
       return { ok: true, dados: { mensagens, ...(mensagens.length ? {} : { aviso: 'nenhuma mensagem nas últimas 36 horas' }) } };
     },
     async buscar_lancamentos(a) {

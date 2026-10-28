@@ -54,7 +54,10 @@ const SISTEMA = (quem: string, hoje: string) => [
   '- "Aviso técnico": algo do sistema falhou (conexão de banco parada, backup, rodada de atualização).',
 ].join('\n');
 
-type ContaCitada = { explicacao: string[]; agora: boolean };
+/** `fechas`: os dois "fecha em" rotulados (pelaMediaFechaEm / fechaCom, nessePassoFechaEm), para a trava */
+type ContaCitada = { explicacao: string[]; agora: boolean; fechas: Record<string, number> };
+const FECHAS = ['fechaCom', 'pelaMediaFechaEm', 'nessePassoFechaEm'];
+const fechasDe = (x: any) => Object.fromEntries(FECHAS.filter((k) => typeof x?.[k] === 'number').map((k) => [k, x[k]]));
 /** 22/10: a pergunta com a mensagem citada (respondida) na frente, para o modelo saber de qual mensagem se fala. */
 const comCitada = (p: Pergunta, conta: ContaCitada | null) => {
   if (!p.citada) return p.texto;
@@ -86,10 +89,10 @@ async function contaDaCitada(citada: string, d: DepsResponder): Promise<ContaCit
   try {
     const ms: any[] = (await d.locais?.mensagens_do_zeca?.({}))?.dados?.mensagens ?? [];
     const m = ms.find((x) => chaveMsg(String(x.texto ?? '')) === chaveMsg(citada));
-    if (Array.isArray(m?.explicacao)) return { explicacao: m.explicacao, agora: false };
+    if (Array.isArray(m?.explicacao)) return { explicacao: m.explicacao, agora: false, fechas: fechasDe(m) };
     if (m ? m.tipo !== 'diario' : !/dá pra gastar|nesse passo|pela média/i.test(citada)) return null;
     const s = await d.painel('/api/bot/situacao');
-    return s.ok && Array.isArray(s.dados?.explicacao) ? { explicacao: s.dados.explicacao, agora: true } : null;
+    return s.ok && Array.isArray(s.dados?.explicacao) ? { explicacao: s.dados.explicacao, agora: true, fechas: fechasDe(s.dados) } : null;
   } catch { return null; }
 }
 
@@ -99,8 +102,8 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   const conta = p.citada ? await contaDaCitada(p.citada, d) : null;
   // 22/10: a mensagem citada vale como dado conferido (o Zeca explica com os números dela). 27/10: com a conta de
   // agora, só ela vale — número da mensagem misturado com o de agora é de outra hora
-  const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao }]
-    : [{ citada: p.citada, pct: pctsDoTexto(p.citada), ...(conta ? { explicacao: conta.explicacao } : {}) }];
+  const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao, ...conta.fechas }]
+    : [{ citada: p.citada, pct: pctsDoTexto(p.citada), ...(conta ? { explicacao: conta.explicacao, ...conta.fechas } : {}) }];
   let ultima: { nome: string; dados: any } | null = null;
   // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
   // mostra todas, com um link só (o da última), em vez de só a última
@@ -142,6 +145,11 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
         if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(montadoDeTodas(), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
+          // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta
+          if (texto && ultima?.nome === 'situacao_mes' && Array.isArray(ultima.dados?.explicacao)) {
+            const frases = ultima.dados.explicacao.map((l: string) => `👉 ${l}`).join('\n');
+            return fimCom(comLink(frases, d.painelUrl, ultima.dados.link), { modelo, trava: true });
+          }
           if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
           // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
           if (conta) return fimCom(conta.explicacao.map((l) => `👉 ${l}`).join('\n'), { modelo, trava: !!texto });

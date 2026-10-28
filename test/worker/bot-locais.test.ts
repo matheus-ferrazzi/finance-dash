@@ -117,7 +117,8 @@ describe('mensagens_do_zeca', () => {
       mensagens: async () => [{ tipo: 'diario', quando: '27/10 08:00', texto: 'D', conta }, { tipo: 'meta', quando: '27/10 09:00', texto: 'M', conta: null }],
     });
     expect((await locais.mensagens_do_zeca({})).dados.mensagens).toEqual([
-      { tipo: 'diario', quando: '27/10 08:00', texto: 'D', explicacao: explicacaoDaConta(conta) }, { tipo: 'meta', quando: '27/10 09:00', texto: 'M' },
+      { tipo: 'diario', quando: '27/10 08:00', texto: 'D', explicacao: explicacaoDaConta(conta), pelaMediaFechaEm: 100, nessePassoFechaEm: 50 },
+      { tipo: 'meta', quando: '27/10 09:00', texto: 'M' },
     ]);
   });
 });

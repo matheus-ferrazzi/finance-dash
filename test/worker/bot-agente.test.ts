@@ -236,6 +236,17 @@ describe('mensagem citada com a conta', () => {
     expect(r.trava).toBe(true);
     expect(r.texto).toBe(explicacao.map((l) => `👉 ${l}`).join('\n'));
   });
+  it('situacao_mes com um "fecha em" no lugar do outro: barrado, responde com as frases prontas e o link', async () => {
+    const sit = { fechaCom: -72.86, nessePassoFechaEm: -818.33, ritmoAtualDia: 190.69, dapraGastarHoje: 27.02, diasRestantes: 4, mesLabel: 'out/26', link: '/',
+      explicacao: ['Nesse passo: … fecha em -R$ 818,33.', 'Pela média: … fecha em -R$ 72,86.'] };
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'situacao_mes', args: '{}' }], modelo: 'm' },
+      { content: '👉 O ritmo de R$ 190,69, se mantido, fecha em -R$ 72,86.', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder({ id: 'X', pessoa: 'Matheus', texto: 'por que só dá isso?' }, { ...base, groq: g, painel: async () => ({ ok: true, dados: sit }) });
+    expect(r.trava).toBe(true);
+    expect(r.texto).toBe('👉 Nesse passo: … fecha em -R$ 818,33.\n👉 Pela média: … fecha em -R$ 72,86.\n\n👉 https://p/');
+  });
   it('mensagem que não é o diário: sem conta, explica com o texto dela', async () => {
     const meta = '🟡 *Meta de gastos quase no limite* · 83% usados';
     const g = groqRoteiro([{ content: '👉 Já foram 83% da meta.', toolCalls: [], modelo: 'm' }]);

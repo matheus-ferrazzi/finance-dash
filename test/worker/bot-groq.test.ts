@@ -105,3 +105,14 @@ describe('ClienteGroq: 429', () => {
     expect(dormidas).toEqual([]);
   });
 });
+
+// 28/10 (fase 3): o conferente escolhe o modelo da chamada
+describe('ClienteGroq: modelos da chamada', () => {
+  it('opcoes.modelos troca a lista do construtor', async () => {
+    const vistos: string[] = [];
+    const g = new ClienteGroq('K', ['m1', 'm2'], (async (_u: string, i: any) => { vistos.push(JSON.parse(i.body).model); return resp(200, okChat); }) as any);
+    expect((await g.chat([], [], { modelos: ['m2'] })).modelo).toBe('m2');
+    expect(vistos).toEqual(['m2']);
+    expect(g.modelosDaLista).toEqual(['m1', 'm2']);
+  });
+});

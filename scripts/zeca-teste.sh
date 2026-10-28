@@ -16,7 +16,7 @@ tar --exclude=node_modules --exclude=.next --exclude=dist --exclude=.git --exclu
 scp -q "$PACOTE" "$VPS:/root/zeca-teste_$TS.tgz"
 scp -q "$LISTA" "$VPS:/root/zeca-teste_$TS.txt"
 rm -f "$PACOTE"
-ssh "$VPS" TS="$TS" 'bash -s' <<'REMOTO'
+ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=10 "$VPS" TS="$TS" 'bash -s' <<'REMOTO'
 set -euo pipefail
 cd /root
 ENV=$(mktemp); chmod 600 "$ENV"

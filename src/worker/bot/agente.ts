@@ -265,7 +265,7 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
           const ms: any[] = ultima?.nome === 'mensagens_do_zeca' ? ultima.dados?.mensagens ?? [] : [];
           const comConta = /di[áa]rio/i.test(p.texto) || Array.isArray(ms.at(-1)?.explicacao)
             ? [...ms].reverse().find((m) => Array.isArray(m.explicacao)) : null;
-          if (texto && comConta) return fimCom(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n'), { modelo, trava: true });
+          if (texto && comConta) return fimCom(comPuxou(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n')), { modelo, trava: true });
           if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
           // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
           if (conta) return fimCom(comPuxou(conta.explicacao.map((l) => `👉 ${l}`).join('\n')), { modelo, trava: !!texto });

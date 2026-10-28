@@ -113,7 +113,7 @@ async function main() {
       { groq, painel: painelGet, contexto: [], hoje: currentDateSP(), painelUrl: notif.painelUrl, locais,
         aoEsperar: (ms) => console.log(`aguardando cota do Groq: ${Math.round(ms / 1000)} s`), conferir, modelos: groq.modelosDaLista });
     console.log(r.texto);
-    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens, esperaMs: r.esperaMs,
+    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => `${f.nome}${JSON.stringify(f.args)}`), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens, esperaMs: r.esperaMs,
       conferencia: r.conferencia, problemas: r.problemas, tokensConferente: r.tokensConferente }));
     await pool.end();
     return;

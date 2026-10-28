@@ -557,3 +557,17 @@ describe('fase 3: o porquê do vermelho vem do código', () => {
     expect(r.texto).toBe(`${sit.explicacao.map((l) => `👉 ${l}`).join('\n')}\n\n👉 https://p/`);
   });
 });
+
+it('fase 3: explicar o diário barrado também leva o que puxou o ritmo', async () => {
+  const explicacao = ['Origem: nas contas tem R$ 137,60.'];
+  const cons = { regra: 'dia a dia', periodo: 'out/26', pessoa: 'casal', total: 900, totalDinheiro: 0, qtd: 3, cortadas: 0, linhas: [{ chave: 'MERCADO A', valor: 900, qtd: 3 }] };
+  const pnl = async (c: string) => (c.startsWith('/api/bot/consulta') ? { ok: true, dados: cons } : { ok: false, dados: { erro: 'x' } });
+  const g = groqRoteiro([
+    { content: null, toolCalls: [{ id: 'c1', nome: 'mensagens_do_zeca', args: '{}' }], modelo: 'm' },
+    { content: '👉 R$ 999,99', toolCalls: [], modelo: 'm' },
+  ]);
+  const r = await responder({ ...p, texto: 'me explica o diário de hoje' }, { ...base, painel: pnl, groq: g,
+    locais: { mensagens_do_zeca: async () => ({ ok: true, dados: { mensagens: [{ tipo: 'diario', quando: '28/10 08:00', texto: 'd', explicacao }] } }) } });
+  expect(r.texto).toContain('👉 Origem: nas contas tem R$ 137,60.');
+  expect(r.texto).toContain('O que mais puxou o ritmo do dia a dia este mês: MERCADO A');
+});

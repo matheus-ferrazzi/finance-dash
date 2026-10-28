@@ -13,6 +13,19 @@ export const SO_TEXTO = '🎧 Por enquanto só leio texto.';
 export const SEGURA = 'Não consegui conferir a análise; os números que tenho com certeza são estes:';
 /** 28/10 (fase 3): resposta com número (R$, %, valor com centavos) passa pelo conferente */
 const TEM_NUMERO = /R\$|%|\d,\d{2}/;
+/** 28/10 (fase 3): perguntas do vermelho e do ritmo (ou sobre o diário) levam o que puxou o ritmo, buscado pelo código */
+const PUXOU = /vermelh|ritmo|negativ|estour|di[áa]rio/i;
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+async function puxouRitmo(d: { painel: (c: string) => Promise<{ ok: boolean; dados: any }> }): Promise<any | null> {
+  try {
+    const r = await d.painel('/api/bot/consulta?o_que=dia_a_dia&periodo=este_mes&agrupar=loja&limite=3');
+    return r.ok && Array.isArray(r.dados?.linhas) && r.dados.linhas.length ? r.dados : null;
+  } catch { return null; }
+}
+function linhaPuxou(c: { linhas: { chave: string; valor: number }[] }): string {
+  const ns = c.linhas.map((l) => `${l.chave} (${brl(l.valor)})`);
+  return `👉 O que mais puxou o ritmo do dia a dia este mês: ${ns.length > 1 ? `${ns.slice(0, -1).join(', ')} e ${ns.at(-1)}` : ns[0]}.`;
+}
 // 28/10 (fase 3): uma análise usa situação, consulta, cálculo e resposta
 const RODADAS = 6;
 const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes', 'investimentos']);
@@ -167,6 +180,10 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
   // agora, só ela vale — número da mensagem misturado com o de agora é de outra hora
   const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao, ...conta.fechas }]
     : [{ citada: p.citada, pct: pctsDoTexto(p.citada), ...(conta ? { explicacao: conta.explicacao, ...conta.fechas } : {}) }];
+  // 28/10 (fase 3): no vermelho, o que puxou o ritmo vem do código (o modelo não buscava nem com regra obrigatória)
+  const puxou = PUXOU.test(`${p.texto} ${p.citada ?? ''}`) ? await puxouRitmo(d) : null;
+  if (puxou) resultados.push(puxou);
+  const comPuxou = (t: string) => (puxou ? `${t}\n${linhaPuxou(puxou)}` : t);
   let ultima: { nome: string; dados: any } | null = null;
   // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
   // mostra todas, com um link só (o da última), em vez de só a última
@@ -186,7 +203,9 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
     ...d.contexto.flatMap((c): MsgChat[] => [
       { role: 'user', content: c.pessoa ? `${c.pessoa}: ${c.pergunta}` : c.pergunta }, { role: 'assistant', content: c.resposta },
     ]),
-    { role: 'user', content: comCitada(p, conta) },
+    { role: 'user', content: comCitada(p, conta) + (puxou
+      ? `\n\nO que mais puxou o ritmo do dia a dia este mês (já consultado; use no porquê):\n${puxou.linhas.map((l: any) => `- ${l.chave}: ${brl(l.valor)}`).join('\n')}`
+      : '') },
   ];
   let tokens = 0;
   let esperaMs = 0;
@@ -239,7 +258,7 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
             const frases = sit.explicacao.map((l: string) => `👉 ${l}`).join('\n');
             const cons = respondidas.get('consultar');
             const extra = cons ? `\n\n${formatar('consultar', cons, d.painelUrl).replace(/\n\n👉 \S+$/, '')}` : '';
-            return fimCom(comLink(frases + extra, d.painelUrl, sit.link), { modelo, trava: true });
+            return fimCom(comLink(comPuxou(frases) + extra, d.painelUrl, sit.link), { modelo, trava: true });
           }
           // 28/10: explicando uma mensagem sem citar, a conta guardada da mais recente que tem conta (não a lista)
           //        — só se a pergunta fala do diário ou a mais recente é ela ("o último alerta" não vira a conta do diário)
@@ -249,7 +268,7 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
           if (texto && comConta) return fimCom(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n'), { modelo, trava: true });
           if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
           // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
-          if (conta) return fimCom(conta.explicacao.map((l) => `👉 ${l}`).join('\n'), { modelo, trava: !!texto });
+          if (conta) return fimCom(comPuxou(conta.explicacao.map((l) => `👉 ${l}`).join('\n')), { modelo, trava: !!texto });
           if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
           return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }

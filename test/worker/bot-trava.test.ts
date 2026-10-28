@@ -39,6 +39,13 @@ describe('respostaConfere', () => {
       expect(respostaConfere('👉 Pela média fecha em -R$ 818,33.', res)).toBe(false);
     });
   });
+  // 27/10 (produção): "*2371.8* – gasto total com Mercado" passou: a trava só olhava o que vinha com R$
+  it('valor cru no formato americano (2371.8) não passa; milhar e porcentagem em pt-BR seguem valendo', () => {
+    const res = [{ total: 2371.8, pct: 35.2 }];
+    expect(respostaConfere('📊 *2371.8* – gasto total com Mercado no mês passado.', res)).toBe(false);
+    expect(respostaConfere('📊 foram 2371.80 no mercado', res)).toBe(false);
+    expect(respostaConfere('📊 R$ 2.371,80 em 1.234 compras, 35,2% a mais', res)).toBe(true);
+  });
   it('sem R$: confere', () => {
     expect(respostaConfere('Vocês estão na fase 1.', res)).toBe(true);
   });

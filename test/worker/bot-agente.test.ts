@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FALHA, responder, SEM_FERRAMENTA } from '../../src/worker/bot/agente';
+import { FALHA, responder, SEM_FERRAMENTA, textoEspera, textoLimite } from '../../src/worker/bot/agente';
+import { LimiteGroq } from '../../src/worker/bot/groq';
 
 const p = { id: 'X', pessoa: 'Ariane', texto: 'quanto gastei com mercado?' };
 const gasto = { periodo: 'out/26', pessoa: 'casal', grupo: null, total: 450, itens: [{ nome: 'Mercado', valor: 400 }, { nome: 'Comer fora', valor: 50 }], link: '/gastos' };
@@ -297,5 +298,35 @@ describe('27/10: sem ferramenta no conjunto reduzido, refaz com tudo (fase 1)', 
     const g = { chat: async () => { n++; return { content: 'não sei', toolCalls: [], modelo: 'm', tokens: 0 }; } };
     expect((await responder({ ...p, texto: 'qual a capital da França?' }, { ...base, groq: g })).texto).toBe(SEM_FERRAMENTA);
     expect(n).toBe(2);
+  });
+});
+
+// 28/10 (fase 2): a espera da cota passa pelo agente
+describe('fase 2: espera e limite do Groq', () => {
+  it('esperas de várias rodadas somam em esperaMs e cada uma chega ao aoEsperar', async () => {
+    const passos = [
+      { espera: 15000, r: { content: null, toolCalls: [{ id: 'c1', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm', tokens: 0 } },
+      { espera: 5000, r: { content: '🛒 Mercado: R$ 400,00 este mês.', toolCalls: [], modelo: 'm', tokens: 0 } },
+    ];
+    const g = { chat: async (_m: any, _t: any, o?: { aoEsperar?: (ms: number) => void }) => { const x = passos.shift()!; o?.aoEsperar?.(x.espera); return x.r; } };
+    const avisos: number[] = [];
+    const r = await responder(p, { ...base, groq: g, aoEsperar: (ms) => avisos.push(ms) });
+    expect([r.esperaMs, avisos, r.erro]).toEqual([20000, [15000, 5000], null]);
+  });
+  it('LimiteGroq vira o texto do limite, com erro registrado e sem a refeita', async () => {
+    let chamadas = 0;
+    const g = { chat: async () => { chamadas++; throw new LimiteGroq(true, 1_801_000); } };
+    const r = await responder({ ...p, texto: 'oi tudo bem' }, { ...base, groq: g as any });
+    expect(r.texto).toBe(textoLimite(new LimiteGroq(true, 1_801_000)));
+    expect(r.texto).toContain('31 minutos');
+    expect(r.erro).toMatch(/^limite do Groq/);
+    expect(chamadas).toBe(1);
+  });
+  it('textoEspera e textoLimite', () => {
+    expect(textoEspera(15_000)).toBe('⏳ Estou no limite do serviço de respostas agora. Respondo em cerca de 1 minuto.');
+    expect(textoEspera(150_000)).toBe('⏳ Estou no limite do serviço de respostas agora. Respondo em cerca de 3 minutos.');
+    expect(textoLimite(new LimiteGroq(false, 721_000))).toBe('⚠️ O serviço de respostas está no limite e só libera daqui a cerca de 13 minutos. Manda a pergunta de novo depois disso.');
+    expect(textoLimite(new LimiteGroq(true, 7_200_000))).toBe('⚠️ Cheguei ao limite diário do serviço de respostas. Manda a pergunta de novo daqui a cerca de 2 horas.');
+    expect(textoLimite(new LimiteGroq(true, null))).toBe('⚠️ Cheguei ao limite diário do serviço de respostas. Manda a pergunta de novo mais tarde.');
   });
 });

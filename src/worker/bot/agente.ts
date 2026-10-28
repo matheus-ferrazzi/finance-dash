@@ -1,7 +1,7 @@
 // E1: o agente — o Groq escolhe ferramentas e escreve; números só das ferramentas (trava); até 4 rodadas.
 import { caminhoDa, formatar, graficoDaFerramenta } from './ferramentas';
 import { escolherGrupos, ferramentasDe, TODOS_GRUPOS, type Grupo } from './escolha';
-import type { ClienteGroq, MsgChat } from './groq';
+import { LimiteGroq, type ClienteGroq, type MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
 
@@ -24,6 +24,23 @@ export interface RespostaBot {
   modelo: string | null; trava: boolean; semFerramenta: boolean; erro: string | null; ms: number;
   /** 27/10: tokens do Groq somados em todas as rodadas */
   tokens: number;
+  /** 28/10 (fase 2): ms esperando a cota do Groq, somados em todas as rodadas */
+  esperaMs: number;
+}
+
+// 28/10 (fase 2): textos da espera e do limite do Groq (tom contido, sem termo técnico)
+const minutos = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
+const plural = (n: number, s: string) => `${n} ${s}${n > 1 ? 's' : ''}`;
+function tempo(ms: number): string {
+  const m = minutos(ms);
+  return m < 60 ? plural(m, 'minuto') : plural(Math.ceil(m / 60), 'hora');
+}
+export function textoEspera(ms: number): string {
+  return `⏳ Estou no limite do serviço de respostas agora. Respondo em cerca de ${plural(minutos(ms), 'minuto')}.`;
+}
+export function textoLimite(e: LimiteGroq): string {
+  if (!e.diario) return `⚠️ O serviço de respostas está no limite e só libera daqui a cerca de ${tempo(e.esperaMs ?? 0)}. Manda a pergunta de novo depois disso.`;
+  return `⚠️ Cheguei ao limite diário do serviço de respostas. Manda a pergunta de novo ${e.esperaMs ? `daqui a cerca de ${tempo(e.esperaMs)}` : 'mais tarde'}.`;
 }
 
 // 27/10 (fase 1, tokens): as regras de proposta só vão com as ferramentas de proposta, e as das mensagens do Zeca só
@@ -89,6 +106,8 @@ type DepsResponder = {
   contexto: { pessoa?: string; pergunta: string; resposta: string }[]; hoje: string; painelUrl: string;
   /** E2: ferramentas que rodam no worker (busca com refs, propostas) */
   locais?: Record<string, (args: any) => Promise<{ ok: boolean; dados: any }>>;
+  /** 28/10 (fase 2): cada espera da cota do Groq (o bot avisa o grupo) */
+  aoEsperar?: (ms: number) => void;
 };
 
 /**
@@ -117,7 +136,7 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   const r = await tentar(p, d, grupos);
   if (!r.semFerramenta || grupos.size >= TODOS_GRUPOS.size) return r;
   const r2 = await tentar(p, d, TODOS_GRUPOS);
-  return { ...r2, tokens: r.tokens + r2.tokens, ms: Date.now() - t0 };
+  return { ...r2, tokens: r.tokens + r2.tokens, esperaMs: r.esperaMs + r2.esperaMs, ms: Date.now() - t0 };
 }
 
 async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>): Promise<RespostaBot> {
@@ -150,14 +169,16 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
     { role: 'user', content: comCitada(p, conta) },
   ];
   let tokens = 0;
+  let esperaMs = 0;
+  const aoEsperar = (ms: number) => { esperaMs += ms; d.aoEsperar?.(ms); };
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
     texto, svg: ultima ? graficoDaFerramenta(ultima.nome, ultima.dados) : null, ferramentas, modelo: null,
-    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, ...extra,
+    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, esperaMs, ...extra,
   });
   let modelo: string | null = null;
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
-      const r = await d.groq.chat(msgs, ferramentasDe(grupos));
+      const r = await d.groq.chat(msgs, ferramentasDe(grupos), { aoEsperar });
       modelo = r.modelo;
       tokens += r.tokens ?? 0;
       if (!r.toolCalls.length) {
@@ -217,6 +238,7 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
     if (ultima?.dados?.lista) return fimCom(ultima.dados.lista, { modelo, svg: null });
     return respondidas.size ? fimCom(montadoDeTodas(), { modelo }) : fimCom(FALHA, { modelo, erro: 'rodadas esgotadas sem dados' });
   } catch (e) {
+    if (e instanceof LimiteGroq) return fimCom(textoLimite(e), { modelo, erro: `limite do Groq (${e.diario ? 'diário' : 'por minuto'})`, svg: null });
     return fimCom(FALHA, { modelo, erro: e instanceof Error ? e.message : String(e), svg: null });
   }
 }

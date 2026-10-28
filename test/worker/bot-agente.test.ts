@@ -49,11 +49,12 @@ describe('agente', () => {
     expect(r.texto).toBe(FALHA);
     expect(r.erro).toBe('Groq: m: HTTP 503');
   });
-  it('no máximo 4 rodadas de ferramenta; depois usa o texto montado da última', async () => {
+  // 28/10 (fase 3): 6 rodadas (situação, consulta, cálculo e resposta)
+  it('no máximo 6 rodadas de ferramenta; depois usa o texto montado da última', async () => {
     const chamada = { content: null, toolCalls: [{ id: 'c', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' };
-    const g = groqRoteiro([chamada, chamada, chamada, chamada, chamada]);
+    const g = groqRoteiro([chamada, chamada, chamada, chamada, chamada, chamada, chamada]);
     const r = await responder(p, { ...base, groq: g });
-    expect(g.vistos.length).toBe(4);
+    expect(g.vistos.length).toBe(6);
     expect(r.texto).toContain('💰 Gasto em out/26');
   });
   it('argumento inválido do modelo (JSON quebrado) não derruba: ferramenta com erro', async () => {
@@ -151,7 +152,7 @@ describe('proposta nunca escondida (revisão E2)', () => {
   });
   it('rodadas esgotadas depois de propor: a resposta é a proposta', async () => {
     const chamada = { content: null, toolCalls: [{ id: 'c', nome: 'propor_conta_avulsa', args: '{"nome":"X","valor":1}' }], modelo: 'm' };
-    const r = await responder(p, { ...base, groq: groqRoteiro([chamada, chamada, chamada, chamada]), locais: { propor_conta_avulsa: async () => ({ ok: true, dados: { proposta: '🟡 PROPOSTA' } }) } });
+    const r = await responder(p, { ...base, groq: groqRoteiro([chamada, chamada, chamada, chamada, chamada, chamada]), locais: { propor_conta_avulsa: async () => ({ ok: true, dados: { proposta: '🟡 PROPOSTA' } }) } });
     expect(r.texto).toBe('🟡 PROPOSTA');
   });
 });
@@ -183,7 +184,7 @@ describe('pendências do E1 (auditoria 13/10)', () => {
   // M5: rodadas esgotadas não é "trava" (o modelo nem escreveu texto)
   it('M5: rodadas esgotadas responde com o dado montado sem marcar trava', async () => {
     const chamada = { content: null, toolCalls: [{ id: 'c', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm' };
-    const r = await responder(p, { ...base, groq: groqRoteiro([chamada, chamada, chamada, chamada]) });
+    const r = await responder(p, { ...base, groq: groqRoteiro([chamada, chamada, chamada, chamada, chamada, chamada]) });
     expect(r.texto).toContain('💰 Gasto em out/26');
     expect(r.trava).toBe(false);
   });
@@ -328,5 +329,29 @@ describe('fase 2: espera e limite do Groq', () => {
     expect(textoLimite(new LimiteGroq(false, 721_000))).toBe('⚠️ O serviço de respostas está no limite e só libera daqui a cerca de 13 minutos. Manda a pergunta de novo depois disso.');
     expect(textoLimite(new LimiteGroq(true, 7_200_000))).toBe('⚠️ Cheguei ao limite diário do serviço de respostas. Manda a pergunta de novo daqui a cerca de 2 horas.');
     expect(textoLimite(new LimiteGroq(true, null))).toBe('⚠️ Cheguei ao limite diário do serviço de respostas. Manda a pergunta de novo mais tarde.');
+  });
+});
+
+// 28/10 (fase 3): o analista consulta, calcula e escreve com os números das duas
+describe('fase 3: analista', () => {
+  it('consultar → calcular → texto com o resultado: passa na trava; prompt de analista', async () => {
+    const consulta = { regra: 'dia a dia: débito e PIX', periodo: 'out/26', pessoa: 'casal', total: 3333.15, totalDinheiro: 0, qtd: 40, linhas: [{ chave: 'MERCADO A', valor: 900, qtd: 3 }], cortadas: 0 };
+    const pnl = async (c: string) => (c.startsWith('/api/bot/consulta') ? { ok: true, dados: consulta } : { ok: false, dados: { erro: 'x' } });
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'consultar', args: '{"o_que":"dia_a_dia","periodo":"este_mes","agrupar":"loja"}' }], modelo: 'm' },
+      { content: null, toolCalls: [{ id: 'c2', nome: 'calcular', args: '{"expressao":"3333.15 / 27"}' }], modelo: 'm' },
+      { content: '🔥 O dia a dia somou R$ 3.333,15, R$ 123,45 por dia; o maior foi MERCADO A com R$ 900,00.', toolCalls: [], modelo: 'm' },
+    ]);
+    const { criarLocais } = await import('../../src/worker/bot/locais');
+    const locais = criarLocais({ pessoa: 'Ariane', hoje: '2026-10-28', refs: new Map(), painel: pnl, painelPost: pnl, acoes: { criar: async () => 1 } });
+    const r = await responder({ ...p, texto: 'pq o ritmo está alto?' }, { ...base, painel: pnl, groq: g, locais });
+    expect(r.trava).toBe(false);
+    expect(r.texto).toContain('R$ 123,45');
+    expect(r.ferramentas.map((f) => f.nome)).toEqual(['consultar', 'calcular']);
+    const sistema = String(g.vistos[0][0].content);
+    expect(sistema).toContain('calcular');
+    expect(sistema).toContain('dia_a_dia');
+    expect(sistema).not.toContain('copie as frases');
+    expect(sistema).toContain('até 12 linhas');
   });
 });

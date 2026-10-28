@@ -8,7 +8,8 @@ import { respostaConfere } from './trava';
 export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alguns minutos.';
 export const SEM_FERRAMENTA = '🤷 Ainda não sei responder isso. Anotei a pergunta.';
 export const SO_TEXTO = '🎧 Por enquanto só leio texto.';
-const RODADAS = 4;
+// 28/10 (fase 3): uma análise usa situação, consulta, cálculo e resposta
+const RODADAS = 6;
 const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes', 'investimentos']);
 
 /** O link do painel é do sistema, não do modelo: tira o que ele escreveu (relativo ou completo) e põe o certo no fim. */
@@ -48,9 +49,11 @@ export function textoLimite(e: LimiteGroq): string {
 const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Você é o Zeca, o assistente financeiro do casal Matheus e Ariane, num grupo de WhatsApp. Chamam você por "Zeca" ou "bot".',
   `Quem perguntou: ${quem}. Hoje é ${hoje} (horário de São Paulo).`,
-  'Use SEMPRE as ferramentas para qualquer número. Nunca some, subtraia, calcule percentual ou invente valor: copie os valores das ferramentas.',
-  'Se nenhuma ferramenta serve, diga que ainda não sabe responder. Não chute.',
-  'Responda em português, tom contido, até 8 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
+  // 28/10 (fase 3): analista — consulta, calcula e explica o porquê; o código confere cada número
+  'Responda como quem olhou os números: diga o que aconteceu e por quê, com os valores. Não defina termos.',
+  'Todo número vem de uma ferramenta. Para dados use situacao_mes, gasto_periodo, maiores_gastos, comparar ou consultar; para qualquer conta (soma, diferença, divisão, quantas vezes, %) use calcular. Nunca faça conta de cabeça.',
+  'Se os dados não respondem, diga o que não dá para saber. Não chute.',
+  'Responda em português, tom contido, até 12 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
   ...(grupos.has('propostas') ? [
     'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',
@@ -60,9 +63,9 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
   // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
   'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
-  'A conta vem pronta no campo "explicacao" (uma frase por número, na ordem da conta): copie as frases com os valores, sem refazer conta. Comece sempre pela "Origem" e pelo que ainda sai: é o que explica a sobra.',
-  'Ritmo acima do que dá pra gastar: chame também maiores_gastos com este_mes e cite os 2 ou 3 maiores, para dizer o que puxou o ritmo.',
-  'Na explicação: até 10 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
+  '"explicacao" e a conta das mensagens são fonte de dados, não texto para copiar. Comece pela "Origem" e pelo que ainda sai: é o que explica a sobra.',
+  'Para dizer o que puxou o ritmo do dia a dia, use consultar com o_que dia_a_dia, periodo este_mes, agrupar loja e limite 3 (o aluguel e as contas fixas não entram no ritmo).',
+  'Na explicação: até 12 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
   ...(grupos.has('mensagens') ? MENSAGENS : []),
 ].join('\n');
 

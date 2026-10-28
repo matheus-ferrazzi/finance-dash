@@ -8,7 +8,7 @@ export type Grupo = 'base' | 'propostas' | 'mensagens' | 'compra' | 'patrimonio'
 export const TODOS_GRUPOS: ReadonlySet<Grupo> = new Set<Grupo>(['base', 'propostas', 'mensagens', 'compra', 'patrimonio']);
 
 export const GRUPO_DA: Record<string, Grupo> = {
-  situacao_mes: 'base', gasto_periodo: 'base', maiores_gastos: 'base', comparar: 'base', faturas: 'base', contas_do_mes: 'base',
+  situacao_mes: 'base', gasto_periodo: 'base', consultar: 'base', calcular: 'base', maiores_gastos: 'base', comparar: 'base', faturas: 'base', contas_do_mes: 'base',
   buscar_lancamentos: 'propostas', propor_categoria: 'propostas', propor_conta_avulsa: 'propostas', propor_gasto_dinheiro: 'propostas',
   mensagens_do_zeca: 'mensagens', simular_compra: 'compra', trilha: 'patrimonio', investimentos: 'patrimonio',
 };

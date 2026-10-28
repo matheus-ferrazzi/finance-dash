@@ -89,8 +89,8 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
   'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
   '"explicacao" e a conta das mensagens são fonte de dados, não texto para copiar. Ao explicar a sobra ou o vermelho, comece pelo dinheiro que há nas contas e pelo que ainda sai.',
-  // 28/10 (conjunto de perguntas): como sugestão o modelo não buscava, e a resposta do vermelho ficava sem o porquê
-  'Pergunta de por que está no vermelho ou por que o ritmo está alto: chame situacao_mes E consultar (o_que dia_a_dia, periodo este_mes, agrupar loja, limite 3) e diga quais gastos puxaram o ritmo, com os valores. O aluguel e as contas fixas não entram no ritmo.',
+  // 28/10 (conjunto de perguntas): o modelo não buscava o que puxou o ritmo; o código busca e manda junto com a pergunta
+  'Se a pergunta vier com "O que mais puxou o ritmo", diga no porquê quais gastos foram, com os valores; não consulte isso de novo. O aluguel e as contas fixas não entram no ritmo.',
   'Não refaça as contas da "explicacao" (elas já vêm prontas) nem invente conta nova: se precisar de uma, use calcular. Valores sempre no formato R$ 1.234,56.',
   'Na explicação: até 12 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
   ...(grupos.has('mensagens') ? MENSAGENS : []),

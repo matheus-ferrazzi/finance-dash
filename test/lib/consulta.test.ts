@@ -89,3 +89,16 @@ describe('agregarConsulta', () => {
     expect(agregarConsulta([l({ valor: 100 }), l({ valor: -30 })], pedido()).total).toBe(70);
   });
 });
+
+// 28/10 (rodada 4): "Pagamento de Pix QR Code ATACADO EXEMPLO" e "Transferência enviada pelo Pix|DISTRIBUIDORA" iam ao grupo assim
+it('loja sem o prefixo do banco', () => {
+  const ls = [
+    l({ descricao: 'Pagamento de Pix QR Code ATACADO EXEMPLO', valor: 10 }),
+    l({ descricao: 'Transferência enviada pelo Pix|DISTRIBUIDORA FICTICIA S/A', valor: 9 }),
+    l({ descricao: 'Compra no débito|PIZZARIA MODELO', valor: 8 }),
+    l({ descricao: 'Pix enviado FULANO DE TAL', valor: 7 }),
+    l({ descricao: 'Ebn *Loja Digital 4/4', valor: 6 }),
+  ];
+  expect(agregarConsulta(ls, pedido({ agrupar: 'loja' })).linhas.map((x) => x.chave))
+    .toEqual(['ATACADO EXEMPLO', 'DISTRIBUIDORA FICTICIA S/A', 'PIZZARIA MODELO', 'FULANO DE TAL', 'Ebn *Loja Digital 4/4']);
+});

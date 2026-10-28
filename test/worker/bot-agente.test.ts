@@ -351,7 +351,6 @@ describe('fase 3: analista', () => {
     expect(r.ferramentas.map((f) => f.nome)).toEqual(['consultar', 'calcular']);
     const sistema = String(g.vistos[0][0].content);
     expect(sistema).toContain('calcular');
-    expect(sistema).toContain('dia_a_dia');
     expect(sistema).not.toContain('copie as frases');
     expect(sistema).toContain('até 12 linhas');
   });
@@ -485,7 +484,8 @@ describe('fase 3: rodada 2 do conjunto', () => {
     const g = groqRoteiro([{ content: 'oi', toolCalls: [], modelo: 'm' }, { content: 'oi', toolCalls: [], modelo: 'm' }]);
     await responder(p, { ...base, groq: g });
     const sistema = String(g.vistos[0][0].content);
-    expect(sistema).toContain('quais gastos puxaram o ritmo');
+    expect(sistema).toContain('O que mais puxou o ritmo');
+    expect(sistema).not.toContain('chame situacao_mes E consultar');
     expect(sistema).toContain('R$ 1.234,56');
   });
 });

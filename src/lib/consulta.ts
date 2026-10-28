@@ -88,11 +88,15 @@ export function lerPedidoConsulta(sp: URLSearchParams, hoje: string): { ok: true
   };
 }
 
+// 28/10: o nome da loja sem o que o banco põe na frente ("Pagamento de Pix QR Code ", "Compra no débito|")
+const PREFIXO = /^(?:[^|]*\|\s*|pagamento de pix qr code\s+|pix enviado\s+(?:para\s+)?|transfer[êe]ncia enviada\s+(?:pelo pix\s+)?)/i;
+const semPrefixo = (d: string) => d.replace(PREFIXO, '').trim() || d;
+
 function chaveDa(x: LinhaBruta, a: Agrupar): string {
   switch (a) {
     case 'categoria': return traduzCategoria(x.categoria);
     case 'grupo': return grupoDaCategoria(x.categoria)?.nome ?? 'Resto';
-    case 'loja': return nomeSemDocumento(x.descricao) ?? '(sem descrição)';
+    case 'loja': return nomeSemDocumento(semPrefixo(x.descricao)) ?? '(sem descrição)';
     case 'dia': return ddmm(x.data);
     case 'semana': return `semana de ${ddmm(segunda(x.data))}`;
     case 'mes': return mesLabel(x.data.slice(0, 7));

@@ -124,3 +124,7 @@ it('trava: hífen não separável, sinal de menos e travessão contam como menos
   expect(respostaConfere('👉 No ritmo de agora fecha em −R$ 555,55.', res)).toBe(true);
   expect(respostaConfere('👉 No ritmo de agora fecha em –R$ 555,55.', res)).toBe(true);
 });
+
+it('trava: "déficit de R$ 89,16" vale para o valor negativo', () => {
+  expect(respostaConfere('📉 Pela média, um déficit de R$ 89,16.', [{ fechaCom: -89.16 }])).toBe(true);
+});

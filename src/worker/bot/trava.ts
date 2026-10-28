@@ -13,7 +13,7 @@ const DINHEIRO = new Set([
   'divida',
 ]);
 // valor negativo dito sem sinal só vale se a linha disser que é negativo
-const DIZ_NEGATIVO = /-|negativ|vermelho|falt/i;
+const DIZ_NEGATIVO = /-|negativ|vermelho|falt|d[ée]ficit/i;
 
 // 28/10: valor em reais escrito sem R$ ("*1.086,14*") também é dinheiro — com centavos, para não pegar dias,
 // parcelas e milhares soltos ("1.234 compras"); o que já foi lido como R$ ou % sai antes

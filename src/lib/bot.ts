@@ -1,6 +1,7 @@
 // E1: montadores puros das respostas das ferramentas do bot (as contas que o modelo não pode fazer).
 // E3: o gasto em dinheiro vivo entra somado, e cada item diz quanto dele foi em dinheiro.
 import { agruparGastos, grupoDaCategoria } from './grupos';
+import { traduzCategoria } from './format';
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 const soma = (m: ReadonlyMap<string, number>) => r2(Array.from(m.values()).reduce((s, v) => s + v, 0));
@@ -27,7 +28,8 @@ export function montarGasto(porCat: ReadonlyMap<string, number>, grupo: string |
   }
   const itens = Array.from(tudo.entries())
     .filter(([cat]) => (grupoDaCategoria(cat)?.nome ?? 'Resto') === grupo)
-    .map(([nome, valor]) => ({ nome, valor: r2(valor), dinheiro: dinheiro.get(nome) ?? 0 }))
+    // 28/10: o nome do painel, não o código interno ("Groceries"): o Zeca copiava o código para o grupo
+    .map(([cat, valor]) => ({ nome: traduzCategoria(cat), valor: r2(valor), dinheiro: dinheiro.get(cat) ?? 0 }))
     .filter((i) => i.valor > 0)
     .sort((a, b) => b.valor - a.valor);
   return { total: r2(itens.reduce((s, i) => s + i.valor, 0)), totalDinheiro: r2(itens.reduce((s, i) => s + i.dinheiro, 0)), itens };

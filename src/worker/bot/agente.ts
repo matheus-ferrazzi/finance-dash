@@ -4,7 +4,7 @@ import { escolherGrupos, ferramentasDe, TODOS_GRUPOS, type Grupo } from './escol
 import { LimiteGroq, type ClienteGroq, type MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
-import { modeloConferente, type conferir } from './conferente';
+import { INDISPONIVEL, modeloConferente, type conferir } from './conferente';
 
 export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alguns minutos.';
 export const SEM_FERRAMENTA = '🤷 Ainda não sei responder isso. Anotei a pergunta.';
@@ -238,13 +238,16 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         const comLinkFinal = (t: string) => (ultima ? comLink(t, d.painelUrl, linkFinal()) : t);
         // 28/10 (fase 3): resposta do modelo com número passa pelo conferente; uma reescrita; depois a segura
         if (!d.conferir || !TEM_NUMERO.test(texto)) return fimCom(comLinkFinal(polir(texto)), { modelo });
-        if ((await conferirTexto(texto)).aprovado) { conferencia = 'aprovada'; return fimCom(comLinkFinal(polir(texto)), { modelo }); }
+        const v1 = await conferirTexto(texto);
+        if (v1.aprovado) { conferencia = 'aprovada'; return fimCom(comLinkFinal(polir(texto)), { modelo }); }
+        // sem conferente não há problema para corrigir: reescrever só gastaria cota na hora em que ela falta
+        const semConferente = v1.problemas.every((x) => x === INDISPONIVEL);
         msgs.push({ role: 'assistant', content: texto });
         msgs.push({ role: 'user', content: `O conferente apontou estes problemas:\n${problemas.map((x) => `- ${x}`).join('\n')}\nReescreva a resposta corrigindo só isso, com os mesmos dados.` });
         // as mesmas ferramentas (o histórico tem chamadas delas); se ele chamar uma em vez de reescrever, vai a segura
-        const r2 = await d.groq.chat(msgs, ferramentasDe(grupos), { aoEsperar });
-        tokens += r2.tokens ?? 0;
-        const texto2 = (r2.content ?? '').trim();
+        const r2 = semConferente ? null : await d.groq.chat(msgs, ferramentasDe(grupos), { aoEsperar });
+        tokens += r2?.tokens ?? 0;
+        const texto2 = (r2?.content ?? '').trim();
         if (texto2 && respostaConfere(texto2, resultados) && (await conferirTexto(texto2)).aprovado) {
           conferencia = 'reescrita';
           return fimCom(comLinkFinal(polir(texto2)), { modelo });

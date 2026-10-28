@@ -415,10 +415,12 @@ describe('fase 3: conferente no agente', () => {
     expect(r.conferencia).toBe('aprovada');
     expect(JSON.stringify(c.vistos[0].dados)).toContain('818,33');
   });
-  it('conferente indisponível duas vezes: a segura, sem erro', async () => {
-    const c = conferirRoteiro([{ aprovado: false, problemas: ['conferente indisponível'] }, { aprovado: false, problemas: ['conferente indisponível'] }]);
-    const r = await responder(p, deps(groqRoteiro([chamaGasto, texto('🛒 R$ 400,00.'), texto('🛒 R$ 400,00.')]), c));
-    expect([r.conferencia, r.erro]).toEqual(['segura', null]);
+  // revisão: sem conferente não há problema para corrigir — reescrever só gastaria cota na hora em que ela falta
+  it('conferente indisponível: a segura direto, sem reescrita e sem erro', async () => {
+    const c = conferirRoteiro([{ aprovado: false, problemas: ['conferente indisponível'] }]);
+    const g = groqRoteiro([chamaGasto, texto('🛒 R$ 400,00.'), texto('🛒 R$ 400,00.')]);
+    const r = await responder(p, deps(g, c));
+    expect([r.conferencia, r.erro, g.vistos.length, c.vistos.length]).toEqual(['segura', null, 2, 1]);
     expect(r.texto.startsWith(SEGURA)).toBe(true);
   });
 });

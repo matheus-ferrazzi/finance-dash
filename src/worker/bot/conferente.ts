@@ -7,7 +7,7 @@ export type Veredito = { aprovado: boolean; problemas: string[]; tokens: number;
 
 const SISTEMA = 'Você confere a resposta de um assistente financeiro antes de ela ir para um grupo de WhatsApp. Você recebe a pergunta, os dados que as ferramentas devolveram e a resposta. Verifique: cada valor e porcentagem da resposta está nos dados ou é conta deles; o rótulo de cada número está certo (o que é gasto, entrada, sobra, ritmo, "nesse passo", "pela média", qual período, qual pessoa); nenhuma afirmação vai além dos dados. Não julgue estilo nem tom. Responda só com JSON: {"aprovado": true} ou {"aprovado": false, "problemas": ["…", "…"]}, cada problema numa frase curta em português.';
 const FORMATO = 'conferente não respondeu no formato';
-const INDISPONIVEL = 'conferente indisponível';
+export const INDISPONIVEL = 'conferente indisponível';
 const FORA = new Set(['link', 'lista', 'proposta', 'svg']);
 
 /** O primeiro modelo da lista que não escreveu a resposta (cota separada); sem saber quem escreveu, o reserva; nenhum outro → []. */

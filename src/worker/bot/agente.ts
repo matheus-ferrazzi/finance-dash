@@ -241,7 +241,8 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         if ((await conferirTexto(texto)).aprovado) { conferencia = 'aprovada'; return fimCom(comLinkFinal(polir(texto)), { modelo }); }
         msgs.push({ role: 'assistant', content: texto });
         msgs.push({ role: 'user', content: `O conferente apontou estes problemas:\n${problemas.map((x) => `- ${x}`).join('\n')}\nReescreva a resposta corrigindo só isso, com os mesmos dados.` });
-        const r2 = await d.groq.chat(msgs, [], { aoEsperar });
+        // as mesmas ferramentas (o histórico tem chamadas delas); se ele chamar uma em vez de reescrever, vai a segura
+        const r2 = await d.groq.chat(msgs, ferramentasDe(grupos), { aoEsperar });
         tokens += r2.tokens ?? 0;
         const texto2 = (r2.content ?? '').trim();
         if (texto2 && respostaConfere(texto2, resultados) && (await conferirTexto(texto2)).aprovado) {

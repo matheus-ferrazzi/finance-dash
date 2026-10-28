@@ -5,6 +5,7 @@ import { CANCELADO, EXPIRADO, lerResposta, NADA_DESFAZER, textoDesfeito, textoFe
 import { responder, SO_TEXTO, textoEspera, type RespostaBot } from './agente';
 import { lerWebhook, semIdentificadores, type ConfigEntrada, type Pergunta } from './entrada';
 import { FilaBot } from './fila';
+import type { conferir } from './conferente';
 import type { ClienteGroq } from './groq';
 import { criarLocais } from './locais';
 import type { PgRegistroBot } from './registro';
@@ -27,6 +28,8 @@ export function criarBot(d: {
   acoes: Pick<PgAcoes, 'criar' | 'pendente' | 'confirmar' | 'cancelar' | 'ultimaFeita'>;
   wa: { enviarComId(t: string): Promise<string | null>; enviarImagemComId(png: Buffer, l: string): Promise<string | null> };
   renderizar: (svg: string) => Promise<Buffer>; hoje: () => string; painelUrl: string; log: (m: string) => void;
+  /** 28/10 (fase 3): o conferente e a lista de modelos do GROQ_MODELOS */
+  conferir?: typeof conferir; modelos?: string[];
 }) {
   const enviados = new Set<string>();
   const refs = new Map();                      // pessoa → refs L1..L5 da última busca (só no worker)
@@ -89,7 +92,7 @@ export function criarBot(d: {
       if (!avisou && ms > AVISO_MS) { avisou = true; void mandar(textoEspera(ms), null).catch(() => {}); }
       d.log(`bot: aguardando cota do Groq (${Math.round(ms / 1000)} s)`);
     };
-    const r: RespostaBot = await responder(p, { groq: d.groq, painel: d.painel, contexto, hoje: d.hoje(), painelUrl: d.painelUrl, locais, aoEsperar });
+    const r: RespostaBot = await responder(p, { groq: d.groq, painel: d.painel, contexto, hoje: d.hoje(), painelUrl: d.painelUrl, locais, aoEsperar, conferir: d.conferir, modelos: d.modelos });
     if (r.texto.startsWith('🔎')) listas.set(p.pessoa, Date.now());
     let erroEnvio: string | null = null;
     // E1-M4: o erro do WhatsApp pode trazer o JID do grupo ou um telefone — nunca vai assim para log/tabela
@@ -97,6 +100,7 @@ export function criarBot(d: {
     await d.registro.gravar({
       pessoa: p.pessoa, pergunta: p.texto, ferramentas: r.ferramentas, resposta: r.texto, modelo: r.modelo, ms: r.ms,
       trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro ?? erroEnvio, tokens: r.tokens, esperaMs: r.esperaMs,
+      conferencia: r.conferencia, problemas: r.problemas, tokensConferente: r.tokensConferente,
     }).catch((e) => d.log(`bot: falha ao registrar (${e instanceof Error ? e.message : String(e)})`));
     if (r.erro || erroEnvio) d.log(`bot: pergunta de ${p.pessoa} com erro (${r.erro ?? erroEnvio})`);
   }, 5, () => { void mandar(CHEIA, null).catch(() => {}); });

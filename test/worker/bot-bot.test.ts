@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { criarBot } from '../../src/worker/bot/bot';
+import { textoEspera } from '../../src/worker/bot/agente';
 
 const G = 'G@g.us';
 const cfg = { grupo: G, membros: { Ariane: ['222@lid'] }, botJids: ['111@lid'] };
@@ -76,5 +77,46 @@ describe('E1-M4: erro de envio sem identificadores', () => {
     await espera();
     expect(JSON.stringify(gravados) + logs.join()).not.toMatch(/@g\.us|5511999998888/);
     expect(gravados[0].erro).toContain('<grupo>');
+  });
+});
+
+// 28/10 (fase 2): esperando a cota do Groq, o grupo sabe (uma vez por pergunta) e a espera fica registrada
+describe('fase 2: espera da cota', () => {
+  function comEsperas(esperas: number[][]) {
+    const enviados: string[] = []; const gravados: any[] = [];
+    const bot = criarBot({
+      cfg, painel: async () => ({ ok: true, dados: {} }), painelPost: async () => ({ ok: true, dados: {} }),
+      acoes: { criar: async () => 1, pendente: async () => null, confirmar: async () => false, cancelar: async () => {}, ultimaFeita: async () => null },
+      groq: { chat: async (_m: any, _t: any, o?: { aoEsperar?: (ms: number) => void }) => {
+        for (const ms of esperas.shift() ?? []) o?.aoEsperar?.(ms);
+        return { content: 'Fase 1.', toolCalls: [], modelo: 'm', tokens: 0 };
+      } },
+      registro: { gravar: async (l: any) => { gravados.push(l); }, contexto: async () => [] },
+      wa: { enviarComId: async (t: string) => { enviados.push(t); return `R${enviados.length}`; }, enviarImagemComId: async () => 'I' },
+      renderizar: async () => Buffer.from('png'), hoje: () => '2026-10-11', painelUrl: 'https://p', log: () => {},
+    });
+    return { bot, enviados, gravados };
+  }
+  it('espera longa: um "⏳" antes da resposta, mesmo com duas esperas; espera gravada', async () => {
+    const m = comEsperas([[15000, 12000]]);
+    m.bot.receber(ev('bot qual a fase?'));
+    await espera();
+    expect(m.enviados[0]).toBe(textoEspera(15000));
+    expect(m.enviados.filter((t) => t.startsWith('⏳'))).toHaveLength(1);
+    expect(m.enviados).toHaveLength(2);
+    expect(m.gravados[0].esperaMs).toBe(27000);
+  });
+  it('espera curta (até 10 s): não avisa, mas grava', async () => {
+    const m = comEsperas([[8000]]);
+    m.bot.receber(ev('bot qual a fase?'));
+    await espera();
+    expect(m.enviados.some((t) => t.startsWith('⏳'))).toBe(false);
+    expect(m.gravados[0].esperaMs).toBe(8000);
+  });
+  it('o id do "⏳" entra em enviados (o bot não se responde)', async () => {
+    const m = comEsperas([[15000]]);
+    m.bot.receber(ev('bot qual a fase?'));
+    await espera();
+    expect(m.bot.enviados.has('R1')).toBe(true);
   });
 });

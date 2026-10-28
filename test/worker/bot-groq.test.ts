@@ -86,6 +86,13 @@ describe('ClienteGroq: 429', () => {
     const e = await g.chat([], []).catch((x) => x);
     expect([e instanceof LimiteGroq, e.diario, e.esperaMs]).toEqual([true, false, 721_000]);
   });
+  it('revisão: a soma das esperas na mesma chamada também respeita os 10 min', async () => {
+    const dormidas: number[] = [];
+    const g = new ClienteGroq('K', ['m1'], (async () => r429('try again in 4m0s')) as any, undefined, async (ms) => { dormidas.push(ms); });
+    const e = await g.chat([], []).catch((x) => x);
+    expect(e).toBeInstanceOf(LimiteGroq);
+    expect(dormidas).toEqual([241000, 241000]);
+  });
   it('503 e erro de rede continuam indo ao próximo sem dormir', async () => {
     const dormidas: number[] = [];
     const seq: any[] = [resp(503, {}), resp(200, okChat)];

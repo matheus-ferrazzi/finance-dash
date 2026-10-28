@@ -46,6 +46,7 @@ export class ClienteGroq {
   async chat(msgs: MsgChat[], tools: object[], opcoes: { aoEsperar?: (ms: number) => void } = {}): Promise<{ content: string | null; toolCalls: { id: string; nome: string; args: string }[]; modelo: string; tokens: number }> {
     let ultimo = 'sem modelo';
     const limites: { diario: boolean; ms: number }[] = [];
+    let esperado = 0; // soma das esperas desta chamada: os 10 min valem para o total, não para cada uma
     for (let i = 0, esperas = 0; i < this.modelos.length; ) {
       const modelo = this.modelos[i];
       const proximo = () => { i++; esperas = 0; };
@@ -75,9 +76,10 @@ export class ClienteGroq {
         const texto = String(j?.error?.message ?? '');
         const ms = esperaDoErro(r.headers?.get('retry-after') ?? null, texto);
         const diario = DIARIO.test(texto);
-        if (diario || ms > ESPERA_MAX_MS) { limites.push({ diario, ms }); proximo(); continue; }
+        if (diario || esperado + ms > ESPERA_MAX_MS) { limites.push({ diario, ms }); proximo(); continue; }
         if (esperas >= ESPERAS_POR_MODELO) { limites.push({ diario: false, ms }); proximo(); continue; }
         esperas++;
+        esperado += ms;
         opcoes.aoEsperar?.(ms);
         await this.dormir(ms);
         continue;

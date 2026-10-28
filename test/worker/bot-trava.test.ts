@@ -17,6 +17,12 @@ describe('respostaConfere', () => {
   it('valor que não veio de ferramenta (soma, invenção): não confere', () => {
     expect(respostaConfere('Juntos dá R$ 1.288,19', res)).toBe(false);
   });
+  it('27/10: as frases da explicação valem (R$ formatado com espaço fixo); dias não viram dinheiro', () => {
+    const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const res = [{ explicacao: [`Sobra para o dia a dia até o fim do mês: ${brl(135.12)}.`, `Nesse passo: … fecha em ${brl(-818.33)}.`] }];
+    expect(respostaConfere('👉 Sobram R$ 135,12; nesse passo fecha em -R$ 818,33', res)).toBe(true);
+    expect(respostaConfere('👉 dá R$ 5 por dia', res)).toBe(false);
+  });
   it('sem R$: confere', () => {
     expect(respostaConfere('Vocês estão na fase 1.', res)).toBe(true);
   });

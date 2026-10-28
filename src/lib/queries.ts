@@ -21,7 +21,7 @@ import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
 import {
-  addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -718,6 +718,10 @@ export interface PrevisaoResumo {
   ritmoAtualDia: number;
   /** o que sobra para o dia a dia até o fim do mês (pode ser negativo) */
   sobraParaODiaADia: number;
+  /** 27/10: as partes do "ainda sai" (contas = débito agendado + fixos cadastrados) e a base do ritmo, para o Zeca */
+  saiPorTipo: { contas: number; casa: number; faturas: number; diaADiaPelaMedia: number };
+  gastoDoRitmo: number;
+  diasDoRitmo: number;
   receitasAReceber: ReceitaPrevista[];
   proximosMeses: { mesLabel: string; saldo: number; saldoProjetado: number; piorCaso: number }[];
   /** faixa "8 em 10" do fechamento do mês; null sem calibração (histórico curto) ou fora da visão do casal */
@@ -755,6 +759,12 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
     ritmoSeguroDia: ritmo.ritmoSeguroDia,
     ritmoAtualDia: ritmo.ritmoAtualDia,
     sobraParaODiaADia: ritmo.sobraParaODiaADia,
+    saiPorTipo: {
+      contas: atual.despesaFixa + atual.despesaManual, casa: atual.despesaCasa,
+      faturas: atual.fatura, diaADiaPelaMedia: atual.despesaVariavel,
+    },
+    gastoDoRitmo: ritmo.gastoDoRitmo,
+    diasDoRitmo: ritmo.diasDoRitmo,
     receitasAReceber: base.mesCorrente.receitasAReceber,
     proximosMeses: proj.slice(1, 7).map((m, i) => ({
       mesLabel: m.mesLabel, saldo: m.saldo, saldoProjetado: m.saldoProjetado,
@@ -763,6 +773,24 @@ export async function getPrevisaoResumo(resp: Resp): Promise<PrevisaoResumo> {
     faixa: calib ? { ...faixaMesCorrente(atual.saldoProjetado, ritmo.diasRestantes, diasNoMes(atual.mes), calib), n: calib.n } : null,
     faixaMotivo: motivo,
     saiDoVermelho: saiDoVermelho(proj, calib),
+  };
+}
+
+/**
+ * 27/10: as partes de cada número do diário e do situacao_mes, já somadas (o Zeca copia, não calcula):
+ * sobra = saldo + entra − contas − casa − faturas; dá pra gastar = sobra ÷ dias contando hoje;
+ * ritmo = gasto do dia a dia ÷ dias; nesse passo = sobra − ritmo × dias contando hoje; pela média = sobra − dia a dia pela média.
+ */
+export function contaDaPrevisao(p: PrevisaoResumo): ContaDoMes {
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  return {
+    saldoNasContas: r2(p.saldoHoje), aindaEntra: r2(p.aindaEntra),
+    saiContas: r2(p.saiPorTipo.contas), saiCasa: r2(p.saiPorTipo.casa), saiFaturas: r2(p.saiPorTipo.faturas),
+    sobraDiaADia: r2(p.sobraParaODiaADia), diasContandoHoje: p.diasRestantes + 1, dapraGastar: r2(p.ritmoSeguroDia),
+    gastoDoRitmo: r2(p.gastoDoRitmo), diasDoRitmo: p.diasDoRitmo, ritmoPorDia: r2(p.ritmoAtualDia),
+    gastoNessePasso: r2(p.ritmoAtualDia * (p.diasRestantes + 1)),
+    nessePassoFechaEm: fechaNoRitmo(p.sobraParaODiaADia, p.ritmoAtualDia, p.diasRestantes),
+    diaADiaPelaMedia: r2(p.saiPorTipo.diaADiaPelaMedia), pelaMediaFechaEm: r2(p.fechaCom),
   };
 }
 

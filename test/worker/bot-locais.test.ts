@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { criarLocais } from '../../src/worker/bot/locais';
+import { explicacaoDaConta } from '../../src/lib/previsao';
 
 const itens = [{ id: 'T1', data: '10/10', valor: 50, descricao: 'PIX FULANO', pessoa: 'Matheus', categoria: 'Transferências' }, { id: 'T2', data: '03/10', valor: 50, descricao: 'PIX FULANO', pessoa: 'Ariane', categoria: 'Transferências' }];
 function montar(busca = itens) {
@@ -106,5 +107,17 @@ describe('mensagens_do_zeca', () => {
       mensagens: async () => [{ tipo: 'diario', quando: '22/10 08:00', texto: '☀️ *Bom dia!*' }],
     });
     expect(await locais.mensagens_do_zeca({})).toEqual({ ok: true, dados: { mensagens: [{ tipo: 'diario', quando: '22/10 08:00', texto: '☀️ *Bom dia!*' }] } });
+  });
+  it('27/10: o diário vem com a explicação da conta daquela hora; a conta nula das outras não vai para o modelo', async () => {
+    const conta = { saldoNasContas: 300, aindaEntra: 0, saiContas: 0, saiCasa: 0, saiFaturas: 0, sobraDiaADia: 300, diasContandoHoje: 5,
+      dapraGastar: 60, gastoDoRitmo: 1000, diasDoRitmo: 20, ritmoPorDia: 50, gastoNessePasso: 250, nessePassoFechaEm: 50, diaADiaPelaMedia: 200, pelaMediaFechaEm: 100 };
+    const locais = criarLocais({
+      pessoa: 'Matheus', hoje: '2026-10-27', refs: new Map(),
+      painel: async () => ({ ok: true, dados: {} }), painelPost: async () => ({ ok: true, dados: {} }), acoes: { criar: async () => 1 },
+      mensagens: async () => [{ tipo: 'diario', quando: '27/10 08:00', texto: 'D', conta }, { tipo: 'meta', quando: '27/10 09:00', texto: 'M', conta: null }],
+    });
+    expect((await locais.mensagens_do_zeca({})).dados.mensagens).toEqual([
+      { tipo: 'diario', quando: '27/10 08:00', texto: 'D', explicacao: explicacaoDaConta(conta) }, { tipo: 'meta', quando: '27/10 09:00', texto: 'M' },
+    ]);
   });
 });

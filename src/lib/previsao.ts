@@ -2,7 +2,7 @@
 // Os ingredientes vêm de getProjecaoBase (queries.ts). Tudo recebe a data de
 // referência `hoje` ('AAAA-MM-DD', fuso SP) — é o que permite calcular a previsão
 // "como se fosse" uma data passada e comparar com o que aconteceu.
-import { currentDateSP, mesLabel, parseValorBR } from './format';
+import { brl, currentDateSP, mesLabel, parseValorBR } from './format';
 
 /** compromissos cadastrados manualmente (aluguel, luz, água, financiamentos — a Pluggy não sabe "até quando") */
 export interface CompromissoManual {
@@ -124,6 +124,9 @@ export interface Ritmo {
   ritmoAtualDia: number;
   /** o total livre que sobra pro dia a dia no resto do mês */
   sobraParaODiaADia: number;
+  /** 27/10: a base do ritmo (gasto do dia a dia ÷ dias), para o Zeca explicar a conta */
+  gastoDoRitmo: number;
+  diasDoRitmo: number;
   fechaCom: number;
 }
 
@@ -293,6 +296,47 @@ export function lerMudanca(q: { mudanca?: string; aluguel?: string; custo?: stri
  * Fica aqui, e não dentro de quem exibe, porque a home e o endpoint dos bots
  * precisam do mesmo número — duas cópias da conta viravam duas verdades.
  */
+/**
+ * Onde o mês fecha se o ritmo seguir: sobra − ritmo × (dias que faltam + hoje). 27/10: contava só os dias que
+ * faltam e deixava hoje de fora, mas o "dá pra gastar" divide a sobra contando hoje (N11) — com o ritmo um pouco
+ * acima do que cabe, o "nesse passo" ainda dava positivo. Agora ritmo > dá pra gastar ⇔ fecha no vermelho.
+ */
+export function fechaNoRitmo(sobraParaODiaADia: number, ritmoAtualDia: number, diasRestantes: number): number {
+  return Math.round((sobraParaODiaADia - ritmoAtualDia * (diasRestantes + 1)) * 100) / 100;
+}
+
+/** 27/10: a conta por trás do diário e do situacao_mes (ver contaDaPrevisao), guardada com o diário enviado. */
+export interface ContaDoMes {
+  saldoNasContas: number; aindaEntra: number; saiContas: number; saiCasa: number; saiFaturas: number;
+  sobraDiaADia: number; diasContandoHoje: number; dapraGastar: number;
+  gastoDoRitmo: number; diasDoRitmo: number; ritmoPorDia: number; gastoNessePasso: number; nessePassoFechaEm: number;
+  diaADiaPelaMedia: number; pelaMediaFechaEm: number;
+}
+
+/**
+ * 27/10: a explicação dos números em frases prontas, com os valores — o Zeca escolhe e copia (o modelo explicava
+ * o que cada termo significa e, com as fórmulas no prompt, pulava a origem da sobra e misturava números de horas
+ * diferentes). Uma linha por número, na ordem da conta.
+ */
+export function explicacaoDaConta(c: ContaDoMes): string[] {
+  const saidas = [[c.saiContas, 'de contas fixas'], [c.saiCasa, 'da casa'], [c.saiFaturas, 'de faturas']]
+    .filter(([v]) => (v as number) > 0).map(([v, o]) => `${brl(v as number)} ${o}`);
+  const juntar = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}` : xs[0]);
+  const ultimo = c.diasContandoHoje === 1;
+  const dias = `${c.diasContandoHoje} dias (contando hoje)`;
+  return [
+    `Origem: nas contas tem ${brl(c.saldoNasContas)}${c.aindaEntra > 0 ? ` e ainda entram ${brl(c.aindaEntra)} este mês` : ' e não entra mais nada este mês'}.`,
+    saidas.length ? `Ainda saem ${juntar(saidas)}.` : 'Não falta pagar conta fixa, casa nem fatura este mês.',
+    `Sobra para o dia a dia até o fim do mês: ${brl(c.sobraDiaADia)}.`,
+    c.sobraDiaADia <= 0 ? 'Dá pra gastar: a sobra não é positiva, então não dá pra gastar nada sem fechar no vermelho.'
+      : ultimo ? `Dá pra gastar: é o último dia do mês, então a sobra toda, ${brl(c.dapraGastar)}, é de hoje.`
+      : `Dá pra gastar: ${brl(c.sobraDiaADia)} divididos por ${dias} dá ${brl(c.dapraGastar)} por dia.`,
+    `Ritmo: o dia a dia (débito e PIX, fora casa e fixos) somou ${brl(c.gastoDoRitmo)} em ${c.diasDoRitmo} dias, ${brl(c.ritmoPorDia)} por dia.`,
+    `Nesse passo: ${brl(c.ritmoPorDia)} por dia ${ultimo ? 'hoje' : `em ${dias}`} são ${brl(c.gastoNessePasso)}; ${brl(c.sobraDiaADia)} menos isso fecha em ${brl(c.nessePassoFechaEm)}.`,
+    `Pela média: pelo jeito que vocês costumam gastar no resto do mês, ainda saem ${brl(c.diaADiaPelaMedia)} no dia a dia; ${brl(c.sobraDiaADia)} menos isso fecha em ${brl(c.pelaMediaFechaEm)}.`,
+  ];
+}
+
 export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes, hoje: string = currentDateSP()): Ritmo {
   const diaHoje = Number(hoje.split('-')[2]);
   const diasRestantes = Math.max(0, diasNoMes(atual.mes) - diaHoje);
@@ -301,6 +345,11 @@ export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes, hoje: strin
   // dá pra gastar até o fim do mês sem fechar no vermelho
   const sobraParaODiaADia = base.saldoContasAtual + atual.receita
     - atual.despesaFixa - atual.despesaManual - atual.despesaCasa - atual.fatura;
+  // Z6 (22/10): pelos dias já fechados — gasto até ontem ÷ dias até ontem (às 8h hoje ainda não tem gasto lançado e
+  // dividir por ele baixava o ritmo: metade no dia 2). Dia 1 ou sem o gasto de hoje separado: a conta antiga
+  const ateOntem = base.mesCorrente.variavelHoje !== undefined && diaHoje > 1;
+  const gastoDoRitmo = ateOntem ? Math.max(0, base.mesCorrente.variavelJaGasto - base.mesCorrente.variavelHoje!) : base.mesCorrente.variavelJaGasto;
+  const diasDoRitmo = ateOntem ? diaHoje - 1 : diaHoje;
 
   return {
     diaHoje,
@@ -308,11 +357,9 @@ export function computeRitmo(base: ProjecaoBase, atual: ProjecaoMes, hoje: strin
     sobraParaODiaADia,
     // N11: hoje também é dia de gastar — divide entre hoje e os que faltam (no último dia, tudo hoje)
     ritmoSeguroDia: Math.max(0, sobraParaODiaADia / (diasRestantes + 1)),
-    // Z6 (22/10): pelos dias já fechados — gasto até ontem ÷ dias até ontem (às 8h hoje ainda não tem gasto lançado e
-    // dividir por ele baixava o ritmo: metade no dia 2). Dia 1 ou sem o gasto de hoje separado: a conta antiga
-    ritmoAtualDia: base.mesCorrente.variavelHoje !== undefined && diaHoje > 1
-      ? Math.max(0, base.mesCorrente.variavelJaGasto - base.mesCorrente.variavelHoje) / (diaHoje - 1)
-      : diaHoje > 0 ? base.mesCorrente.variavelJaGasto / diaHoje : 0,
+    ritmoAtualDia: diasDoRitmo > 0 ? gastoDoRitmo / diasDoRitmo : 0,
+    gastoDoRitmo,
+    diasDoRitmo,
     fechaCom: atual.saldoProjetado,
   };
 }

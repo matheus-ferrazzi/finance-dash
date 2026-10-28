@@ -35,18 +35,17 @@ const SISTEMA = (quem: string, hoje: string) => [
   'Num pedido de lançar ou mudar algo, chame a ferramenta de proposta mesmo que a data ou o valor pareçam fora do permitido: ela responde o motivo, e você repassa esse motivo.',
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
   // 22/10: explicar as mensagens do próprio Zeca
-  'Se a pergunta vier com uma "Mensagem citada", ela é uma mensagem sua: explique-a com os números dela (pode copiá-los).',
-  'Se perguntarem de uma mensagem sua sem citar ("explica o diário", "o que foi aquele alerta?"), use mensagens_do_zeca.',
-  'Ao explicar uma mensagem: NÃO repita a mensagem. Diga, em frases simples, o que cada número quer dizer e por que a linha tem aquela bolinha, usando o glossário abaixo.',
-  'A cor de cada linha é a bolinha que está nela na mensagem: nunca diga outra cor. Se a pergunta afirmar algo que a mensagem não diz (ex.: "fecha no azul" quando a linha diz vermelho e o valor é negativo), a primeira linha da resposta corrige, direto: "Na verdade não fecha no azul: pela média fecha em -R$ X (🔴)."',
+  'Se a pergunta vier com uma "Mensagem citada", ela é uma mensagem sua. Se perguntarem de uma mensagem sua sem citar ("explica o diário", "o que foi aquele alerta?"), use mensagens_do_zeca.',
+  // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
+  'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
+  'A conta vem pronta no campo "explicacao" (uma frase por número, na ordem da conta): copie as frases com os valores, sem refazer conta. Comece sempre pela "Origem" e pelo que ainda sai: é o que explica a sobra.',
+  'Mensagem citada: a conta vem junto com ela. Sem citar: use o "explicacao" da mensagem em mensagens_do_zeca (números da hora em que ela saiu); se ela não tiver "explicacao", use o de situacao_mes, tire TODOS os números dele (nenhum da mensagem) e diga na primeira linha que são os números de agora.',
+  'Ritmo acima do que dá pra gastar: chame também maiores_gastos com este_mes e cite os 2 ou 3 maiores, para dizer o que puxou o ritmo.',
+  'Na explicação: até 10 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
+  'A cor de cada linha é a bolinha que está nela na mensagem: nunca diga outra cor. Só se a pergunta afirmar algo que a mensagem não diz (ex.: "fecha no azul" quando a linha diz vermelho e o valor é negativo), a primeira linha da resposta corrige, direto: "Na verdade não fecha no azul: pela média fecha em -R$ X (🔴)."',
   'Na explicação, o emoji do começo de cada linha é só um: 👉 (nada antes nem depois dele). As bolinhas 🟢🟡🔴 só aparecem no meio da frase, quando você cita a cor de uma linha da mensagem.',
-  'O que cada termo das suas mensagens quer dizer:',
+  'Outras linhas das suas mensagens (sem "conta"; explique com os números da mensagem):',
   '- Bolinhas: 🟢 bom, 🟡 atenção, 🔴 ruim; a primeira linha da mensagem é o assunto e o tom.',
-  '- "Hoje dá pra gastar": o que sobra para o dia a dia até o fim do mês (saldo nas contas + o que ainda entra − contas, faturas e fixos que faltam), dividido pelos dias que faltam contando hoje. Só débito e PIX.',
-  '- "Ritmo": quanto o gasto do dia a dia (débito e PIX, fora casa e fixos) deu por dia neste mês até hoje.',
-  '- "Nesse passo fecha em": onde o mês fecha se o ritmo de até hoje continuar todos os dias que faltam.',
-  '- "Pela média dos outros meses fecha em": a previsão do painel; usa como vocês costumam gastar no resto do mês (o fim do mês costuma ser mais leve). Por isso costuma ser melhor que o "nesse passo"; pode dar verde quando o ritmo dá vermelho, mas também pode ser vermelho.',
-  '- O "hoje dá pra gastar" e o "nesse passo" usam a mesma conta: se o ritmo for maior que o "dá pra gastar", o mês fecha no vermelho nesse passo. Quanto maior o ritmo, menor o "dá pra gastar" dos dias seguintes.',
   '- "Atenção · Fora do padrão": um gasto bem maior do que costuma ser naquele lugar.',
   '- "Meta de gastos": débito + crédito (compra parcelada conta a parcela do mês), fora contas da casa e dívida antiga; a meta é a média dos 6 meses fechados menos 10%.',
   '- "Dívida antiga fora do total": renegociação, parcelamento de fatura, empréstimo, juros e encargos de atraso não entram no total de gastos; aparecem à parte.',
@@ -55,22 +54,53 @@ const SISTEMA = (quem: string, hoje: string) => [
   '- "Aviso técnico": algo do sistema falhou (conexão de banco parada, backup, rodada de atualização).',
 ].join('\n');
 
+type ContaCitada = { explicacao: string[]; agora: boolean };
 /** 22/10: a pergunta com a mensagem citada (respondida) na frente, para o modelo saber de qual mensagem se fala. */
-const comCitada = (p: Pergunta) => (p.citada ? `Mensagem citada:\n"""\n${p.citada}\n"""\n\nPergunta: ${p.texto}` : p.texto);
+const comCitada = (p: Pergunta, conta: ContaCitada | null) => {
+  if (!p.citada) return p.texto;
+  const titulo = conta?.agora
+    ? 'Conta de AGORA (a mensagem é de antes e não guardou a conta): diga na primeira linha que são os números de agora e não use nenhum número da mensagem'
+    : 'Conta desta mensagem (números da hora em que ela saiu)';
+  const bloco = conta ? `\n${titulo}, campo explicacao:\n${conta.explicacao.map((l) => `- ${l}`).join('\n')}\n` : '';
+  return `Mensagem citada:\n"""\n${p.citada}\n"""\n${bloco}\nPergunta: ${p.texto}`;
+};
+/** Primeira linha sem negrito nem espaços: acha a mensagem citada entre as que o Zeca mandou. */
+const chaveMsg = (t: string) => (t.split('\n').find((l) => l.trim()) ?? '').replace(/[*_\s]/g, '');
 /** Percentuais escritos no texto (a trava só aceita % que veio de dado). */
 const pctsDoTexto = (t: string) => [...t.matchAll(/(-?\d+(?:,\d+)?)\s*%/g)].map((m) => Number(m[1].replace(',', '.')));
 
-export async function responder(p: Pergunta, d: {
+type DepsResponder = {
   groq: Pick<ClienteGroq, 'chat'>; painel: (caminho: string) => Promise<{ ok: boolean; dados: any }>;
   /** E1-M3: com quem perguntou (um "e eu?" de outra pessoa não vira a pessoa errada) */
   contexto: { pessoa?: string; pergunta: string; resposta: string }[]; hoje: string; painelUrl: string;
   /** E2: ferramentas que rodam no worker (busca com refs, propostas) */
   locais?: Record<string, (args: any) => Promise<{ ok: boolean; dados: any }>>;
-}): Promise<RespostaBot> {
+};
+
+/**
+ * 27/10: a conta por trás da mensagem citada, buscada antes do modelo — com só o texto citado ele explicava sem
+ * chamar ferramenta (e sem conta). Diário com a conta guardada: a daquela hora; diário sem ela (antes de 27/10)
+ * ou citação que não achou a mensagem mas fala do ritmo: a de agora. Outras mensagens: nada (explica com o texto).
+ */
+async function contaDaCitada(citada: string, d: DepsResponder): Promise<ContaCitada | null> {
+  try {
+    const ms: any[] = (await d.locais?.mensagens_do_zeca?.({}))?.dados?.mensagens ?? [];
+    const m = ms.find((x) => chaveMsg(String(x.texto ?? '')) === chaveMsg(citada));
+    if (Array.isArray(m?.explicacao)) return { explicacao: m.explicacao, agora: false };
+    if (m ? m.tipo !== 'diario' : !/dá pra gastar|nesse passo|pela média/i.test(citada)) return null;
+    const s = await d.painel('/api/bot/situacao');
+    return s.ok && Array.isArray(s.dados?.explicacao) ? { explicacao: s.dados.explicacao, agora: true } : null;
+  } catch { return null; }
+}
+
+export async function responder(p: Pergunta, d: DepsResponder): Promise<RespostaBot> {
   const t0 = Date.now();
   const ferramentas: RespostaBot['ferramentas'] = [];
-  // 22/10: a mensagem citada vale como dado conferido (o Zeca explica com os números dela)
-  const resultados: unknown[] = p.citada ? [{ citada: p.citada, pct: pctsDoTexto(p.citada) }] : [];
+  const conta = p.citada ? await contaDaCitada(p.citada, d) : null;
+  // 22/10: a mensagem citada vale como dado conferido (o Zeca explica com os números dela). 27/10: com a conta de
+  // agora, só ela vale — número da mensagem misturado com o de agora é de outra hora
+  const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao }]
+    : [{ citada: p.citada, pct: pctsDoTexto(p.citada), ...(conta ? { explicacao: conta.explicacao } : {}) }];
   let ultima: { nome: string; dados: any } | null = null;
   // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
   // mostra todas, com um link só (o da última), em vez de só a última
@@ -90,7 +120,7 @@ export async function responder(p: Pergunta, d: {
     ...d.contexto.flatMap((c): MsgChat[] => [
       { role: 'user', content: c.pessoa ? `${c.pessoa}: ${c.pergunta}` : c.pergunta }, { role: 'assistant', content: c.resposta },
     ]),
-    { role: 'user', content: comCitada(p) },
+    { role: 'user', content: comCitada(p, conta) },
   ];
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
     texto, svg: ultima ? graficoDaFerramenta(ultima.nome, ultima.dados) : null, ferramentas, modelo: null,
@@ -113,6 +143,8 @@ export async function responder(p: Pergunta, d: {
         if (!texto || !respostaConfere(texto, resultados)) {
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
           if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
+          // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
+          if (conta) return fimCom(conta.explicacao.map((l) => `👉 ${l}`).join('\n'), { modelo, trava: !!texto });
           if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
           return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }

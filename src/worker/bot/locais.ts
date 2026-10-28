@@ -1,6 +1,7 @@
 // E2: ferramentas que rodam no worker — busca (guarda as refs L1..L5) e propostas (não gravam: só criam a proposta).
 import { traduzCategoria } from '../../lib/format';
 import { CATEGORIAS_GASTO } from '../../lib/grupos';
+import { explicacaoDaConta, type ContaDoMes } from '../../lib/previsao';
 import type { PgAcoes } from './acoes';
 import { textoLista, textoPropostaAvulsa, textoPropostaCategoria, textoPropostaDinheiro } from './acoesTextos';
 
@@ -18,12 +19,13 @@ export function criarLocais(d: {
   pessoa: string; hoje: string; refs: Map<string, { quando: number; itens: Map<string, Item> }>;
   painel: (c: string) => Promise<Res>; painelPost: (c: string, corpo: object) => Promise<Res>; acoes: Pick<PgAcoes, 'criar'>;
   /** 22/10: o que o Zeca mandou no grupo nas últimas 36 h (sem o aviso técnico, que é do privado) */
-  mensagens?: () => Promise<{ tipo: string; quando: string; texto: string }[]>;
+  mensagens?: () => Promise<{ tipo: string; quando: string; texto: string; conta?: ContaDoMes | null }[]>;
 }): Record<string, (args: any) => Promise<Res>> {
   return {
     async mensagens_do_zeca() {
       if (!d.mensagens) return { ok: false, dados: { erro: 'mensagens indisponíveis' } };
-      const mensagens = await d.mensagens();
+      // 27/10: só o diário tem conta guardada — vira a explicação em frases, com os números daquela hora
+      const mensagens = (await d.mensagens()).map(({ conta, ...m }) => (conta ? { ...m, explicacao: explicacaoDaConta(conta) } : m));
       return { ok: true, dados: { mensagens, ...(mensagens.length ? {} : { aviso: 'nenhuma mensagem nas últimas 36 horas' }) } };
     },
     async buscar_lancamentos(a) {

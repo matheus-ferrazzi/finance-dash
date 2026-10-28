@@ -48,7 +48,8 @@ function montar(bot: Bot, dados: any, estado: any, painel: string): Montada {
   const base = painel.replace(/\/+$/, '');
   const url = (tela: Parameters<typeof linkPara>[0], mes?: string) => base + linkPara(tela, mes ? { mes } : {}, '');
   switch (bot) {
-    case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: null, svg: seguro(() => graficoDiario(dados)) };
+    // 27/10: o diário não tem memória; o estado guarda a conta daquela hora, para o Zeca explicar a mensagem depois
+    case 'diario': return { texto: montarDiario(dados, url('inicio')), estado: dados?.conta ? { conta: dados.conta } : null, svg: seguro(() => graficoDiario(dados)) };
     // N19: o link abre a semana da mensagem, não o mês. Z2 (23/10): no recorte do "dia a dia" (tipo=livre), o número da mensagem
     case 'semanal': return { texto: montarSemanal(dados, { gastos: base + linkPara('gastos', { semana: dados?.semana?.inicio, tipo: 'livre' }, ''), trilha: url('trilha') }), estado: null, svg: seguro(() => graficoSemanal(dados)) };
     case 'mensal': return { texto: montarMensal(dados, url('previsao', dados?.mes)), estado: null, svg: seguro(() => graficoMensal(dados)) };

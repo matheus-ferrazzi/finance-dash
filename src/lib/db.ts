@@ -46,3 +46,15 @@ export async function qw<T = any>(text: string, params: any[] = []): Promise<T[]
   const res = await writerPool.query(text, params);
   return res.rows as T[];
 }
+
+/** 28/10 (Zeca fase 3): consulta com tempo limite (a consulta livre do bot não pode prender o banco). */
+export async function qComLimite<T = any>(text: string, params: any[] = [], ms = 5000): Promise<T[]> {
+  const c = await pool.connect();
+  try {
+    await c.query(`SET statement_timeout = ${Math.max(1, Math.floor(ms))}`);
+    return (await c.query(text, params)).rows as T[];
+  } finally {
+    await c.query('RESET statement_timeout').catch(() => {});
+    c.release();
+  }
+}

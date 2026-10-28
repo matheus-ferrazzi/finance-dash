@@ -115,6 +115,16 @@ describe('destinos (D)', () => {
     await rodarNotificacao('diario', { fontes: f, registro: reg, canais: { grupo: grupo.canal, matheus: null, telegram: null }, modo: 'real', painelUrl: 'https://painel.exemplo' });
     expect(grupo.enviados[0].endsWith('https://painel.exemplo/')).toBe(true);
   });
+  it('27/10: o diário enviado guarda a conta daquela hora (o Zeca explica com ela); sem conta, estado vazio', async () => {
+    const { reg, linhas } = registroFake(); const grupo = canalFake();
+    const conta = { saldoNasContas: 900, sobraDiaADia: 300 };
+    const dados = { mesLabel: 'out/26', fechaCom: 1, diasRestantes: 5, ritmoSeguroDia: 10, ritmoAtualDia: 5, contas: [] };
+    await rodarNotificacao('diario', { fontes: fontes({ diario: async () => ({ ...dados, conta }) }), registro: reg, canais: { grupo: grupo.canal, matheus: null, telegram: null }, modo: 'real' });
+    expect(linhas[0]).toMatchObject({ enviado: true, estado: { conta } });
+    const outro = registroFake();
+    await rodarNotificacao('diario', { fontes: fontes({ diario: async () => dados }), registro: outro.reg, canais: { grupo: grupo.canal, matheus: null, telegram: null }, modo: 'real' });
+    expect(outro.linhas[0].estado).toBeNull();
+  });
   it('barra no fim do PAINEL_URL não duplica', async () => {
     const { reg } = registroFake(); const grupo = canalFake();
     const f = fontes({ semanal: async () => ({ semana: { inicio: '2026-10-05', fim: '2026-10-11' }, total: 0, mediaTotal: 0, grupos: [], trilha: { fase: 1, titulo: 'T', proximoPasso: 'P' } }) });

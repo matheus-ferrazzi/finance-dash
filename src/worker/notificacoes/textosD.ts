@@ -4,6 +4,7 @@ import { emBlocos, linhasBackup, linhasSaude, titulo, type BackupDados, type Blo
 import type { Aviso } from '../../lib/avisos';
 import type { Desafio } from '../../lib/desafio';
 import { mesLabel } from '../../lib/format';
+import { fechaNoRitmo as fechaNoRitmoDe } from '../../lib/previsao';
 import { seta } from '../../lib/seta';
 import { alertasDaMeta, type Alerta, type EstadoMeta, type MemoriaAlertas } from '../../lib/metaMes';
 
@@ -69,14 +70,13 @@ function linhaAviso(a: Aviso): string {
 }
 
 /**
- * 19/10: onde o mês fecha se o ritmo de até hoje seguir nos dias que faltam — a mesma conta do N8 (sobra − ritmo ×
- * dias). O "fecha em" do painel é pela média dos outros meses; os dois aparecem, cada um dizendo a sua base (antes
+ * 19/10: onde o mês fecha se o ritmo de até hoje seguir nos dias que faltam (27/10: e hoje) — a mesma conta do
+ * Zeca. O "fecha em" do painel é pela média dos outros meses; os dois aparecem, cada um dizendo a sua base (antes
  * a linha do ritmo dizia 🔴 e a do fecha-em 🟢 sem explicar por quê). Painel antigo sem a sobra: o que dá pra
  * gastar × (dias + hoje), que é como ela vira o "dá pra gastar".
  */
 function fechaNoRitmo(r: ResumoDiario): number {
-  const sobra = r.sobraParaODiaADia ?? r.ritmoSeguroDia * (r.diasRestantes + 1);
-  return Math.round((sobra - r.ritmoAtualDia * r.diasRestantes) * 100) / 100;
+  return fechaNoRitmoDe(r.sobraParaODiaADia ?? r.ritmoSeguroDia * (r.diasRestantes + 1), r.ritmoAtualDia, r.diasRestantes);
 }
 
 function tituloDiario(r: ResumoDiario): string {

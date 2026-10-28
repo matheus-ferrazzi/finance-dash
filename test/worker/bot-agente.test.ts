@@ -211,3 +211,48 @@ describe('mensagem citada', () => {
     expect(r.texto).not.toContain('999');
   });
 });
+
+// 27/10: com só o texto citado o modelo explicava sem conta (e sem chamar ferramenta): a conta vai junto, antes dele
+describe('mensagem citada com a conta', () => {
+  const diario = '🔴 *Mês no vermelho* · out/26 fecha em -R$ 70,39\n\n☀️ *Bom dia!*\n\n💸 Hoje dá pra gastar *R$ 27,52* no débito e PIX';
+  const explicacao = ['Origem: nas contas tem R$ 137,60 e não entra mais nada este mês.', 'Sobra para o dia a dia até o fim do mês: R$ 137,60.'];
+  const pc = { id: 'X', pessoa: 'Matheus', texto: 'por que tá no vermelho?', citada: diario.replace(/\*/g, '') };
+  const locais = (m: object) => ({ mensagens_do_zeca: async () => ({ ok: true, dados: { mensagens: [m] } }) });
+  it('diário com a conta guardada: a conta daquela hora vai com a pergunta e os números dela valem', async () => {
+    const g = groqRoteiro([{ content: '👉 Nas contas tem R$ 137,60; dá R$ 27,52 por dia.', toolCalls: [], modelo: 'm' }]);
+    const r = await responder(pc, { ...base, groq: g, locais: locais({ tipo: 'diario', quando: '27/10 08:00', texto: diario, explicacao }) });
+    expect(r.texto).toBe('👉 Nas contas tem R$ 137,60; dá R$ 27,52 por dia.');
+    const enviado = JSON.stringify(g.vistos[0].at(-1));
+    expect(enviado).toContain('Conta desta mensagem');
+    expect(enviado).toContain('nas contas tem R$ 137,60');
+  });
+  it('diário sem a conta (de antes): a conta de agora, e número da mensagem (outra hora) não passa', async () => {
+    const vistos: string[] = [];
+    const painel = async (c: string) => { vistos.push(c); return { ok: true, dados: { explicacao } }; };
+    const g = groqRoteiro([{ content: '👉 Dá R$ 27,52 por dia.', toolCalls: [], modelo: 'm' }]);
+    const r = await responder(pc, { ...base, groq: g, painel, locais: locais({ tipo: 'diario', quando: '27/10 08:00', texto: diario }) });
+    expect(vistos).toEqual(['/api/bot/situacao']);
+    expect(JSON.stringify(g.vistos[0].at(-1))).toContain('Conta de AGORA');
+    expect(r.trava).toBe(true);
+    expect(r.texto).toBe(explicacao.map((l) => `👉 ${l}`).join('\n'));
+  });
+  it('situacao_mes com um "fecha em" no lugar do outro: barrado, responde com as frases prontas e o link', async () => {
+    const sit = { fechaCom: -72.86, nessePassoFechaEm: -818.33, ritmoAtualDia: 190.69, dapraGastarHoje: 27.02, diasRestantes: 4, mesLabel: 'out/26', link: '/',
+      explicacao: ['Nesse passo: … fecha em -R$ 818,33.', 'Pela média: … fecha em -R$ 72,86.'] };
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'situacao_mes', args: '{}' }], modelo: 'm' },
+      { content: '👉 O ritmo de R$ 190,69, se mantido, fecha em -R$ 72,86.', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder({ id: 'X', pessoa: 'Matheus', texto: 'por que só dá isso?' }, { ...base, groq: g, painel: async () => ({ ok: true, dados: sit }) });
+    expect(r.trava).toBe(true);
+    expect(r.texto).toBe('👉 Nesse passo: … fecha em -R$ 818,33.\n👉 Pela média: … fecha em -R$ 72,86.\n\n👉 https://p/');
+  });
+  it('mensagem que não é o diário: sem conta, explica com o texto dela', async () => {
+    const meta = '🟡 *Meta de gastos quase no limite* · 83% usados';
+    const g = groqRoteiro([{ content: '👉 Já foram 83% da meta.', toolCalls: [], modelo: 'm' }]);
+    const r = await responder({ ...pc, citada: meta }, { ...base, groq: g, painel: async () => { throw new Error('não deveria'); },
+      locais: locais({ tipo: 'meta', quando: '27/10 09:00', texto: meta }) });
+    expect(r.texto).toBe('👉 Já foram 83% da meta.');
+    expect(JSON.stringify(g.vistos[0].at(-1))).not.toContain('Conta');
+  });
+});

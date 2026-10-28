@@ -91,9 +91,11 @@ async function main() {
     const r = await fetch(`${painelBase}${c}`, { headers: cabInterno, signal: AbortSignal.timeout(30000) });
     return { ok: r.ok, dados: await r.json().catch(() => ({ erro: `HTTP ${r.status}` })) };
   };
-  // 22/10: o que o Zeca mandou no grupo nas últimas 36 h — o técnico (privado do Matheus) fica de fora
+  // 22/10: o que o Zeca mandou no grupo nas últimas 36 h — o técnico (privado do Matheus) fica de fora.
+  // 27/10: com a conta daquela hora (o diário guarda no estado), para explicar os números da mensagem
   const mensagensRecentes = async () => (await pool.query(
-    `SELECT bot AS tipo, to_char(criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI') AS quando, texto
+    `SELECT bot AS tipo, to_char(criado_em AT TIME ZONE 'America/Sao_Paulo', 'DD/MM HH24:MI') AS quando, texto,
+            estado->'conta' AS conta
        FROM financas_notificacoes
       WHERE modo = 'real' AND enviado AND texto IS NOT NULL AND bot <> 'tecnico' AND criado_em > now() - interval '36 hours'
       ORDER BY id`)).rows;

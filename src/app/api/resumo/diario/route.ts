@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { diasNoMes, getContasDoMes, getDadosAvisos, getFaturas, getGastoLivrePorDia, getPrevisaoResumo } from '@/lib/queries';
+import { contaDaPrevisao, diasNoMes, getContasDoMes, getDadosAvisos, getFaturas, getGastoLivrePorDia, getPrevisaoResumo } from '@/lib/queries';
 import { avisosDoDia } from '@/lib/avisos';
 import { currentDateSP } from '@/lib/format';
 import { acumular, contasDoDia, faturasDoDia } from '@/lib/resumos';
@@ -23,6 +23,8 @@ export async function GET() {
     ritmoSeguroDia: p.ritmoSeguroDia, ritmoAtualDia: p.ritmoAtualDia,
     // 19/10: o "nesse passo fecha em" do diário (sobra − ritmo × dias, a conta do N8)
     sobraParaODiaADia: p.sobraParaODiaADia,
+    // 27/10: guardada com a mensagem enviada — o Zeca explica o diário com os números daquela hora
+    conta: contaDaPrevisao(p),
     avisos: dadosAvisos ? avisosDoDia(dadosAvisos) : [],
     // N5: contas do caderno + faturas fechadas dos cartões dos dois, vencendo hoje/amanhã
     contas: [...contasDoDia(contas.itens, dia, diasNoMes(mes)), ...faturasDoDia(faturas, hoje, contas.itens)]

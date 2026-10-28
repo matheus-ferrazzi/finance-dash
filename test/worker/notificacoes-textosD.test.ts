@@ -7,13 +7,13 @@ const dia = { mesLabel: 'out/26', fechaCom: -500, diasRestantes: 10, ritmoSeguro
 
 describe('diário', () => {
   it('acima do que cabe, fecha no vermelho, conta e link', () => {
-    // 19/10: título; a bolinha no começo; "nesse passo" (50 × 11 − 80 × 10 = −250) e "pela média", cada um com a base.
+    // 19/10: título; a bolinha no começo; "nesse passo" (27/10: com hoje, 50 × 11 − 80 × 11 = −330) e "pela média", cada um com a base.
     // 20/10: em blocos, com uma linha em branco entre eles
     expect(montarDiario(dia, 'https://painel/')).toBe([
       `🔴 *Mês no vermelho* · out/26 fecha em ${brl(-500)}`,
       '☀️ *Bom dia!*',
       `💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`,
-      `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-250)}*`,
+      `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-330)}*`,
       `🔴 Pela média dos outros meses, out/26 fecha em *${brl(-500)}*`,
       `🧾 Luz (${brl(120)}) vence hoje`,
       '👉 https://painel/',
@@ -265,12 +265,12 @@ describe('títulos (19/10)', () => {
   const d = { mesLabel: 'out/26', fechaCom: 300, diasRestantes: 10, ritmoSeguroDia: 50, ritmoAtualDia: 80, sobraParaODiaADia: 550, contas: [] };
   const primeira = (t: string | null) => (t ?? '').split('\n')[0];
   it('diário: ritmo acima e nesse passo o mês fecha no vermelho; a média ainda fecha no azul', () => {
-    // nesse passo: 550 − 80 × 10 = −250 (mesma conta do N8)
+    // nesse passo: 550 − 80 × 11 = −330 (27/10: conta hoje, como o "dá pra gastar")
     expect(montarDiario(d, 'L')).toBe([
       '🔴 *Ritmo acima do que cabe* · nesse passo out/26 fecha no vermelho',
       '☀️ *Bom dia!*',
       `💸 Hoje dá pra gastar *${brl(50)}* no débito e PIX`,
-      `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-250)}*`,
+      `🔴 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(-330)}*`,
       `🟢 Pela média dos outros meses, out/26 fecha em *${brl(300)}*`,
       '👉 L',
     ].join('\n\n'));
@@ -278,7 +278,7 @@ describe('títulos (19/10)', () => {
   it('diário: ritmo acima mas ainda fecha no azul nesse passo: atenção', () => {
     const t = montarDiario({ ...d, sobraParaODiaADia: 900 }, 'L');
     expect(primeira(t)).toBe('🟡 *Ritmo acima do que cabe* · nesse passo ainda fecha no azul');
-    expect(t).toContain(`🟡 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(100)}*`);
+    expect(t).toContain(`🟡 Ritmo de ${brl(80)}/dia, acima do que cabe: nesse passo fecha em *${brl(20)}*`);
   });
   it('diário: dentro do que cabe; mês no vermelho pela média manda no título; conta no negativo manda mais', () => {
     const ok = montarDiario({ ...d, ritmoAtualDia: 40 }, 'L');
@@ -289,9 +289,9 @@ describe('títulos (19/10)', () => {
       .toBe('🔴 *Conta no negativo* · B1 (Ariane)');
   });
   it('diário: sem a sobra (painel antigo), a conta usa o que dá pra gastar × os dias', () => {
-    // 50 × 11 = 550 → nesse passo −250
+    // 50 × 11 = 550 → nesse passo −330
     const { sobraParaODiaADia, ...antigo } = d;
-    expect(montarDiario(antigo, 'L')).toContain(`nesse passo fecha em *${brl(-250)}*`);
+    expect(montarDiario(antigo, 'L')).toContain(`nesse passo fecha em *${brl(-330)}*`);
   });
   it('diário: último dia do mês', () => {
     expect(primeira(montarDiario({ ...d, diasRestantes: 0 }, 'L'))).toBe(`🟢 *Último dia do mês* · out/26 fecha em ${brl(300)}`);

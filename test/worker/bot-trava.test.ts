@@ -17,6 +17,28 @@ describe('respostaConfere', () => {
   it('valor que não veio de ferramenta (soma, invenção): não confere', () => {
     expect(respostaConfere('Juntos dá R$ 1.288,19', res)).toBe(false);
   });
+  it('27/10: as frases da explicação valem (R$ formatado com espaço fixo); dias não viram dinheiro', () => {
+    const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const res = [{ explicacao: [`Sobra para o dia a dia até o fim do mês: ${brl(135.12)}.`, `Nesse passo: … fecha em ${brl(-818.33)}.`] }];
+    expect(respostaConfere('👉 Sobram R$ 135,12; nesse passo fecha em -R$ 818,33', res)).toBe(true);
+    expect(respostaConfere('👉 dá R$ 5 por dia', res)).toBe(false);
+  });
+  // 27/10 (produção): "o ritmo de R$ 190,69, se mantido, fecha em -R$ 72,86" — -72,86 é o pela média, não o nesse passo
+  describe('os dois "fecha em"', () => {
+    const res = [{ ritmoAtualDia: 190.69, fechaCom: -72.86283642657426, nessePassoFechaEm: -818.33 }];
+    it('o pela média numa frase do ritmo, sem falar da média: não passa', () => {
+      expect(respostaConfere('👉 O ritmo atual de gasto diário está em R$ 190,69, o que indica que, se mantido, o mês fechará em -R$ 72,86.', res)).toBe(false);
+    });
+    it('cada um com a base certa passa; o pela média sozinho (fecha-em de sempre) também', () => {
+      expect(respostaConfere('👉 Se o ritmo de R$ 190,69 continuar, fecha em -R$ 818,33.', res)).toBe(true);
+      expect(respostaConfere('👉 Pela média dos outros meses fecha em -R$ 72,86, bem melhor que no ritmo de agora.', res)).toBe(true);
+      expect(respostaConfere('👉 Outubro fecha em -R$ 72,86.', res)).toBe(true);
+    });
+    it('o nesse passo sem falar do ritmo, ou numa frase da média: não passa', () => {
+      expect(respostaConfere('👉 O mês fecha em -R$ 818,33.', res)).toBe(false);
+      expect(respostaConfere('👉 Pela média fecha em -R$ 818,33.', res)).toBe(false);
+    });
+  });
   it('sem R$: confere', () => {
     expect(respostaConfere('Vocês estão na fase 1.', res)).toBe(true);
   });

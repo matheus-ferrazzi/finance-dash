@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addMonths, aplicarCenario, cenarioMudanca, lerMudanca, resumoMudanca, avisosDeCadastro, computeProjecao, computeRitmo, diasNoMes, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarCenario, cenarioMudanca, lerMudanca, resumoMudanca, avisosDeCadastro, computeProjecao, computeRitmo, diasNoMes, explicacaoDaConta, fechaNoRitmo, mediana, mesesBaseReceita, receitaAindaAEntrar, receitaRecorrente,
   type EntradaReceita, type ProjecaoBase,
 } from '../../src/lib/previsao';
 
@@ -48,6 +48,40 @@ describe('computeProjecao com hoje explícito', () => {
     const ru = computeRitmo(base, u, '2026-08-31');
     expect(ru.diasRestantes).toBe(0);
     expect(ru.ritmoSeguroDia).toBeCloseTo(Math.max(0, ru.sobraParaODiaADia), 6);
+  });
+  it('27/10: o ritmo vem com a base (gasto ÷ dias) para o Zeca mostrar a conta', () => {
+    const base = baseFake();
+    const r = computeRitmo(base, computeProjecao(base, 1, '2026-08-10')[0], '2026-08-10');
+    expect(r.ritmoAtualDia).toBeCloseTo(r.gastoDoRitmo / r.diasDoRitmo, 6);
+  });
+  // 27/10: o Zeca explicava o que cada termo significa; agora copia a conta em frases, começando pela origem da sobra
+  it('explicacaoDaConta: a conta de cada número, com os valores (dados de 27/10)', () => {
+    const b = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const c = { saldoNasContas: 135.1, aindaEntra: 0.02, saiContas: 0, saiCasa: 0, saiFaturas: 0, sobraDiaADia: 135.12, diasContandoHoje: 5,
+      dapraGastar: 27.02, gastoDoRitmo: 4957.95, diasDoRitmo: 26, ritmoPorDia: 190.69, gastoNessePasso: 953.45, nessePassoFechaEm: -818.33,
+      diaADiaPelaMedia: 207.98, pelaMediaFechaEm: -72.86 };
+    expect(explicacaoDaConta(c)).toEqual([
+      `Origem: nas contas tem ${b(135.1)} e ainda entram ${b(0.02)} este mês.`,
+      'Não falta pagar conta fixa, casa nem fatura este mês.',
+      `Sobra para o dia a dia até o fim do mês: ${b(135.12)}.`,
+      `Dá pra gastar: ${b(135.12)} divididos por 5 dias (contando hoje) dá ${b(27.02)} por dia.`,
+      `Ritmo: o dia a dia (débito e PIX, fora casa e fixos) somou ${b(4957.95)} em 26 dias, ${b(190.69)} por dia.`,
+      `Nesse passo: ${b(190.69)} por dia em 5 dias (contando hoje) são ${b(953.45)}; ${b(135.12)} menos isso fecha em ${b(-818.33)}.`,
+      `Pela média: pelo jeito que vocês costumam gastar no resto do mês, ainda saem ${b(207.98)} no dia a dia; ${b(135.12)} menos isso fecha em ${b(-72.86)}.`,
+    ]);
+    const l = explicacaoDaConta({ ...c, aindaEntra: 0, saiContas: 100, saiFaturas: 50, sobraDiaADia: -10, diasContandoHoje: 1 });
+    expect(l[0]).toContain('não entra mais nada');
+    expect(l[1]).toBe(`Ainda saem ${b(100)} de contas fixas e ${b(50)} de faturas.`);
+    expect(l[3]).toContain('não dá pra gastar nada');
+    expect(l[5]).toContain(`por dia hoje são`);
+    expect(explicacaoDaConta({ ...c, diasContandoHoje: 1 })[3]).toBe(`Dá pra gastar: é o último dia do mês, então a sobra toda, ${b(27.02)}, é de hoje.`);
+  });
+  // 27/10: o "nesse passo" deixava hoje de fora e o "dá pra gastar" conta hoje: ritmo um pouco acima dava positivo
+  it('fechaNoRitmo conta hoje: ritmo acima do que dá pra gastar ⇔ fecha no vermelho', () => {
+    expect(fechaNoRitmo(550, 80, 10)).toBe(-330);
+    const sobra = 1000, dias = 9, seguro = sobra / (dias + 1);
+    expect(fechaNoRitmo(sobra, seguro + 0.5, dias)).toBeLessThan(0);
+    expect(fechaNoRitmo(sobra, seguro - 0.5, dias)).toBeGreaterThan(0);
   });
 });
 

@@ -2,7 +2,7 @@
 // E2: antes do agente, "sim/não/número/desfaz" são lidos por código (proposta, lista, desfazer).
 import type { PgAcoes } from './acoes';
 import { CANCELADO, EXPIRADO, lerResposta, NADA_DESFAZER, textoDesfeito, textoFeito } from './acoesTextos';
-import { responder, SO_TEXTO, type RespostaBot } from './agente';
+import { responder, SO_TEXTO, textoEspera, type RespostaBot } from './agente';
 import { lerWebhook, semIdentificadores, type ConfigEntrada, type Pergunta } from './entrada';
 import { FilaBot } from './fila';
 import type { ClienteGroq } from './groq';
@@ -12,6 +12,8 @@ import type { PgRegistroBot } from './registro';
 const CHEIA = '⏳ Muitas perguntas de uma vez, manda de novo daqui a pouco.';
 const LEMBRAR = 200;
 const LISTA_VALE = 5 * 60_000;
+// 28/10 (fase 2): espera da cota acima disto avisa o grupo (uma vez por pergunta)
+const AVISO_MS = 10_000;
 
 type Res = { ok: boolean; dados: any };
 type Item = Pergunta & { curta?: boolean };
@@ -82,14 +84,19 @@ export function criarBot(d: {
     if (c.texto) p = { ...p, texto: c.texto };
     const contexto = await d.registro.contexto(30, 3).catch(() => []);
     const locais = criarLocais({ pessoa: p.pessoa, hoje: d.hoje(), refs, painel: d.painel, painelPost: d.painelPost, acoes: d.acoes, mensagens: d.mensagens });
-    const r: RespostaBot = await responder(p, { groq: d.groq, painel: d.painel, contexto, hoje: d.hoje(), painelUrl: d.painelUrl, locais });
+    let avisou = false;
+    const aoEsperar = (ms: number) => {
+      if (!avisou && ms > AVISO_MS) { avisou = true; void mandar(textoEspera(ms), null).catch(() => {}); }
+      d.log(`bot: aguardando cota do Groq (${Math.round(ms / 1000)} s)`);
+    };
+    const r: RespostaBot = await responder(p, { groq: d.groq, painel: d.painel, contexto, hoje: d.hoje(), painelUrl: d.painelUrl, locais, aoEsperar });
     if (r.texto.startsWith('🔎')) listas.set(p.pessoa, Date.now());
     let erroEnvio: string | null = null;
     // E1-M4: o erro do WhatsApp pode trazer o JID do grupo ou um telefone — nunca vai assim para log/tabela
     try { await mandar(r.texto, r.svg); } catch (e) { erroEnvio = semIdentificadores(`envio: ${e instanceof Error ? e.message : String(e)}`); }
     await d.registro.gravar({
       pessoa: p.pessoa, pergunta: p.texto, ferramentas: r.ferramentas, resposta: r.texto, modelo: r.modelo, ms: r.ms,
-      trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro ?? erroEnvio, tokens: r.tokens,
+      trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro ?? erroEnvio, tokens: r.tokens, esperaMs: r.esperaMs,
     }).catch((e) => d.log(`bot: falha ao registrar (${e instanceof Error ? e.message : String(e)})`));
     if (r.erro || erroEnvio) d.log(`bot: pergunta de ${p.pessoa} com erro (${r.erro ?? erroEnvio})`);
   }, 5, () => { void mandar(CHEIA, null).catch(() => {}); });

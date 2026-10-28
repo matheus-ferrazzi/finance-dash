@@ -109,9 +109,10 @@ async function main() {
       acoes: { criar: async () => { throw new Error('bot-perguntar não cria proposta'); } }, mensagens: mensagensRecentes,
     });
     const r = await responder({ id: 'cli', pessoa: 'Matheus', texto: args.pergunta!, ...(args.citada ? { citada: args.citada } : {}) },
-      { groq, painel: painelGet, contexto: [], hoje: currentDateSP(), painelUrl: notif.painelUrl, locais });
+      { groq, painel: painelGet, contexto: [], hoje: currentDateSP(), painelUrl: notif.painelUrl, locais,
+        aoEsperar: (ms) => console.log(`aguardando cota do Groq: ${Math.round(ms / 1000)} s`) });
     console.log(r.texto);
-    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens }));
+    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens, esperaMs: r.esperaMs }));
     await pool.end();
     return;
   }

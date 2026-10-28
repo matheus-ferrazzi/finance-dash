@@ -8,9 +8,11 @@ describe('montarGasto', () => {
     const r = montarGasto(m({ Groceries: 300, 'Eating out': 100, 'Food delivery': 50 }), null);
     expect(r).toEqual({ total: 450, totalDinheiro: 0, itens: [{ nome: 'Mercado', valor: 300, dinheiro: 0 }, { nome: 'Comer fora', valor: 150, dinheiro: 0 }] });
   });
-  it('com grupo: por categoria só daquele grupo', () => {
+  // 28/10: com grupo os itens saíam com o código interno ("Groceries") e o Zeca escrevia isso no grupo
+  it('com grupo: por categoria só daquele grupo, com o nome do painel', () => {
     const r = montarGasto(m({ Groceries: 300, 'Eating out': 100, 'Food delivery': 50 }), 'Comer fora');
-    expect(r).toEqual({ total: 150, totalDinheiro: 0, itens: [{ nome: 'Eating out', valor: 100, dinheiro: 0 }, { nome: 'Food delivery', valor: 50, dinheiro: 0 }] });
+    expect(r).toEqual({ total: 150, totalDinheiro: 0, itens: [{ nome: 'Restaurante', valor: 100, dinheiro: 0 }, { nome: 'Delivery', valor: 50, dinheiro: 0 }] });
+    expect(montarGasto(m({ Groceries: 300 }), 'Mercado', m({ Groceries: 20 })).itens).toEqual([{ nome: 'Mercado', valor: 320, dinheiro: 20 }]);
   });
 });
 

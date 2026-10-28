@@ -37,7 +37,9 @@ export function valoresBRL(texto: string): number[] {
 /** Dinheiro e percentuais que as ferramentas devolveram (inclui R$ escritos dentro de textos, como o próximo passo). */
 function coletar(x: unknown, chave: string | null, din: number[], pct: number[]): void {
   if (typeof x === 'number' && Number.isFinite(x)) {
-    if (chave === 'pct') pct.push(x);
+    // 28/10 (fase 3): o resultado da calculadora vale como dinheiro e como porcentagem
+    if (chave === 'resultado') { pct.push(x); din.push(x); }
+    else if (chave === 'pct') pct.push(x);
     else if (chave !== null && DINHEIRO.has(chave)) din.push(x);
   } else if (typeof x === 'string') din.push(...valoresBRL(x));
   else if (Array.isArray(x)) x.forEach((v) => coletar(v, chave, din, pct));

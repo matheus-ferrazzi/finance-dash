@@ -1,5 +1,6 @@
 // E1: o agente — o Groq escolhe ferramentas e escreve; números só das ferramentas (trava); até 4 rodadas.
-import { caminhoDa, formatar, graficoDaFerramenta, TOOLS } from './ferramentas';
+import { caminhoDa, formatar, graficoDaFerramenta } from './ferramentas';
+import { escolherGrupos, ferramentasDe, type Grupo } from './escolha';
 import type { ClienteGroq, MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
@@ -25,25 +26,33 @@ export interface RespostaBot {
   tokens: number;
 }
 
-const SISTEMA = (quem: string, hoje: string) => [
+// 27/10 (fase 1, tokens): as regras de proposta só vão com as ferramentas de proposta, e as das mensagens do Zeca só
+// quando se fala de mensagem (escolha.ts); as de explicar um número valem sempre ("pq estamos no vermelho?" é base)
+const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Você é o Zeca, o assistente financeiro do casal Matheus e Ariane, num grupo de WhatsApp. Chamam você por "Zeca" ou "bot".',
   `Quem perguntou: ${quem}. Hoje é ${hoje} (horário de São Paulo).`,
   'Use SEMPRE as ferramentas para qualquer número. Nunca some, subtraia, calcule percentual ou invente valor: copie os valores das ferramentas.',
   'Se nenhuma ferramenta serve, diga que ainda não sabe responder. Não chute.',
   'Responda em português, tom contido, até 8 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
-  'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',
-  'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
-  'Num pedido de lançar ou mudar algo, chame a ferramenta de proposta mesmo que a data ou o valor pareçam fora do permitido: ela responde o motivo, e você repassa esse motivo.',
+  ...(grupos.has('propostas') ? [
+    'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',
+    'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
+    'Num pedido de lançar ou mudar algo, chame a ferramenta de proposta mesmo que a data ou o valor pareçam fora do permitido: ela responde o motivo, e você repassa esse motivo.',
+  ] : []),
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
-  // 22/10: explicar as mensagens do próprio Zeca
-  'Se a pergunta vier com uma "Mensagem citada", ela é uma mensagem sua. Se perguntarem de uma mensagem sua sem citar ("explica o diário", "o que foi aquele alerta?"), use mensagens_do_zeca.',
   // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
   'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
   'A conta vem pronta no campo "explicacao" (uma frase por número, na ordem da conta): copie as frases com os valores, sem refazer conta. Comece sempre pela "Origem" e pelo que ainda sai: é o que explica a sobra.',
-  'Mensagem citada: a conta vem junto com ela. Sem citar: use o "explicacao" da mensagem em mensagens_do_zeca (números da hora em que ela saiu); se ela não tiver "explicacao", use o de situacao_mes, tire TODOS os números dele (nenhum da mensagem) e diga na primeira linha que são os números de agora.',
   'Ritmo acima do que dá pra gastar: chame também maiores_gastos com este_mes e cite os 2 ou 3 maiores, para dizer o que puxou o ritmo.',
   'Na explicação: até 10 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
+  ...(grupos.has('mensagens') ? MENSAGENS : []),
+].join('\n');
+
+// 22/10: explicar as mensagens do próprio Zeca
+const MENSAGENS = [
+  'Se a pergunta vier com uma "Mensagem citada", ela é uma mensagem sua. Se perguntarem de uma mensagem sua sem citar ("explica o diário", "o que foi aquele alerta?"), use mensagens_do_zeca.',
+  'Mensagem citada: a conta vem junto com ela. Sem citar: use o "explicacao" da mensagem em mensagens_do_zeca (números da hora em que ela saiu); se ela não tiver "explicacao", use o de situacao_mes, tire TODOS os números dele (nenhum da mensagem) e diga na primeira linha que são os números de agora.',
   'A cor de cada linha é a bolinha que está nela na mensagem: nunca diga outra cor. Só se a pergunta afirmar algo que a mensagem não diz (ex.: "fecha no azul" quando a linha diz vermelho e o valor é negativo), a primeira linha da resposta corrige, direto: "Na verdade não fecha no azul: pela média fecha em -R$ X (🔴)."',
   'Na explicação, o emoji do começo de cada linha é só um: 👉 (nada antes nem depois dele). As bolinhas 🟢🟡🔴 só aparecem no meio da frase, quando você cita a cor de uma linha da mensagem.',
   'Outras linhas das suas mensagens (sem "conta"; explique com os números da mensagem):',
@@ -54,7 +63,7 @@ const SISTEMA = (quem: string, hoje: string) => [
   '- "Gasto grande": um gasto a partir de 500 reais, sem aluguel, contas fixas nem dívida antiga.',
   '- "Semana acima/abaixo da média": o gasto do dia a dia da semana comparado com a média das 4 semanas anteriores.',
   '- "Aviso técnico": algo do sistema falhou (conexão de banco parada, backup, rodada de atualização).',
-].join('\n');
+];
 
 /** `fechas`: os dois "fecha em" rotulados (pelaMediaFechaEm / fechaCom, nessePassoFechaEm), para a trava */
 type ContaCitada = { explicacao: string[]; agora: boolean; fechas: Record<string, number> };
@@ -102,6 +111,7 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   const t0 = Date.now();
   const ferramentas: RespostaBot['ferramentas'] = [];
   const conta = p.citada ? await contaDaCitada(p.citada, d) : null;
+  const grupos = escolherGrupos(p, d.contexto);
   // 22/10: a mensagem citada vale como dado conferido (o Zeca explica com os números dela). 27/10: com a conta de
   // agora, só ela vale — número da mensagem misturado com o de agora é de outra hora
   const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao, ...conta.fechas }]
@@ -121,7 +131,7 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   // E3: motivo da última proposta recusada (data futura, valor fora…) — vira a resposta se o modelo não explicar
   let recusa: string | null = null;
   const msgs: MsgChat[] = [
-    { role: 'system', content: SISTEMA(p.pessoa, d.hoje) },
+    { role: 'system', content: SISTEMA(p.pessoa, d.hoje, grupos) },
     ...d.contexto.flatMap((c): MsgChat[] => [
       { role: 'user', content: c.pessoa ? `${c.pessoa}: ${c.pergunta}` : c.pergunta }, { role: 'assistant', content: c.resposta },
     ]),
@@ -135,7 +145,7 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   let modelo: string | null = null;
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
-      const r = await d.groq.chat(msgs, TOOLS);
+      const r = await d.groq.chat(msgs, ferramentasDe(grupos));
       modelo = r.modelo;
       tokens += r.tokens ?? 0;
       if (!r.toolCalls.length) {

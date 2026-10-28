@@ -164,8 +164,9 @@ describe('recusa de ação vira o motivo da ferramenta (E3)', () => {
     expect(r.texto).toBe('⚠️ Não deu para lançar: data futura não vale: só de hoje até 30 dias atrás.');
   });
   it('o prompt manda chamar a ferramenta mesmo com data/valor que pareçam inválidos', async () => {
+    // 27/10: a regra de proposta vai com o pedido de lançar ou mudar (escolha.ts), não com uma pergunta de gasto
     const g = groqRoteiro([{ content: 'x', toolCalls: [], modelo: 'm' }]);
-    await responder(p, { ...base, groq: g });
+    await responder({ ...p, texto: 'lança 30 de feira em dinheiro amanhã' }, { ...base, groq: g });
     expect(JSON.stringify(g.vistos[0][0])).toContain('mesmo que a data ou o valor');
   });
 });
@@ -261,5 +262,15 @@ describe('mensagem citada com a conta', () => {
       locais: locais({ tipo: 'meta', quando: '27/10 09:00', texto: meta }) });
     expect(r.texto).toBe('👉 Já foram 83% da meta.');
     expect(JSON.stringify(g.vistos[0].at(-1))).not.toContain('Conta');
+  });
+});
+
+describe('27/10: ferramentas e prompt pela pergunta (fase 1)', () => {
+  it('pergunta de gasto não leva as ferramentas de proposta nem o bloco de mensagens', async () => {
+    const vistas: any[] = [];
+    const g = { chat: async (msgs: any, tools: any) => { vistas.push({ msgs, tools }); return { content: '🛒 Mercado: R$ 400,00 este mês.', toolCalls: [], modelo: 'm', tokens: 0 }; } };
+    await responder(p, { ...base, groq: g });
+    expect(vistas[0].tools.map((t: any) => t.function.name)).not.toContain('propor_categoria');
+    expect(vistas[0].msgs[0].content).not.toContain('Mensagem citada');
   });
 });

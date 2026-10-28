@@ -1,6 +1,6 @@
 // 28/10 (Zeca fase 3): a consulta livre do Zeca. O modelo escolhe parâmetros; o SQL (queries.ts) só filtra pelas
 // regras do painel e devolve as linhas; aqui, sem banco, filtra o resto, agrupa e soma.
-import { mesLabel, traduzCategoria } from './format';
+import { CATEGORIAS_CONHECIDAS, mesLabel, traduzCategoria } from './format';
 import { GRUPOS_VALIDOS, grupoDaCategoria } from './grupos';
 import { nomeSemDocumento } from './categoriaPainel';
 import { lerPessoa, resolverPeriodo } from './periodos';
@@ -75,6 +75,11 @@ export function lerPedidoConsulta(sp: URLSearchParams, hoje: string): { ok: true
   if (!AGRUPAR.includes(agrupar)) return { ok: false, erro: `agrupar inválido: use ${AGRUPAR.join(', ')}` };
   const ordem = sp.get('ordem') || 'valor';
   if (ordem !== 'valor' && ordem !== 'data') return { ok: false, erro: 'ordem inválida: use valor ou data' };
+  // 28/10: "iFood" como categoria dava lista vazia e o Zeca dizia "não há registro" — loja vai no texto
+  const categoria = sp.get('categoria') || null;
+  if (categoria && !CATEGORIAS_CONHECIDAS.some((c) => semAcento(c) === semAcento(categoria) || semAcento(traduzCategoria(c)) === semAcento(categoria))) {
+    return { ok: false, erro: `categoria "${categoria}" não existe no painel; para uma loja ou empresa use texto, para um tipo de gasto use grupo` };
+  }
   const min = numero(sp.get('min')), max = numero(sp.get('max')), lim = numero(sp.get('limite'));
   if (min === undefined || max === undefined) return { ok: false, erro: 'min e max são números (reais)' };
   if (lim === undefined) return { ok: false, erro: 'limite é um número de 1 a 20' };
@@ -82,7 +87,7 @@ export function lerPedidoConsulta(sp: URLSearchParams, hoje: string): { ok: true
     ok: true,
     v: {
       oQue, periodo, pessoa, grupo, forma, agrupar, ordem, min, max,
-      categoria: sp.get('categoria') || null, texto: sp.get('texto') || null,
+      categoria, texto: sp.get('texto') || null,
       limite: Math.min(LIMITE_MAX, Math.max(1, Math.floor(lim ?? LIMITE_MAX))),
     },
   };

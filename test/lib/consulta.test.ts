@@ -102,3 +102,12 @@ it('loja sem o prefixo do banco', () => {
   expect(agregarConsulta(ls, pedido({ agrupar: 'loja' })).linhas.map((x) => x.chave))
     .toEqual(['ATACADO EXEMPLO', 'DISTRIBUIDORA FICTICIA S/A', 'PIZZARIA MODELO', 'FULANO DE TAL', 'Ebn *Loja Digital 4/4']);
 });
+
+// 28/10 (rodada 6): "iFood" no filtro de categoria dava lista vazia e o Zeca dizia "não há registro"
+it('categoria desconhecida: erro que manda usar o texto (loja); conhecida, pelo nome ou pelo código, passa', () => {
+  const r = ler('o_que=gastos&periodo=este_mes&categoria=iFood');
+  expect(r.ok).toBe(false);
+  if (!r.ok) expect(r.erro).toMatch(/categoria.*texto/);
+  expect(ler('o_que=gastos&periodo=este_mes&categoria=restaurante').ok).toBe(true);
+  expect(ler('o_que=gastos&periodo=este_mes&categoria=Groceries').ok).toBe(true);
+});

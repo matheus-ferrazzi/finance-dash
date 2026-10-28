@@ -63,3 +63,15 @@ describe('modeloConferente e resumoDados', () => {
     expect(resumoDados([{ x: 'a'.repeat(100) }], 50).endsWith('…')).toBe(true);
   });
 });
+
+// 28/10 (conjunto de perguntas): reprovava por falta de detalhe ("indique out/26 em cada valor") e por "4 dias
+// (contando hoje)" contra diasRestantes 3 — a frase da explicacao vale como dado
+describe('prompt do conferente', () => {
+  it('julga número, rótulo e afirmação sem base; não detalhe; frases prontas valem', async () => {
+    const g = groqQue('{"aprovado": true}');
+    await conferir({ ...base, groq: g });
+    const sistema = String(g.vistos[0].msgs[0].content);
+    expect(sistema).toContain('Não reprove por falta de detalhe');
+    expect(sistema).toContain('explicacao');
+  });
+});

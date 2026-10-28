@@ -424,3 +424,42 @@ describe('fase 3: conferente no agente', () => {
     expect(r.texto.startsWith(SEGURA)).toBe(true);
   });
 });
+
+// 28/10 (fase 3, conjunto de 20 perguntas em produção): o que reprovou
+describe('fase 3: correções do conjunto de perguntas', () => {
+  const diario = '🔴 Mês no vermelho · out/26 fecha em -R$ 70,39';
+  const explicacao = ['Origem: nas contas tem R$ 137,60 e não entra mais nada este mês.', 'Sobra para o dia a dia até o fim do mês: R$ 137,60.'];
+  it('citada + calcular + texto barrado: a conta da mensagem, nunca "Não sei responder isso"; o texto barrado fica nos problemas', async () => {
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'calcular', args: '{"expressao":"137.6 / 5"}' }], modelo: 'm' },
+      { content: '👉 Sobram R$ 999,99.', toolCalls: [], modelo: 'm' },
+    ]);
+    const { criarLocais } = await import('../../src/worker/bot/locais');
+    const locais = { ...criarLocais({ pessoa: 'Matheus', hoje: '2026-10-28', refs: new Map(), painel, painelPost: painel, acoes: { criar: async () => 1 } }),
+      mensagens_do_zeca: async () => ({ ok: true, dados: { mensagens: [{ tipo: 'diario', quando: '28/10 08:00', texto: diario, explicacao }] } }) };
+    const r = await responder({ id: 'X', pessoa: 'Matheus', texto: 'por quê?', citada: diario }, { ...base, groq: g, locais });
+    expect(r.texto).toBe(explicacao.map((l) => `👉 ${l}`).join('\n'));
+    expect(r.trava).toBe(true);
+    expect(r.problemas).toEqual(['trava barrou: 👉 Sobram R$ 999,99.']);
+  });
+  it('compra + situação, texto barrado: o montado das duas (a resposta da compra não some)', async () => {
+    const sim = { valorTotal: 3000, parcelas: 10, parcela: 300, cabe: false, cabeProvavel: false, mesQueFura: 'nov/26', aprofunda: 300, link: '/previsibilidade' };
+    const sit = { fechaCom: -6.66, dapraGastarHoje: 22.22, ritmoAtualDia: 123.45, diasRestantes: 3, mesLabel: 'out/26', link: '/', explicacao: ['Origem: R$ 99,90.'] };
+    const pnl = async (c: string) => ({ ok: true, dados: c.startsWith('/api/bot/simular') ? sim : sit });
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'a', nome: 'simular_compra', args: '{"valor_total":3000,"parcelas":10}' }, { id: 'b', nome: 'situacao_mes', args: '{}' }], modelo: 'm' },
+      { content: '📉 Não cabe: R$ 999,99.', toolCalls: [], modelo: 'm' },
+    ]);
+    const r = await responder({ ...p, texto: 'dá pra comprar uma TV de 3 mil em 10x?' }, { ...base, painel: pnl, groq: g });
+    expect(r.texto).toContain('🛒 Compra de');
+    expect(r.texto).toContain('nov/26');
+  });
+  it('prompt: sem nome de ferramenta na resposta; a "Origem" não é regra de toda resposta', async () => {
+    const g = groqRoteiro([{ content: 'oi', toolCalls: [], modelo: 'm' }, { content: 'oi', toolCalls: [], modelo: 'm' }]);
+    await responder(p, { ...base, groq: g });
+    const sistema = String(g.vistos[0][0].content);
+    expect(sistema).toContain('Não escreva nomes de ferramentas');
+    expect(sistema).not.toContain('Comece pela "Origem"');
+    expect(sistema).toContain('Use o mínimo de ferramentas');
+  });
+});

@@ -64,6 +64,9 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Se os dados não respondem, diga o que não dá para saber. Não chute.',
   'Responda em português, tom contido, até 12 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
+  // 28/10 (conjunto de perguntas): "Origem: gasto_periodo (Mercado, mês_passado)" ia para o grupo
+  'Não escreva nomes de ferramentas, de campos ou de parâmetros (gasto_periodo, explicacao, este_mes…): escreva como gente.',
+  'Use o mínimo de ferramentas: quase sempre uma basta. Só chame outra se a pergunta precisar dela.',
   ...(grupos.has('propostas') ? [
     'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',
     'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
@@ -72,7 +75,7 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
   // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
   'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
-  '"explicacao" e a conta das mensagens são fonte de dados, não texto para copiar. Comece pela "Origem" e pelo que ainda sai: é o que explica a sobra.',
+  '"explicacao" e a conta das mensagens são fonte de dados, não texto para copiar. Ao explicar a sobra ou o vermelho, comece pelo dinheiro que há nas contas e pelo que ainda sai.',
   'Para dizer o que puxou o ritmo do dia a dia, use consultar com o_que dia_a_dia, periodo este_mes, agrupar loja e limite 3 (o aluguel e as contas fixas não entram no ritmo).',
   'Na explicação: até 12 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
   ...(grupos.has('mensagens') ? MENSAGENS : []),
@@ -223,9 +226,12 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         // decisão (simular) e listas que o modelo resumia mal (faturas, contas): sempre o texto montado
         if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(montadoDeTodas(), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
+          // 28/10: o texto barrado fica registrado — sem ele não dá para saber por que a análise não passou
+          if (texto) problemas.push(`trava barrou: ${texto}`);
           // sem dado de ferramenta para montar: não arrisca texto com número não conferido
-          // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta
-          if (texto && ultima?.nome === 'situacao_mes' && Array.isArray(ultima.dados?.explicacao)) {
+          // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta;
+          // 28/10: só quando a situação é a única ferramenta (com a compra junto, a resposta da compra sumia)
+          if (texto && ultima?.nome === 'situacao_mes' && respondidas.size === 1 && Array.isArray(ultima.dados?.explicacao)) {
             const frases = ultima.dados.explicacao.map((l: string) => `👉 ${l}`).join('\n');
             return fimCom(comLink(frases, d.painelUrl, ultima.dados.link), { modelo, trava: true });
           }
@@ -272,7 +278,9 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         }
         ferramentas.push({ nome: t.nome, args, ok: res.ok });
         if (res.ok) {
-          resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados };
+          resultados.push(res.dados);
+          // 28/10: a calculadora é dado para a trava, não resposta — virando a "última" o montado saía "Não sei responder isso"
+          if (t.nome !== 'calcular') ultima = { nome: t.nome, dados: res.dados };
           if (!d.locais?.[t.nome]) { respondidas.delete(t.nome); respondidas.set(t.nome, res.dados); }
         }
         if (res.ok && res.dados?.proposta) proposta = res.dados.proposta;

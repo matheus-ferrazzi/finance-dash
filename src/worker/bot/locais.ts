@@ -1,5 +1,5 @@
 // E2: ferramentas que rodam no worker — busca (guarda as refs L1..L5) e propostas (não gravam: só criam a proposta).
-import { traduzCategoria } from '../../lib/format';
+import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
 import { CATEGORIAS_GASTO } from '../../lib/grupos';
 import { explicacaoDaConta, type ContaDoMes } from '../../lib/previsao';
 import type { PgAcoes } from './acoes';
@@ -14,6 +14,18 @@ const REFS_VALEM = 5 * 60_000;
 /** AAAA-MM-DD que existe no calendário (31/09 não). */
 const dataReal = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
 const somaDias =(dt: string, n: number) => new Date(Date.parse(`${dt}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+
+const semAcento = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
+/**
+ * 27/10: a categoria vem pelo nome do painel (a lista inteira ia na descrição das ferramentas, 40% dos tokens de
+ * cada pergunta). Aceita o código interno ou o nome em português, sem acento nem caixa; desconhecida = null.
+ */
+export function resolverCategoria(nome: string, validas: readonly string[]): string | null {
+  const n = semAcento(String(nome ?? ''));
+  return validas.find((c) => semAcento(c) === n || semAcento(traduzCategoria(c)) === n) ?? null;
+}
+const recusaCategoria = (validas: readonly string[]): Res =>
+  ({ ok: false, dados: { erro: `categoria desconhecida; use uma destas: ${validas.map(traduzCategoria).join(', ')}` } });
 
 export function criarLocais(d: {
   pessoa: string; hoje: string; refs: Map<string, { quando: number; itens: Map<string, Item> }>;
@@ -49,13 +61,15 @@ export function criarLocais(d: {
       const busca = d.refs.get(d.pessoa);
       const it = busca && Date.now() - busca.quando <= REFS_VALEM ? busca.itens.get(String(a.ref)) : undefined;
       if (!it) return { ok: false, dados: { erro: 'ref desconhecida ou velha: use buscar_lancamentos agora e uma ref L1..L5 que ela devolveu' } };
+      const cat = resolverCategoria(a.categoria, CATEGORIAS_PAINEL);
+      if (!cat) return recusaCategoria(CATEGORIAS_PAINEL);
       const escopo = a.escopo as 'este' | 'pessoa' | 'texto';
-      const corpo: any = { idTransacao: it.id, escopo, categoria: a.categoria, ...(a.texto ? { texto: a.texto } : {}) };
+      const corpo: any = { idTransacao: it.id, escopo, categoria: cat, ...(a.texto ? { texto: a.texto } : {}) };
       const pr = await d.painelPost('/api/bot/previa', corpo);
       if (!pr.ok) return pr;
-      const categoria = traduzCategoria(a.categoria);
+      const categoria = traduzCategoria(cat);
       if (!(pr.dados.afetados > 0)) return { ok: false, dados: { erro: `já está em ${categoria}: nada muda` } };
-      const params = { tipo: TIPO[escopo], idTransacao: it.id, categoria: a.categoria, ...(pr.dados.texto ? { texto: pr.dados.texto } : {}) };
+      const params = { tipo: TIPO[escopo], idTransacao: it.id, categoria: cat, ...(pr.dados.texto ? { texto: pr.dados.texto } : {}) };
       await d.acoes.criar(d.pessoa, 'categoria', params, `${pr.dados.afetados} lançamento(s) → ${categoria}`);
       return { ok: true, dados: { proposta: textoPropostaCategoria({ afetados: pr.dados.afetados, categoria, escopo, nome: pr.dados.nome, item: it }) } };
     },
@@ -68,13 +82,14 @@ export function criarLocais(d: {
       if (!(valor >= 0.01 && valor <= 10000)) return { ok: false, dados: { erro: 'valor entre 0,01 e 10.000' } };
       if (!descricao || descricao.length > 80) return { ok: false, dados: { erro: 'descrição de 1 a 80 letras' } };
       // só categoria de gasto: fatura/salário/investimento em dinheiro contariam o mesmo dinheiro duas vezes
-      if (!CATEGORIAS_GASTO.includes(a.categoria)) return { ok: false, dados: { erro: 'categoria de gasto da lista' } };
+      const cat = resolverCategoria(a.categoria, CATEGORIAS_GASTO);
+      if (!cat) return recusaCategoria(CATEGORIAS_GASTO);
       if (!dataReal(data)) return { ok: false, dados: { erro: 'essa data não existe (use AAAA-MM-DD)' } };
       if (data > d.hoje) return { ok: false, dados: { erro: 'data futura não vale: só de hoje até 30 dias atrás' } };
       if (data < somaDias(d.hoje, -30)) return { ok: false, dados: { erro: 'mais de 30 dias atrás não vale: só de hoje até 30 dias atrás' } };
       if (pessoa !== 'Matheus' && pessoa !== 'Ariane') return { ok: false, dados: { erro: 'pessoa: Matheus ou Ariane' } };
-      const categoria = traduzCategoria(a.categoria);
-      await d.acoes.criar(d.pessoa, 'dinheiro', { data, valor, descricao, categoria: a.categoria, responsavel: pessoa }, `💵 ${descricao} ${brl(valor)}`);
+      const categoria = traduzCategoria(cat);
+      await d.acoes.criar(d.pessoa, 'dinheiro', { data, valor, descricao, categoria: cat, responsavel: pessoa }, `💵 ${descricao} ${brl(valor)}`);
       return { ok: true, dados: { proposta: textoPropostaDinheiro({ valor, descricao, categoria, data, pessoa }) } };
     },
     async propor_conta_avulsa(a) {

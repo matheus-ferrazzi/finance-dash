@@ -1,11 +1,12 @@
 // E1: as 8 ferramentas do bot — schema para o Groq, rota do painel, texto montado (trava) e gráfico.
-import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
-import { CATEGORIAS_GASTO, GRUPOS_VALIDOS } from '../../lib/grupos';
+import { GRUPOS_VALIDOS } from '../../lib/grupos';
 import { barraTrilha } from '../notificacoes/textosD';
 import { graficoBarras } from '../notificacoes/graficos';
 
 const PERIODO = { type: 'string', description: 'hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM' };
 const PESSOA = { type: 'string', enum: ['casal', 'Matheus', 'Ariane', 'eu'], description: 'padrão casal; "eu" = quem perguntou' };
+// 27/10: a categoria pelo nome do painel, sem a lista (era 40% dos tokens de cada pergunta); o código resolve e recusa listando as válidas
+const CATEGORIA = { type: 'string', description: 'nome da categoria como aparece no painel (ex.: Mercado)' };
 const GRUPO = { type: 'string', enum: GRUPOS_VALIDOS, description: 'grupo de gasto do painel (opcional)' };
 const fn = (name: string, description: string, properties: object = {}, required: string[] = []) =>
   ({ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } });
@@ -22,14 +23,14 @@ export const TOOLS = [
   fn('investimentos', 'Carteira de investimentos do casal: total, por tipo e os maiores ativos.'),
   fn('buscar_lancamentos', 'Acha até 5 gastos para corrigir (por texto, como o nome de quem recebeu, e/ou valor). Devolve refs L1..L5.',
     { texto: { type: 'string' }, valor: { type: 'number' }, periodo: PERIODO, pessoa: PESSOA }),
-  fn('propor_categoria', `Propõe mudar a categoria de um gasto achado por buscar_lancamentos (NÃO grava: o casal confirma). Categorias: ${CATEGORIAS_PAINEL.map((c) => `${c} = ${traduzCategoria(c)}`).join('; ')}.`,
-    { ref: { type: 'string', description: 'L1..L5 da busca' }, categoria: { type: 'string', enum: CATEGORIAS_PAINEL },
+  fn('propor_categoria', 'Propõe mudar a categoria de um gasto achado por buscar_lancamentos (NÃO grava: o casal confirma).',
+    { ref: { type: 'string', description: 'L1..L5 da busca' }, categoria: CATEGORIA,
       escopo: { type: 'string', enum: ['este', 'pessoa', 'texto'], description: 'este = só este gasto; pessoa = todos da mesma pessoa/empresa; texto = todos com o mesmo texto' },
       texto: { type: 'string', description: 'só com escopo texto (opcional)' } }, ['ref', 'categoria', 'escopo']),
   fn('propor_conta_avulsa', 'Propõe pôr uma conta avulsa nas contas do mês (NÃO grava: o casal confirma).',
     { nome: { type: 'string' }, valor: { type: 'number' }, mes: { type: 'string', description: 'AAAA-MM; padrão este mês' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['nome', 'valor']),
   fn('propor_gasto_dinheiro', 'Propõe lançar um gasto pago em dinheiro vivo (NÃO grava: o casal confirma). Não entra no saldo do banco.',
-    { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: { type: 'string', enum: CATEGORIAS_GASTO },
+    { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: CATEGORIA,
       data: { type: 'string', description: 'AAAA-MM-DD; padrão hoje' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['valor', 'descricao', 'categoria']),
   // 22/10: para explicar uma mensagem do Zeca que a pessoa não citou
   fn('mensagens_do_zeca', 'As mensagens que você (Zeca) mandou no grupo nas últimas 36 horas: diário, semanal, mensal, meta, alertas e gasto grande, com o horário. Use para explicar uma delas.'),

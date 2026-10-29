@@ -392,6 +392,21 @@ describe('fase 3: conferente no agente', () => {
     expect(r.problemas).toEqual(['a', 'b']);
     expect(r.erro).toBeNull();
   });
+  // 29/10 (rodada 8): com a trava aceitando conta, o diário passou nela e o conferente reprovou; a segura do conferente
+  // só montava ferramenta do painel e respondia "Não consegui responder agora"
+  it('explicar o diário reprovado duas vezes: a segura traz a conta do diário', async () => {
+    const explicacao = ['Origem: nas contas tem R$ 137,60.', 'Sobra para o dia a dia até o fim do mês: R$ 137,60.'];
+    const c = conferirRoteiro([{ aprovado: false, problemas: ['a'] }, { aprovado: false, problemas: ['b'] }]);
+    const g = groqRoteiro([
+      { content: null, toolCalls: [{ id: 'c1', nome: 'mensagens_do_zeca', args: '{}' }], modelo: 'm1' },
+      texto('👉 Sobram R$ 137,60 no mês.'), texto('👉 Ficam R$ 137,60 no mês.'),
+    ]);
+    const r = await responder({ ...p, texto: 'me explica o diário de hoje' },
+      { ...deps(g, c), locais: { mensagens_do_zeca: async () => ({ ok: true, dados: { mensagens: [{ tipo: 'diario', quando: '28/10 08:00', texto: 'd', explicacao }] } }) } });
+    expect(r.erro).toBeNull();
+    expect(r.conferencia).toBe('segura');
+    expect(r.texto).toBe(`${SEGURA}\n${explicacao.map((l) => `👉 ${l}`).join('\n')}`);
+  });
   it('reescrita que fura a trava: segura, sem segunda conferência', async () => {
     const c = conferirRoteiro([{ aprovado: false, problemas: ['a'] }]);
     const r = await responder(p, deps(groqRoteiro([chamaGasto, texto('🛒 R$ 400,00.'), texto('🛒 R$ 999,99.')]), c));

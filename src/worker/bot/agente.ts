@@ -231,6 +231,31 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
     problemas.push(...v.problemas);
     return v;
   };
+  // o que vai quando a análise não passa: sem dado de ferramenta para montar, não arrisca texto com número não conferido.
+  // 29/10: um só para a trava e o conferente (a segura do conferente só montava ferramenta do painel, e o diário
+  //        reprovado virava "Não consegui responder"). `comTexto`: o modelo escreveu algo (a explicação substitui)
+  const montadoSeguro = (comTexto: boolean): string | null => {
+    // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta;
+    // 28/10: só quando a situação é a única ferramenta (com a compra junto, a resposta da compra sumia)
+    //        com a consulta do dia a dia junto (o que puxou o ritmo), ela vem depois das frases
+    const sit = respondidas.get('situacao_mes');
+    if (comTexto && sit && Array.isArray(sit.explicacao) && [...respondidas.keys()].every((k) => k === 'situacao_mes' || k === 'consultar')) {
+      const frases = sit.explicacao.map((l: string) => `👉 ${l}`).join('\n');
+      const cons = respondidas.get('consultar');
+      const extra = cons ? `\n\n${formatar('consultar', cons, d.painelUrl).replace(/\n\n👉 \S+$/, '')}` : '';
+      return comLink(comPuxou(frases) + extra, d.painelUrl, sit.link);
+    }
+    // 28/10: explicando uma mensagem sem citar, a conta guardada da mais recente que tem conta (não a lista)
+    //        — só se a pergunta fala do diário ou a mais recente é ela ("o último alerta" não vira a conta do diário)
+    const ms: any[] = ultima?.nome === 'mensagens_do_zeca' ? ultima.dados?.mensagens ?? [] : [];
+    const comConta = /di[áa]rio/i.test(p.texto) || Array.isArray(ms.at(-1)?.explicacao)
+      ? [...ms].reverse().find((m) => Array.isArray(m.explicacao)) : null;
+    if (comTexto && comConta) return comPuxou(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n'));
+    if (ultima) return montadoDeTodas();
+    // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
+    if (conta) return comPuxou(conta.explicacao.map((l) => `👉 ${l}`).join('\n'));
+    return null;
+  };
   let modelo: string | null = null;
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
@@ -249,26 +274,8 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         if (!texto || !respostaConfere(texto, resultados)) {
           // 28/10: o texto barrado fica registrado — sem ele não dá para saber por que a análise não passou
           if (texto) problemas.push(`trava barrou: ${texto}`);
-          // sem dado de ferramenta para montar: não arrisca texto com número não conferido
-          // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta;
-          // 28/10: só quando a situação é a única ferramenta (com a compra junto, a resposta da compra sumia)
-          //        com a consulta do dia a dia junto (o que puxou o ritmo), ela vem depois das frases
-          const sit = respondidas.get('situacao_mes');
-          if (texto && sit && Array.isArray(sit.explicacao) && [...respondidas.keys()].every((k) => k === 'situacao_mes' || k === 'consultar')) {
-            const frases = sit.explicacao.map((l: string) => `👉 ${l}`).join('\n');
-            const cons = respondidas.get('consultar');
-            const extra = cons ? `\n\n${formatar('consultar', cons, d.painelUrl).replace(/\n\n👉 \S+$/, '')}` : '';
-            return fimCom(comLink(comPuxou(frases) + extra, d.painelUrl, sit.link), { modelo, trava: true });
-          }
-          // 28/10: explicando uma mensagem sem citar, a conta guardada da mais recente que tem conta (não a lista)
-          //        — só se a pergunta fala do diário ou a mais recente é ela ("o último alerta" não vira a conta do diário)
-          const ms: any[] = ultima?.nome === 'mensagens_do_zeca' ? ultima.dados?.mensagens ?? [] : [];
-          const comConta = /di[áa]rio/i.test(p.texto) || Array.isArray(ms.at(-1)?.explicacao)
-            ? [...ms].reverse().find((m) => Array.isArray(m.explicacao)) : null;
-          if (texto && comConta) return fimCom(comPuxou(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n')), { modelo, trava: true });
-          if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
-          // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
-          if (conta) return fimCom(comPuxou(conta.explicacao.map((l) => `👉 ${l}`).join('\n')), { modelo, trava: !!texto });
+          const seguro = montadoSeguro(!!texto);
+          if (seguro) return fimCom(seguro, { modelo, trava: !!texto });
           if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
           return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
@@ -290,7 +297,7 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
           return fimCom(comLinkFinal(polir(texto2)), { modelo });
         }
         conferencia = 'segura';
-        const corpo = respondidas.size ? montadoDeTodas() : conta ? conta.explicacao.map((l) => `👉 ${l}`).join('\n') : null;
+        const corpo = montadoSeguro(true);
         if (!corpo) return fimCom(FALHA, { modelo, erro: 'conferente reprovou e sem dado montável', svg: null });
         return fimCom(`${SEGURA}\n${corpo}`, { modelo });
       }

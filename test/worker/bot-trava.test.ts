@@ -128,3 +128,32 @@ it('trava: hífen não separável, sinal de menos e travessão contam como menos
 it('trava: "déficit de R$ 89,16" vale para o valor negativo', () => {
   expect(respostaConfere('📉 Pela média, um déficit de R$ 89,16.', [{ fechaCom: -89.16 }])).toBe(true);
 });
+
+// 29/10 (rodada 7): conta certa feita de cabeça barrava a análise inteira ("os três somam R$ X", "R$ Y a mais que
+// setembro", "quase 87 %"). A trava agora refaz a conta: soma do que a resposta cita, diferença de dois dados, % entre citados
+describe('trava: conta conferida', () => {
+  const lojas = [{ linhas: [{ chave: 'LOJA A', valor: 300.1 }, { chave: 'LOJA B', valor: 200.2 }, { chave: 'LOJA C', valor: 100.3 }], total: 2000 }];
+  it('soma de valores citados na resposta', () => {
+    expect(respostaConfere('👉 A (R$ 300,10), B (R$ 200,20) e C (R$ 100,30) somam R$ 600,60.', lojas)).toBe(true);
+    expect(respostaConfere('👉 A (R$ 300,10), B (R$ 200,20) e C (R$ 100,30) somam R$ 600,70.', lojas)).toBe(false);
+  });
+  it('soma só vale com as parcelas citadas', () => {
+    expect(respostaConfere('👉 As três lojas somam R$ 600,60.', lojas)).toBe(false);
+  });
+  it('diferença entre dois dados', () => {
+    const cmp = [{ totalA: 1000.5, totalB: 800.25 }];
+    expect(respostaConfere('📈 R$ 1.000,50 em outubro, R$ 200,25 a mais que setembro.', cmp)).toBe(true);
+    expect(respostaConfere('📈 R$ 1.000,50 em outubro, R$ 200,35 a mais que setembro.', cmp)).toBe(false);
+  });
+  it('% entre valores citados, na precisão escrita', () => {
+    expect(respostaConfere('👉 R$ 600,60 das três lojas são 30 % de R$ 2.000,00.', lojas)).toBe(false); // 600,60 sem as parcelas
+    expect(respostaConfere('👉 A (R$ 300,10) é quase 15 % de R$ 2.000,00.', lojas)).toBe(true);
+    expect(respostaConfere('👉 A (R$ 300,10) é 15,0 % de R$ 2.000,00.', lojas)).toBe(true);
+    expect(respostaConfere('👉 A (R$ 300,10) é 15,5 % de R$ 2.000,00.', lojas)).toBe(false);
+    expect(respostaConfere('👉 A (R$ 300,10) é 25 % de R$ 2.000,00.', lojas)).toBe(false);
+    expect(respostaConfere('👉 A (R$ 300,10), B (R$ 200,20) e C (R$ 100,30) somam R$ 600,60, 30 % de R$ 2.000,00.', lojas)).toBe(true);
+  });
+  it('o rótulo dos dois "fecha em" continua valendo', () => {
+    expect(respostaConfere('👉 Se o ritmo continuar, fecha em -R$ 72,86.', [{ fechaCom: -72.86, nessePassoFechaEm: -818.33 }])).toBe(false);
+  });
+});

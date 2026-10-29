@@ -9,7 +9,7 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 describe('ferramentas', () => {
   it('8 ferramentas, schema com nome e parâmetros', () => {
     expect(NOMES_FERRAMENTAS).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'trilha', 'simular_compra', 'investimentos',
-      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro', 'mensagens_do_zeca']);
+      'buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro', 'consultar', 'calcular', 'mensagens_do_zeca']);
     expect(TOOLS.every((t: any) => t.type === 'function' && t.function.parameters)).toBe(true);
   });
   it('caminho: query com período, pessoa ("eu" vira quem perguntou) e grupo; nome desconhecido → null', () => {
@@ -179,5 +179,32 @@ describe('mensagens_do_zeca (texto montado)', () => {
       '', '👉 https://p/',
     ].join('\n'));
     expect(formatar('mensagens_do_zeca', { mensagens: [] }, 'https://p')).toContain('Nenhuma mensagem');
+  });
+});
+
+// 28/10 (fase 3): consulta livre e calculadora
+describe('consultar e calcular', () => {
+  it('estão nas ferramentas, no grupo base; calcular roda no worker', async () => {
+    expect(NOMES_FERRAMENTAS).toEqual(expect.arrayContaining(['consultar', 'calcular']));
+    const { GRUPO_DA } = await import('../../src/worker/bot/escolha');
+    expect([GRUPO_DA.consultar, GRUPO_DA.calcular]).toEqual(['base', 'base']);
+    const { LOCAIS } = await import('../../src/worker/bot/ferramentas');
+    expect(LOCAIS).toContain('calcular');
+    expect(LOCAIS).not.toContain('consultar');
+  });
+  it('caminhoDa da consulta: "eu" vira quem perguntou, vazios ficam de fora', () => {
+    expect(caminhoDa('consultar', { o_que: 'gastos', periodo: 'mes_passado', pessoa: 'eu', texto: 'padaria', grupo: '' }, 'Ariane'))
+      .toBe('/api/bot/consulta?o_que=gastos&periodo=mes_passado&pessoa=Ariane&texto=padaria');
+    expect(caminhoDa('consultar', { o_que: 'dia_a_dia', periodo: 'este_mes', agrupar: 'loja', limite: 3 }, 'Matheus'))
+      .toBe('/api/bot/consulta?o_que=dia_a_dia&periodo=este_mes&pessoa=casal&agrupar=loja&limite=3');
+  });
+  it('texto montado: regra, total e até 6 linhas', () => {
+    const d = { regra: 'gasto: débito, crédito e dinheiro vivo; sem dívida antiga', periodo: 'set/26', pessoa: 'casal', total: 450, totalDinheiro: 50, qtd: 3,
+      linhas: Array.from({ length: 8 }, (_, i) => ({ chave: `LOJA ${i}`, valor: 10 + i, qtd: 1 })), cortadas: 0, link: '/gastos' };
+    const t = formatar('consultar', d, 'https://p');
+    expect(t).toContain((450).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+    expect(t).toContain('sem dívida antiga');
+    expect(t.split('\n').filter((x) => x.startsWith('•'))).toHaveLength(6);
+    expect(t).toContain('👉 https://p/gastos');
   });
 });

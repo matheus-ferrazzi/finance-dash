@@ -1,4 +1,5 @@
-import { q, qw, writerPool } from './db';
+import { q, qComLimite, qw, writerPool } from './db';
+import type { LinhaBruta, PedidoConsulta } from './consulta';
 import { currentMonthSP, escaparLike, normalizeMes, mesLongo, mesLabel, currentDateSP } from './format';
 import {
   agruparDividas, chaveDivida, ehAtraso, marcaDinheiro, mesesComContaNegativa, MESES_ATRASO, MESES_SOBRA, METAS_PADRAO, sqlDividaOuAtraso,
@@ -1945,6 +1946,43 @@ export async function getBuscaBot(resp: Resp, inicio: string, fimExcl: string, t
     [inicio, fimExcl, texto === null ? null : escaparLike(texto), valor, ...r.p],
   );
   return rows.map((x) => ({ id: x.id, data: x.data, valor: Math.round(Number(x.valor) * 100) / 100, descricao: nomeSemDocumento(x.descricao) ?? '(sem descrição)', pessoa: x.pessoa, categoria: x.categoria }));
+}
+
+/**
+ * 28/10 (Zeca fase 3): as linhas da consulta livre, já no recorte de cada `o_que` — gastos = o mesmo do gasto_periodo
+ * (despesa sem dívida antiga, mais o dinheiro vivo); dia_a_dia = o do ritmo (getGastoLivrePorDia); entradas = receita.
+ * O resto dos filtros e o agrupamento ficam em consulta.ts (sem banco). Tempo limite de 5 s.
+ */
+export async function getLinhasConsulta(p: PedidoConsulta): Promise<LinhaBruta[]> {
+  const r = rf(p.pessoa, 4);
+  const texto = p.texto === null ? null : escaparLike(p.texto);
+  const filtro = `data_lancamento >= $1::date AND data_lancamento < $2::date
+       AND ($3::text IS NULL OR descricao ILIKE '%' || $3 || '%')${r.sql}`;
+  const where: Record<PedidoConsulta['oQue'], string> = {
+    gastos: `classe = 'despesa' AND NOT ${DIVIDA_ANTIGA}`,
+    dia_a_dia: `classe = 'despesa' AND forma_pagamento = 'Débito' AND NOT (categoria = ANY(ARRAY[${CASA_CATS.map((c) => `'${c}'`).join(',')}]::text[]))
+       AND NOT (categoria = ANY(ARRAY[${FIXO_DEBITO_CATS.map((c) => `'${c.replace(/'/g, "''")}'`).join(',')}]::text[])) AND ${SEM_ESPELHO}`,
+    entradas: `classe = 'receita'`,
+    lancamentos: `classe IN ('despesa', 'receita')`,
+  };
+  const banco = await qComLimite<any>(
+    `SELECT to_char(data_lancamento,'YYYY-MM-DD') AS data, (CASE WHEN classe = 'receita' AND $${r.p.length + 4}::boolean THEN -valor ELSE valor END)::float8 AS valor,
+            COALESCE(descricao,'') AS descricao, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
+            COALESCE(responsavel,'') AS pessoa, COALESCE(forma_pagamento,'') AS forma
+     FROM financas_lancamentos WHERE ${where[p.oQue]} AND ${filtro}`,
+    [p.periodo.inicio, p.periodo.fimExcl, texto, ...r.p, p.oQue === 'lancamentos'],
+  );
+  const din = p.oQue !== 'gastos' ? [] : await qComLimite<any>(
+    `SELECT to_char(data,'YYYY-MM-DD') AS data, valor::float8 AS valor, descricao, categoria, responsavel AS pessoa
+     FROM financas_gastos_dinheiro WHERE data >= $1::date AND data < $2::date
+       AND ($3::text IS NULL OR descricao ILIKE '%' || $3 || '%')${r.sql}`,
+    [p.periodo.inicio, p.periodo.fimExcl, texto, ...r.p],
+  );
+  const r2 = (x: number) => Math.round(Number(x) * 100) / 100;
+  return [
+    ...banco.map((x) => ({ data: x.data, valor: r2(x.valor), descricao: x.descricao, categoria: x.categoria ?? '', pessoa: x.pessoa, forma: x.forma })),
+    ...din.map((x) => ({ data: x.data, valor: r2(x.valor), descricao: x.descricao ?? '', categoria: x.categoria ?? '', pessoa: x.pessoa ?? '', forma: 'Dinheiro' })),
+  ];
 }
 
 // ==================== AVISOS DO DIÁRIO (Onda 2, auditoria 13/10) ====================

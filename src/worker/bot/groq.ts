@@ -40,16 +40,20 @@ export class ClienteGroq {
     private readonly dormir: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
   ) {}
 
+  /** 28/10 (fase 3): a lista do GROQ_MODELOS (o conferente usa o outro modelo) */
+  get modelosDaLista(): string[] { return [...this.modelos]; }
+
   private semChave(s: string) { return this.apiKey ? s.split(this.apiKey).join('***') : s; }
 
   /** 27/10: `tokens` = usage.total_tokens da chamada (0 se o Groq não mandar), para medir o gasto por pergunta */
-  async chat(msgs: MsgChat[], tools: object[], opcoes: { aoEsperar?: (ms: number) => void } = {}): Promise<{ content: string | null; toolCalls: { id: string; nome: string; args: string }[]; modelo: string; tokens: number }> {
+  async chat(msgs: MsgChat[], tools: object[], opcoes: { aoEsperar?: (ms: number) => void; modelos?: string[] } = {}): Promise<{ content: string | null; toolCalls: { id: string; nome: string; args: string }[]; modelo: string; tokens: number }> {
     let ultimo = 'sem modelo';
     const limites: { diario: boolean; ms: number }[] = [];
     let esperado = 0; // soma das esperas desta chamada: os 10 min valem para o total, não para cada uma
-    for (let i = 0, esperas = 0; i < this.modelos.length; ) {
-      const modelo = this.modelos[i];
-      const proximo = () => { i++; esperas = 0; };
+    const modelos = opcoes.modelos ?? this.modelos;
+    for (let i = 0, esperas = 0, refeita = false; i < modelos.length; ) {
+      const modelo = modelos[i];
+      const proximo = () => { i++; esperas = 0; refeita = false; };
       let r;
       try {
         r = await this.fetcher(`${this.base}/chat/completions`, {
@@ -82,6 +86,13 @@ export class ClienteGroq {
         esperado += ms;
         opcoes.aoEsperar?.(ms);
         await this.dormir(ms);
+        continue;
+      }
+      // 29/10: o Groq recusa a chamada de ferramenta fora do schema (faltou campo obrigatório); é sorteio do modelo,
+      // então tenta mais uma vez o mesmo e depois o próximo, em vez de responder "não consegui"
+      if (r.status === 400 && j?.error?.code === 'tool_use_failed') {
+        if (!refeita) { refeita = true; continue; }
+        proximo();
         continue;
       }
       const deModelo = /model/i.test(`${j?.error?.code ?? ''} ${j?.error?.message ?? ''}`);

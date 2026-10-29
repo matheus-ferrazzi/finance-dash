@@ -33,16 +33,30 @@ export const TOOLS = [
     { valor: { type: 'number' }, descricao: { type: 'string', description: 'o que foi (ex.: feira, pastel)' }, categoria: CATEGORIA,
       data: { type: 'string', description: 'AAAA-MM-DD; padrão hoje' }, pessoa: { type: 'string', enum: ['Matheus', 'Ariane', 'eu'] } }, ['valor', 'descricao', 'categoria']),
   // 22/10: para explicar uma mensagem do Zeca que a pessoa não citou
+  // 28/10 (fase 3): consulta livre (o código aplica as regras do painel; o modelo não escreve SQL) e calculadora
+  fn('consultar', 'Consulta livre com as regras do painel. o_que: gastos (como a tela Gastos), dia_a_dia (o do ritmo: sem casa nem contas fixas), entradas, lancamentos. Devolve total, regra e até 20 linhas.',
+    { o_que: { type: 'string', enum: ['gastos', 'dia_a_dia', 'entradas', 'lancamentos'] },
+      periodo: { type: 'string', description: 'hoje, esta_semana, semana_passada, este_mes, mes_passado, AAAA-MM ou AAAA-MM-DD..AAAA-MM-DD' },
+      // grupo sem enum (cabe no teto de tamanho); a rota recusa listando os válidos
+      pessoa: PESSOA, grupo: { type: 'string', description: 'grupo do painel (ex.: Comer fora)' }, categoria: CATEGORIA,
+      texto: { type: 'string', description: 'parte do nome da loja' },
+      forma: { type: 'string', enum: ['debito', 'credito', 'dinheiro'] }, min: { type: 'number' }, max: { type: 'number' },
+      agrupar: { type: 'string', enum: ['nada', 'categoria', 'grupo', 'loja', 'dia', 'semana', 'mes', 'pessoa'] },
+      ordem: { type: 'string', enum: ['valor', 'data'] }, limite: { type: 'integer', minimum: 1, maximum: 20 } }, ['o_que', 'periodo']),
+  fn('calcular', 'Calculadora para toda conta (soma, diferença, divisão, quantas vezes, %). Números com ponto; + - * / ( ) e %.',
+    { expressao: { type: 'string', description: 'ex.: (1086.14 - 950) / 950 * 100' } }, ['expressao']),
   fn('mensagens_do_zeca', 'As mensagens que você (Zeca) mandou no grupo nas últimas 36 horas: diário, semanal, mensal, meta, alertas e gasto grande, com o horário. Use para explicar uma delas.'),
 ];
 // E2/E3: rodam no worker (busca guarda refs; propostas não gravam); 22/10: mensagens do Zeca
-export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro', 'mensagens_do_zeca'];
+export const LOCAIS = ['buscar_lancamentos', 'propor_categoria', 'propor_conta_avulsa', 'propor_gasto_dinheiro', 'mensagens_do_zeca', 'calcular'];
 export const NOMES_FERRAMENTAS = TOOLS.map((t) => t.function.name);
 
 const ROTA: Record<string, string> = {
   situacao_mes: 'situacao', gasto_periodo: 'gasto', maiores_gastos: 'maiores', comparar: 'comparar',
   faturas: 'faturas', contas_do_mes: 'contas', trilha: 'trilha', simular_compra: 'simular', investimentos: 'investimentos',
+  consultar: 'consulta',
 };
+const CAMPOS_CONSULTA = ['o_que', 'periodo', 'pessoa', 'grupo', 'categoria', 'texto', 'forma', 'min', 'max', 'agrupar', 'ordem', 'limite'];
 
 export function caminhoDa(nome: string, args: Record<string, unknown>, quem: string): string | null {
   const rota = ROTA[nome];
@@ -53,6 +67,12 @@ export function caminhoDa(nome: string, args: Record<string, unknown>, quem: str
     q.set('periodo', String(args.periodo ?? '')); pessoa(); if (args.grupo) q.set('grupo', String(args.grupo));
   } else if (nome === 'comparar') {
     q.set('periodo', String(args.periodo_a ?? '')); q.set('periodo_b', String(args.periodo_b ?? '')); pessoa();
+  } else if (nome === 'consultar') {
+    for (const c of CAMPOS_CONSULTA) {
+      if (c === 'pessoa') { pessoa(); continue; }
+      const v = args[c];
+      if (v !== undefined && v !== null && v !== '') q.set(c, String(v));
+    }
   } else if (nome === 'simular_compra') {
     q.set('valor_total', String(args.valor_total ?? '')); q.set('parcelas', String(args.parcelas ?? 1));
   }
@@ -83,6 +103,13 @@ export function formatar(nome: string, d: any, painel: string): string {
       if (!d.itens.length) l.push('💤 Nenhum gasto no período.');
       // 20/10 (L2): a dívida antiga não entra no total; o Zeca diz quanto foi, à parte
       if (d.divida > 0) l.push(`🏦 Fora do total: ${brl(d.divida)} pagando dívida antiga`);
+      break;
+    case 'consultar':
+      l.push(`📊 ${d.periodo} (${quem(d.pessoa)}): *${brl(d.total)}*${d.totalDinheiro > 0 ? ` (💵 ${brl(d.totalDinheiro)})` : ''}`);
+      l.push(`ℹ️ ${d.regra}`);
+      for (const i of (d.linhas ?? []).slice(0, 6)) l.push(`• ${i.chave}: ${brl(i.valor)}`);
+      if ((d.linhas?.length ?? 0) > 6 || d.cortadas > 0) l.push(`… e mais ${(d.linhas.length - Math.min(6, d.linhas.length)) + (d.cortadas ?? 0)}`);
+      if (!d.qtd) l.push('💤 Nada encontrado no período.');
       break;
     case 'maiores_gastos':
       l.push(`🧾 Maiores gastos em ${d.periodo} (${quem(d.pessoa)}${d.grupo ? `, ${d.grupo}` : ''})`);

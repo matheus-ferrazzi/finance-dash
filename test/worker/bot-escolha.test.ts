@@ -19,8 +19,9 @@ it('compra e patrimônio', () => {
   expect(g('cabe uma tv de 3000 em 10x?')).toContain('compra');
   expect(g('quanto tem investido?')).toContain('patrimonio');
 });
-it('ferramentasDe: base tem as 6 da base, na ordem de TOOLS', () =>
-  expect(ferramentasDe(new Set(['base'])).map((t: any) => t.function.name)).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes']));
+// 28/10 (fase 3): consultar e calcular entram na base
+it('ferramentasDe: base tem as 8 da base, na ordem de TOOLS', () =>
+  expect(ferramentasDe(new Set(['base'])).map((t: any) => t.function.name)).toEqual(['situacao_mes', 'gasto_periodo', 'maiores_gastos', 'comparar', 'faturas', 'contas_do_mes', 'consultar', 'calcular']));
 it('pôr ou adicionar uma conta: propostas (no histórico, "põe X reais nas contas" dependia da refeita)', () => {
   expect(g('põe 50 reais de dentista nas contas')).toContain('propostas');
   expect(g('adiciona o IPVA nas contas do mês')).toContain('propostas');

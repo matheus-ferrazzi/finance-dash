@@ -120,3 +120,26 @@ describe('fase 2: espera da cota', () => {
     expect(m.bot.enviados.has('R1')).toBe(true);
   });
 });
+
+// 28/10 (fase 3): o veredito do conferente fica registrado
+describe('fase 3: registro do conferente', () => {
+  it('conferencia, problemas e tokens do conferente chegam ao registro', async () => {
+    const gravados: any[] = [];
+    let n = 0;
+    const bot = criarBot({
+      cfg, painel: async () => ({ ok: true, dados: { periodo: 'out/26', pessoa: 'casal', grupo: null, total: 10, itens: [], link: '/gastos' } }),
+      painelPost: async () => ({ ok: true, dados: {} }),
+      acoes: { criar: async () => 1, pendente: async () => null, confirmar: async () => false, cancelar: async () => {}, ultimaFeita: async () => null },
+      groq: { chat: async () => (n++ === 0
+        ? { content: null, toolCalls: [{ id: 'c', nome: 'gasto_periodo', args: '{"periodo":"este_mes"}' }], modelo: 'm1', tokens: 1 }
+        : { content: '💰 R$ 10,00 no mês.', toolCalls: [], modelo: 'm1', tokens: 1 }) },
+      conferir: async () => ({ aprovado: true, problemas: [], tokens: 77, esperaMs: 0, modelo: 'm2' }), modelos: ['m1', 'm2'],
+      registro: { gravar: async (l: any) => { gravados.push(l); }, contexto: async () => [] },
+      wa: { enviarComId: async () => 'R1', enviarImagemComId: async () => 'I1' },
+      renderizar: async () => Buffer.from('png'), hoje: () => '2026-10-11', painelUrl: 'https://p', log: () => {},
+    });
+    bot.receber(ev('bot quanto gastei?'));
+    await espera();
+    expect(gravados[0]).toMatchObject({ conferencia: 'aprovada', problemas: [], tokensConferente: 77 });
+  });
+});

@@ -9,6 +9,7 @@ import { criarLocais } from './bot/locais';
 import { lerMembros } from './bot/entrada';
 import { ClienteGroq } from './bot/groq';
 import { PgRegistroBot } from './bot/registro';
+import { conferir } from './bot/conferente';
 import { criarServidor } from './bot/servidor';
 import { currentDateSP } from '../lib/format';
 import { CanalTelegram } from './notificacoes/canal';
@@ -110,9 +111,10 @@ async function main() {
     });
     const r = await responder({ id: 'cli', pessoa: 'Matheus', texto: args.pergunta!, ...(args.citada ? { citada: args.citada } : {}) },
       { groq, painel: painelGet, contexto: [], hoje: currentDateSP(), painelUrl: notif.painelUrl, locais,
-        aoEsperar: (ms) => console.log(`aguardando cota do Groq: ${Math.round(ms / 1000)} s`) });
+        aoEsperar: (ms) => console.log(`aguardando cota do Groq: ${Math.round(ms / 1000)} s`), conferir, modelos: groq.modelosDaLista });
     console.log(r.texto);
-    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => f.nome), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens, esperaMs: r.esperaMs }));
+    console.log(JSON.stringify({ ferramentas: r.ferramentas.map((f) => `${f.nome}${JSON.stringify(f.args)}`), modelo: r.modelo, trava: r.trava, semFerramenta: r.semFerramenta, erro: r.erro, tokens: r.tokens, esperaMs: r.esperaMs,
+      conferencia: r.conferencia, problemas: r.problemas, tokensConferente: r.tokensConferente }));
     await pool.end();
     return;
   }
@@ -160,7 +162,7 @@ async function main() {
       const bot = criarBot({
         cfg: { grupo: process.env.WA_GRUPO!, membros: lerMembros(process.env.BOT_MEMBROS!), botJids: process.env.BOT_JIDS!.split('|').filter(Boolean) },
         groq: groq!, registro: registroBot, wa, renderizar: (s) => paraPng(s), hoje: currentDateSP, painelUrl: notif.painelUrl, log,
-        painel: painelGet,
+        painel: painelGet, conferir, modelos: groq!.modelosDaLista,
         // E2: escrita só pelas rotas /api/bot/{previa,executar,desfazer}, depois do "sim" lido pelo código
         painelPost: async (c, corpo) => {
           const r = await fetch(`${painelBase}${c}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...cabInterno }, body: JSON.stringify(corpo), signal: AbortSignal.timeout(30000) });

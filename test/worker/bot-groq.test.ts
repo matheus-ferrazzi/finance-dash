@@ -26,6 +26,23 @@ describe('ClienteGroq', () => {
     expect((await g.chat([], [])).modelo).toBe('novo');
     expect(vistos).toEqual(['velho', 'novo']);
   });
+  it('29/10: 400 tool_use_failed (chamada fora do schema): tenta mais uma vez o mesmo modelo, depois o próximo', async () => {
+    const falha = resp(400, { error: { code: 'tool_use_failed', message: 'parameters for tool consultar did not match schema' } });
+    const vistos: string[] = [];
+    const g = new ClienteGroq('K', ['m1', 'm2'], (async (_u: string, i: any) => {
+      vistos.push(JSON.parse(i.body).model);
+      return vistos.length === 1 ? falha : resp(200, okChat);
+    }) as any);
+    expect((await g.chat([], [])).modelo).toBe('m1');
+    expect(vistos).toEqual(['m1', 'm1']);
+    const vistos2: string[] = [];
+    const g2 = new ClienteGroq('K', ['m1', 'm2'], (async (_u: string, i: any) => {
+      const m = JSON.parse(i.body).model; vistos2.push(m);
+      return m === 'm1' ? falha : resp(200, okChat);
+    }) as any);
+    expect((await g2.chat([], [])).modelo).toBe('m2');
+    expect(vistos2).toEqual(['m1', 'm1', 'm2']);
+  });
   it('todos falham: erro sem a chave', async () => {
     const g = new ClienteGroq('K-FALSA', ['a'], (async () => resp(503, { error: { message: 'K-FALSA indisponível' } })) as any);
     await expect(g.chat([], [])).rejects.toThrow(/Groq/);
@@ -103,5 +120,16 @@ describe('ClienteGroq: 429', () => {
     }) as any, undefined, async (ms) => { dormidas.push(ms); });
     expect((await g2.chat([], [])).modelo).toBe('m2');
     expect(dormidas).toEqual([]);
+  });
+});
+
+// 28/10 (fase 3): o conferente escolhe o modelo da chamada
+describe('ClienteGroq: modelos da chamada', () => {
+  it('opcoes.modelos troca a lista do construtor', async () => {
+    const vistos: string[] = [];
+    const g = new ClienteGroq('K', ['m1', 'm2'], (async (_u: string, i: any) => { vistos.push(JSON.parse(i.body).model); return resp(200, okChat); }) as any);
+    expect((await g.chat([], [], { modelos: ['m2'] })).modelo).toBe('m2');
+    expect(vistos).toEqual(['m2']);
+    expect(g.modelosDaLista).toEqual(['m1', 'm2']);
   });
 });

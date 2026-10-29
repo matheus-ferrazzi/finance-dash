@@ -4,11 +4,30 @@ import { escolherGrupos, ferramentasDe, TODOS_GRUPOS, type Grupo } from './escol
 import { LimiteGroq, type ClienteGroq, type MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
+import { INDISPONIVEL, modeloConferente, type conferir } from './conferente';
 
 export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alguns minutos.';
 export const SEM_FERRAMENTA = '🤷 Ainda não sei responder isso. Anotei a pergunta.';
 export const SO_TEXTO = '🎧 Por enquanto só leio texto.';
-const RODADAS = 4;
+// 28/10 (fase 3): reprovou duas vezes no conferente — vai o que o código montou, com esta linha antes
+export const SEGURA = 'Não consegui conferir a análise; os números que tenho com certeza são estes:';
+/** 28/10 (fase 3): resposta com número (R$, %, valor com centavos) passa pelo conferente */
+const TEM_NUMERO = /R\$|%|\d,\d{2}/;
+/** 28/10 (fase 3): perguntas do vermelho e do ritmo (ou sobre o diário) levam o que puxou o ritmo, buscado pelo código */
+const PUXOU = /vermelh|ritmo|negativ|estour|di[áa]rio/i;
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+async function puxouRitmo(d: { painel: (c: string) => Promise<{ ok: boolean; dados: any }> }): Promise<any | null> {
+  try {
+    const r = await d.painel('/api/bot/consulta?o_que=dia_a_dia&periodo=este_mes&agrupar=loja&limite=3');
+    return r.ok && Array.isArray(r.dados?.linhas) && r.dados.linhas.length ? r.dados : null;
+  } catch { return null; }
+}
+function linhaPuxou(c: { linhas: { chave: string; valor: number }[] }): string {
+  const ns = c.linhas.map((l) => `${l.chave} (${brl(l.valor)})`);
+  return `👉 O que mais puxou o ritmo do dia a dia este mês: ${ns.length > 1 ? `${ns.slice(0, -1).join(', ')} e ${ns.at(-1)}` : ns[0]}.`;
+}
+// 28/10 (fase 3): uma análise usa situação, consulta, cálculo e resposta
+const RODADAS = 6;
 const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes', 'investimentos']);
 
 /** O link do painel é do sistema, não do modelo: tira o que ele escreveu (relativo ou completo) e põe o certo no fim. */
@@ -26,6 +45,10 @@ export interface RespostaBot {
   tokens: number;
   /** 28/10 (fase 2): ms esperando a cota do Groq, somados em todas as rodadas */
   esperaMs: number;
+  /** 28/10 (fase 3): veredito do conferente (null = não conferida: sem número, texto do sistema ou sem conferente) */
+  conferencia: 'aprovada' | 'reescrita' | 'segura' | null;
+  problemas: string[];
+  tokensConferente: number;
 }
 
 // 28/10 (fase 2): textos da espera e do limite do Groq (tom contido, sem termo técnico)
@@ -48,10 +71,15 @@ export function textoLimite(e: LimiteGroq): string {
 const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Você é o Zeca, o assistente financeiro do casal Matheus e Ariane, num grupo de WhatsApp. Chamam você por "Zeca" ou "bot".',
   `Quem perguntou: ${quem}. Hoje é ${hoje} (horário de São Paulo).`,
-  'Use SEMPRE as ferramentas para qualquer número. Nunca some, subtraia, calcule percentual ou invente valor: copie os valores das ferramentas.',
-  'Se nenhuma ferramenta serve, diga que ainda não sabe responder. Não chute.',
-  'Responda em português, tom contido, até 8 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
+  // 28/10 (fase 3): analista — consulta, calcula e explica o porquê; o código confere cada número
+  'Responda como quem olhou os números: diga o que aconteceu e por quê, com os valores. Não defina termos.',
+  'Todo número vem de uma ferramenta. Para dados use situacao_mes, gasto_periodo, maiores_gastos, comparar ou consultar; para qualquer conta (soma, diferença, divisão, quantas vezes, %) use calcular. Nunca faça conta de cabeça.',
+  'Se os dados não respondem, diga o que não dá para saber. Não chute.',
+  'Responda em português, tom contido, até 12 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
+  // 28/10 (conjunto de perguntas): "Origem: gasto_periodo (Mercado, mês_passado)" ia para o grupo
+  'Não escreva nomes de ferramentas, de campos ou de parâmetros (gasto_periodo, explicacao, este_mes…): escreva como gente.',
+  'Use o mínimo de ferramentas: quase sempre uma basta. Só chame outra se a pergunta precisar dela.',
   ...(grupos.has('propostas') ? [
     'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',
     'Você nunca grava nada: as propostas só valem quando a pessoa responder "sim". Não diga que algo foi feito.',
@@ -60,9 +88,11 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Períodos: hoje, esta_semana, semana_passada, este_mes, mes_passado ou AAAA-MM. "Eu" = quem perguntou.',
   // 27/10: explicava o que cada termo significa ("Hoje dá pra gastar: o valor que pode ser usado…"); agora mostra a conta
   'Ao explicar uma mensagem ou um número (dá pra gastar, ritmo, nesse passo, pela média, mês no vermelho): NÃO repita a mensagem e NÃO diga o que o termo significa. Mostre a conta que chegou no número, com os valores.',
-  'A conta vem pronta no campo "explicacao" (uma frase por número, na ordem da conta): copie as frases com os valores, sem refazer conta. Comece sempre pela "Origem" e pelo que ainda sai: é o que explica a sobra.',
-  'Ritmo acima do que dá pra gastar: chame também maiores_gastos com este_mes e cite os 2 ou 3 maiores, para dizer o que puxou o ritmo.',
-  'Na explicação: até 10 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
+  '"explicacao" e a conta das mensagens são fonte de dados, não texto para copiar. Ao explicar a sobra ou o vermelho, comece pelo dinheiro que há nas contas e pelo que ainda sai.',
+  // 28/10 (conjunto de perguntas): o modelo não buscava o que puxou o ritmo; o código busca e manda junto com a pergunta
+  'Se a pergunta vier com "O que mais puxou o ritmo", diga no porquê quais gastos foram, com os valores; não consulte isso de novo. O aluguel e as contas fixas não entram no ritmo.',
+  'Não refaça as contas da "explicacao" (elas já vêm prontas) nem invente conta nova: se precisar de uma, use calcular. Valores sempre no formato R$ 1.234,56.',
+  'Na explicação: até 12 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
   ...(grupos.has('mensagens') ? MENSAGENS : []),
 ].join('\n');
 
@@ -108,6 +138,9 @@ type DepsResponder = {
   locais?: Record<string, (args: any) => Promise<{ ok: boolean; dados: any }>>;
   /** 28/10 (fase 2): cada espera da cota do Groq (o bot avisa o grupo) */
   aoEsperar?: (ms: number) => void;
+  /** 28/10 (fase 3): o conferente e a lista de modelos (ele usa outro que não o que escreveu); sem ele, não confere */
+  conferir?: typeof conferir;
+  modelos?: string[];
 };
 
 /**
@@ -136,7 +169,7 @@ export async function responder(p: Pergunta, d: DepsResponder): Promise<Resposta
   const r = await tentar(p, d, grupos);
   if (!r.semFerramenta || grupos.size >= TODOS_GRUPOS.size) return r;
   const r2 = await tentar(p, d, TODOS_GRUPOS);
-  return { ...r2, tokens: r.tokens + r2.tokens, esperaMs: r.esperaMs + r2.esperaMs, ms: Date.now() - t0 };
+  return { ...r2, tokens: r.tokens + r2.tokens, esperaMs: r.esperaMs + r2.esperaMs, tokensConferente: r.tokensConferente + r2.tokensConferente, ms: Date.now() - t0 };
 }
 
 async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>): Promise<RespostaBot> {
@@ -147,6 +180,10 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
   // agora, só ela vale — número da mensagem misturado com o de agora é de outra hora
   const resultados: unknown[] = !p.citada ? [] : conta?.agora ? [{ explicacao: conta.explicacao, ...conta.fechas }]
     : [{ citada: p.citada, pct: pctsDoTexto(p.citada), ...(conta ? { explicacao: conta.explicacao, ...conta.fechas } : {}) }];
+  // 28/10 (fase 3): no vermelho, o que puxou o ritmo vem do código (o modelo não buscava nem com regra obrigatória)
+  const puxou = PUXOU.test(`${p.texto} ${p.citada ?? ''}`) ? await puxouRitmo(d) : null;
+  if (puxou) resultados.push(puxou);
+  const comPuxou = (t: string) => (puxou ? `${t}\n${linhaPuxou(puxou)}` : t);
   let ultima: { nome: string; dados: any } | null = null;
   // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
   // mostra todas, com um link só (o da última), em vez de só a última
@@ -166,15 +203,59 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
     ...d.contexto.flatMap((c): MsgChat[] => [
       { role: 'user', content: c.pessoa ? `${c.pessoa}: ${c.pergunta}` : c.pergunta }, { role: 'assistant', content: c.resposta },
     ]),
-    { role: 'user', content: comCitada(p, conta) },
+    { role: 'user', content: comCitada(p, conta) + (puxou
+      ? `\n\nO que mais puxou o ritmo do dia a dia este mês (já consultado; use no porquê):\n${puxou.linhas.map((l: any) => `- ${l.chave}: ${brl(l.valor)}`).join('\n')}`
+      : '') },
   ];
   let tokens = 0;
   let esperaMs = 0;
   const aoEsperar = (ms: number) => { esperaMs += ms; d.aoEsperar?.(ms); };
+  let conferencia: RespostaBot['conferencia'] = null;
+  const problemas: string[] = [];
+  let tokensConferente = 0;
   const fimCom = (texto: string, extra: Partial<RespostaBot> = {}): RespostaBot => ({
     texto, svg: ultima ? graficoDaFerramenta(ultima.nome, ultima.dados) : null, ferramentas, modelo: null,
-    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, esperaMs, ...extra,
+    trava: false, semFerramenta: false, erro: null, ms: Date.now() - t0, tokens, esperaMs, conferencia, problemas, tokensConferente, ...extra,
   });
+  // 28/10 (fase 3): o link é o da última ferramenta do painel que tem um (a calculadora não tem)
+  const linkFinal = () => [...respondidas.values()].reverse().find((x) => x?.link)?.link ?? ultima?.dados?.link;
+  // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia;
+  // WhatsApp usa *um* asterisco para negrito; o modelo às vezes escreve o **Markdown**
+  const polir = (t: string) => {
+    const zap = t.replace(/\*\*([^*\n]+)\*\*/g, '*$1*');
+    return /^\s*bot(?![\p{L}\p{N}])/iu.test(zap) ? `🤖 ${zap}` : zap;
+  };
+  const conferirTexto = async (t: string) => {
+    const v = await d.conferir!({ groq: d.groq, modelos: modeloConferente(modelo, d.modelos ?? []), pergunta: comCitada(p, conta), dados: resultados, resposta: t, aoEsperar });
+    tokensConferente += v.tokens;
+    problemas.push(...v.problemas);
+    return v;
+  };
+  // o que vai quando a análise não passa: sem dado de ferramenta para montar, não arrisca texto com número não conferido.
+  // 29/10: um só para a trava e o conferente (a segura do conferente só montava ferramenta do painel, e o diário
+  //        reprovado virava "Não consegui responder"). `comTexto`: o modelo escreveu algo (a explicação substitui)
+  const montadoSeguro = (comTexto: boolean): string | null => {
+    // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta;
+    // 28/10: só quando a situação é a única ferramenta (com a compra junto, a resposta da compra sumia)
+    //        com a consulta do dia a dia junto (o que puxou o ritmo), ela vem depois das frases
+    const sit = respondidas.get('situacao_mes');
+    if (comTexto && sit && Array.isArray(sit.explicacao) && [...respondidas.keys()].every((k) => k === 'situacao_mes' || k === 'consultar')) {
+      const frases = sit.explicacao.map((l: string) => `👉 ${l}`).join('\n');
+      const cons = respondidas.get('consultar');
+      const extra = cons ? `\n\n${formatar('consultar', cons, d.painelUrl).replace(/\n\n👉 \S+$/, '')}` : '';
+      return comLink(comPuxou(frases) + extra, d.painelUrl, sit.link);
+    }
+    // 28/10: explicando uma mensagem sem citar, a conta guardada da mais recente que tem conta (não a lista)
+    //        — só se a pergunta fala do diário ou a mais recente é ela ("o último alerta" não vira a conta do diário)
+    const ms: any[] = ultima?.nome === 'mensagens_do_zeca' ? ultima.dados?.mensagens ?? [] : [];
+    const comConta = /di[áa]rio/i.test(p.texto) || Array.isArray(ms.at(-1)?.explicacao)
+      ? [...ms].reverse().find((m) => Array.isArray(m.explicacao)) : null;
+    if (comTexto && comConta) return comPuxou(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n'));
+    if (ultima) return montadoDeTodas();
+    // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
+    if (conta) return comPuxou(conta.explicacao.map((l) => `👉 ${l}`).join('\n'));
+    return null;
+  };
   let modelo: string | null = null;
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
@@ -191,23 +272,34 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         // decisão (simular) e listas que o modelo resumia mal (faturas, contas): sempre o texto montado
         if (ultima && SEMPRE_MONTADO.has(ultima.nome)) return fimCom(montadoDeTodas(), { modelo });
         if (!texto || !respostaConfere(texto, resultados)) {
-          // sem dado de ferramenta para montar: não arrisca texto com número não conferido
-          // 27/10: a explicação barrada (um "fecha em" no lugar do outro…) vira as frases prontas da conta
-          if (texto && ultima?.nome === 'situacao_mes' && Array.isArray(ultima.dados?.explicacao)) {
-            const frases = ultima.dados.explicacao.map((l: string) => `👉 ${l}`).join('\n');
-            return fimCom(comLink(frases, d.painelUrl, ultima.dados.link), { modelo, trava: true });
-          }
-          if (ultima) return fimCom(montadoDeTodas(), { modelo, trava: !!texto });
-          // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
-          if (conta) return fimCom(conta.explicacao.map((l) => `👉 ${l}`).join('\n'), { modelo, trava: !!texto });
+          // 28/10: o texto barrado fica registrado — sem ele não dá para saber por que a análise não passou
+          if (texto) problemas.push(`trava barrou: ${texto}`);
+          const seguro = montadoSeguro(!!texto);
+          if (seguro) return fimCom(seguro, { modelo, trava: !!texto });
           if (recusa) return fimCom(`⚠️ Não deu para lançar: ${recusa.replace(/\.+$/, '')}.`, { modelo });
           return fimCom(FALHA, { modelo, erro: 'resposta sem dados conferidos' });
         }
-        // a resposta nunca pode parecer um chamado ("bot ...") ou o bot se responderia
-        // WhatsApp usa *um* asterisco para negrito; o modelo às vezes escreve o **Markdown**
-        const zap = texto.replace(/\*\*([^*\n]+)\*\*/g, '*$1*');
-        const final = /^\s*bot(?![\p{L}\p{N}])/iu.test(zap) ? `🤖 ${zap}` : zap;
-        return fimCom(ultima ? comLink(final, d.painelUrl, ultima.dados?.link) : final, { modelo });
+        const comLinkFinal = (t: string) => (ultima ? comLink(t, d.painelUrl, linkFinal()) : t);
+        // 28/10 (fase 3): resposta do modelo com número passa pelo conferente; uma reescrita; depois a segura
+        if (!d.conferir || !TEM_NUMERO.test(texto)) return fimCom(comLinkFinal(polir(texto)), { modelo });
+        const v1 = await conferirTexto(texto);
+        if (v1.aprovado) { conferencia = 'aprovada'; return fimCom(comLinkFinal(polir(texto)), { modelo }); }
+        // sem conferente não há problema para corrigir: reescrever só gastaria cota na hora em que ela falta
+        const semConferente = v1.problemas.every((x) => x === INDISPONIVEL);
+        msgs.push({ role: 'assistant', content: texto });
+        msgs.push({ role: 'user', content: `O conferente apontou estes problemas:\n${problemas.map((x) => `- ${x}`).join('\n')}\nReescreva a resposta corrigindo só isso, com os mesmos dados.` });
+        // as mesmas ferramentas (o histórico tem chamadas delas); se ele chamar uma em vez de reescrever, vai a segura
+        const r2 = semConferente ? null : await d.groq.chat(msgs, ferramentasDe(grupos), { aoEsperar });
+        tokens += r2?.tokens ?? 0;
+        const texto2 = (r2?.content ?? '').trim();
+        if (texto2 && respostaConfere(texto2, resultados) && (await conferirTexto(texto2)).aprovado) {
+          conferencia = 'reescrita';
+          return fimCom(comLinkFinal(polir(texto2)), { modelo });
+        }
+        conferencia = 'segura';
+        const corpo = montadoSeguro(true);
+        if (!corpo) return fimCom(FALHA, { modelo, erro: 'conferente reprovou e sem dado montável', svg: null });
+        return fimCom(`${SEGURA}\n${corpo}`, { modelo });
       }
       msgs.push({ role: 'assistant', content: r.content, tool_calls: r.toolCalls.map((t) => ({ id: t.id, type: 'function', function: { name: t.nome, arguments: t.args } })) });
       for (const t of r.toolCalls) {
@@ -224,7 +316,9 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
         }
         ferramentas.push({ nome: t.nome, args, ok: res.ok });
         if (res.ok) {
-          resultados.push(res.dados); ultima = { nome: t.nome, dados: res.dados };
+          resultados.push(res.dados);
+          // 28/10: a calculadora é dado para a trava, não resposta — virando a "última" o montado saía "Não sei responder isso"
+          if (t.nome !== 'calcular') ultima = { nome: t.nome, dados: res.dados };
           if (!d.locais?.[t.nome]) { respondidas.delete(t.nome); respondidas.set(t.nome, res.dados); }
         }
         if (res.ok && res.dados?.proposta) proposta = res.dados.proposta;

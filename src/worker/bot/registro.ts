@@ -7,6 +7,8 @@ export interface LinhaBot {
   tokens: number;
   /** 28/10: ms esperando a cota do Groq (migração 017) */
   esperaMs: number;
+  /** 28/10: veredito do conferente (migração 018) */
+  conferencia: 'aprovada' | 'reescrita' | 'segura' | null; problemas: string[]; tokensConferente: number;
 }
 
 /** financas_bot_conversas: perguntas que passaram pelo filtro (grupo, membro, chamado) e o que o bot respondeu. */
@@ -15,9 +17,9 @@ export class PgRegistroBot {
 
   async gravar(l: LinhaBot): Promise<void> {
     await this.pool.query(
-      `INSERT INTO financas_bot_conversas (pessoa, pergunta, ferramentas, resposta, modelo, ms, trava, sem_ferramenta, erro, tokens, espera_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [l.pessoa, l.pergunta, JSON.stringify(l.ferramentas), l.resposta, l.modelo, l.ms, l.trava, l.semFerramenta, l.erro, l.tokens, l.esperaMs],
+      `INSERT INTO financas_bot_conversas (pessoa, pergunta, ferramentas, resposta, modelo, ms, trava, sem_ferramenta, erro, tokens, espera_ms, conferencia, problemas, tokens_conferente)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [l.pessoa, l.pergunta, JSON.stringify(l.ferramentas), l.resposta, l.modelo, l.ms, l.trava, l.semFerramenta, l.erro, l.tokens, l.esperaMs, l.conferencia, JSON.stringify(l.problemas ?? []), l.tokensConferente ?? 0],
     );
   }
 

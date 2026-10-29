@@ -1,16 +1,19 @@
 // E1: trava de número. Todo R$ e todo % da resposta do modelo têm que ter vindo de uma ferramenta, com o sinal certo.
 
 // número em R$: com milhar (1.234,56) ou sem (12345 / 1234,56); não corta um número maior pela metade
-const RE_BRL = /(-?)\s*R\$\s*(-?)\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)(?!\d|[.,]\d)/g;
+// 28/10: o modelo às vezes separa o milhar com espaço ("R$ 12 524,69"); lido inteiro, não como R$ 12
+const RE_BRL = /(-?)\s*R\$\s*(-?)\s*(\d{1,3}(?:[.   ]\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)(?!\d|[.,]\d)/g;
 const RE_PCT = /(-?\d+(?:,\d+)?)\s*%/g;
 // só estes campos das ferramentas são dinheiro (parcelas, fase, dias e pct não valem como R$)
 const DINHEIRO = new Set([
   'valor', 'total', 'totalA', 'totalB', 'a', 'b', 'diferenca', 'parcela', 'valorTotal', 'aprofunda',
   'dapraGastarHoje', 'ritmoAtualDia', 'ritmoSeguroDia', 'fechaCom', 'aplicado', 'meta', 'totalFalta',
   'dinheiro', 'totalDinheiro', 'totalDinheiroA', 'totalDinheiroB', 'nessePassoFechaEm', 'pelaMediaFechaEm',
+  // 28/10: a dívida antiga paga no período (gasto_periodo), mostrada à parte
+  'divida',
 ]);
 // valor negativo dito sem sinal só vale se a linha disser que é negativo
-const DIZ_NEGATIVO = /-|negativ|vermelho|falt/i;
+const DIZ_NEGATIVO = /-|negativ|vermelho|falt|d[ée]ficit/i;
 
 // 28/10: valor em reais escrito sem R$ ("*1.086,14*") também é dinheiro — com centavos, para não pegar dias,
 // parcelas e milhares soltos ("1.234 compras"); o que já foi lido como R$ ou % sai antes
@@ -20,7 +23,7 @@ const apaga = (t: string, re: RegExp) => t.replace(re, (x) => ' '.repeat(x.lengt
 function achados(texto: string, soltos = false): { v: number; linha: string }[] {
   const out: { v: number; linha: string }[] = [];
   const ler = (m: RegExpMatchArray, numero: string, negativo: boolean) => {
-    const n = Number(numero.replace(/\./g, '').replace(',', '.'));
+    const n = Number(numero.replace(/[.   ]/g, '').replace(',', '.'));
     const ini = texto.lastIndexOf('\n', m.index ?? 0) + 1;
     const fim = texto.indexOf('\n', m.index ?? 0);
     out.push({ v: negativo ? -n : n, linha: texto.slice(ini, fim < 0 ? undefined : fim) });
@@ -37,7 +40,9 @@ export function valoresBRL(texto: string): number[] {
 /** Dinheiro e percentuais que as ferramentas devolveram (inclui R$ escritos dentro de textos, como o próximo passo). */
 function coletar(x: unknown, chave: string | null, din: number[], pct: number[]): void {
   if (typeof x === 'number' && Number.isFinite(x)) {
-    if (chave === 'pct') pct.push(x);
+    // 28/10 (fase 3): o resultado da calculadora vale como dinheiro e como porcentagem
+    if (chave === 'resultado') { pct.push(x); din.push(x); }
+    else if (chave === 'pct') pct.push(x);
     else if (chave !== null && DINHEIRO.has(chave)) din.push(x);
   } else if (typeof x === 'string') din.push(...valoresBRL(x));
   else if (Array.isArray(x)) x.forEach((v) => coletar(v, chave, din, pct));
@@ -73,20 +78,55 @@ function coletarRotulos(x: unknown, out: Rotulo[]): void {
 /** 27/10: valor cru no formato americano ("2371.8"): sem R$ a trava não o via, e no grupo sai sem formato */
 const CRU = /(?<![\d.,])\d+\.\d{1,2}(?!\d|[.,]\d)/;
 
+// 28/10: o modelo às vezes escreve o menos como hífen não separável, sinal de menos ou travessão
+const MENOS = /[‐‑‒–−]/g;
+
+/**
+ * 29/10 (rodada 7): conta feita de cabeça, refeita aqui. Vale a soma de 2 a 4 valores que a própria resposta cita
+ * (e que conferiram), a diferença entre dois dados das ferramentas e o % entre dois valores citados; o resto segue barrado.
+ */
+const SOMA_MAX = 4;
+const exato = (a: number, b: number) => Math.abs(a - b) < 0.006;
+function ehSoma(v: number, citados: number[], de = 0, partes = 0, soma = 0): boolean {
+  if (partes >= 2 && exato(soma, v)) return true;
+  if (partes === SOMA_MAX || soma > v + 0.006) return false;
+  for (let i = de; i < citados.length; i++) if (ehSoma(v, citados, i + 1, partes + 1, soma + citados[i])) return true;
+  return false;
+}
+const ehDiferenca = (v: number, dados: number[]) => dados.some((a, i) => dados.some((b, j) => i !== j && a > b && exato(a - b, v)));
+const unicos = (xs: number[]) => [...new Set(xs.map((x) => Math.round(Math.abs(x) * 100) / 100))].filter((x) => x > 0);
+
 export function respostaConfere(resposta: string, resultados: unknown[]): boolean {
+  resposta = resposta.replace(MENOS, '-');
   if (CRU.test(resposta)) return false;
   const din: number[] = [], pct: number[] = [], rotulos: Rotulo[] = [];
   coletar(resultados, null, din, pct);
   coletarRotulos(resultados, rotulos);
-  const reais = achados(resposta, true).every(({ v, linha }) => din.some((n) => perto(Math.abs(v), Math.abs(n))
+  const doDado = ({ v, linha }: { v: number; linha: string }) => din.some((n) => perto(Math.abs(v), Math.abs(n))
     && (n === 0 || Math.sign(v) === Math.sign(n) || (n < 0 && v > 0 && DIZ_NEGATIVO.test(linha))))
     && (() => {
       const deles = rotulos.filter((r) => r.v !== 0 && perto(Math.abs(v), Math.abs(r.v)));
       return !deles.length || deles.some((r) => r.re.test(linha));
-    })());
+    })();
+  const lidos = achados(resposta, true);
+  const citados = unicos(lidos.filter(doDado).map((a) => a.v));
+  const dados = unicos(din);
+  const contas: number[] = [];
+  const reais = lidos.every((a) => {
+    if (doDado(a)) return true;
+    const v = Math.abs(a.v);
+    const ok = ehSoma(v, citados) || ehDiferenca(v, dados);
+    if (ok) contas.push(v);
+    return ok;
+  });
+  // % de cabeça: a ÷ b entre valores citados (ou somas conferidas), na precisão em que foi escrito
+  const base = unicos([...citados, ...contas]);
   const pcts = [...resposta.matchAll(RE_PCT)].every((m) => {
     const v = Math.abs(Number(m[1].replace(',', '.')));
-    return pct.some((n) => Math.abs(v - Math.abs(n)) < 0.06 || Math.abs(v - Math.round(Math.abs(n))) < 0.006);
+    if (pct.some((n) => Math.abs(v - Math.abs(n)) < 0.06 || Math.abs(v - Math.round(Math.abs(n))) < 0.006)) return true;
+    const casas = m[1].split(',')[1]?.length ?? 0;
+    const tol = 0.5 / 10 ** casas + 1e-9;
+    return base.some((a) => base.some((b) => a < b && Math.abs((a / b) * 100 - v) <= tol));
   });
   return reais && pcts;
 }

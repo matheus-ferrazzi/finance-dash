@@ -22,6 +22,7 @@ describe.skipIf(!url)('registro do bot (integração)', () => {
     await pool.query(readFileSync('db/migrations/009_bot.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/016_bot_tokens.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/017_bot_espera.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/018_bot_conferente.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {
@@ -33,12 +34,17 @@ describe.skipIf(!url)('registro do bot (integração)', () => {
 
   it('grava, devolve contexto recente na ordem, conta falhas e limpa antigas', async () => {
     const reg = new PgRegistroBot(pool);
-    const base = { ferramentas: [], modelo: 'm', ms: 10, trava: false, semFerramenta: false, tokens: 0, esperaMs: 0 };
+    const base = { ferramentas: [], modelo: 'm', ms: 10, trava: false, semFerramenta: false, tokens: 0, esperaMs: 0, conferencia: null, problemas: [], tokensConferente: 0 };
     await reg.gravar({ ...base, pessoa: 'Matheus', pergunta: 'p1', resposta: 'r1', erro: null });
     await reg.gravar({ ...base, pessoa: 'Ariane', pergunta: 'p2', resposta: 'r2', erro: null });
     await reg.gravar({ ...base, pessoa: 'Ariane', pergunta: 'p3', resposta: null, erro: 'Groq fora', esperaMs: 1500 });
     // 28/10 (fase 2): a espera da cota fica registrada
     expect((await pool.query(`SELECT espera_ms FROM financas_bot_conversas WHERE pergunta = 'p3'`)).rows[0].espera_ms).toBe(1500);
+    // 28/10 (fase 3): o veredito do conferente
+    await reg.gravar({ ...base, pessoa: 'Matheus', pergunta: 'p4', resposta: 'r4', erro: null, conferencia: 'segura', problemas: ['rótulo trocado'], tokensConferente: 300 });
+    expect((await pool.query(`SELECT conferencia, problemas, tokens_conferente FROM financas_bot_conversas WHERE pergunta = 'p4'`)).rows[0])
+      .toEqual({ conferencia: 'segura', problemas: ['rótulo trocado'], tokens_conferente: 300 });
+    await pool.query(`DELETE FROM financas_bot_conversas WHERE pergunta = 'p4'`);
     // E1-M3: com quem perguntou
     expect(await reg.contexto(30, 3)).toEqual([{ pessoa: 'Matheus', pergunta: 'p1', resposta: 'r1' }, { pessoa: 'Ariane', pergunta: 'p2', resposta: 'r2' }]);
     expect(await reg.falhas24h()).toBe(1);

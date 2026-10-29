@@ -3,6 +3,7 @@ import { CATEGORIAS_PAINEL, traduzCategoria } from '../../lib/format';
 import { CATEGORIAS_GASTO } from '../../lib/grupos';
 import { explicacaoDaConta, type ContaDoMes } from '../../lib/previsao';
 import type { PgAcoes } from './acoes';
+import { calcular } from './calculo';
 import { textoLista, textoPropostaAvulsa, textoPropostaCategoria, textoPropostaDinheiro } from './acoesTextos';
 
 type Res = { ok: boolean; dados: any };
@@ -34,6 +35,8 @@ export function criarLocais(d: {
   mensagens?: () => Promise<{ tipo: string; quando: string; texto: string; conta?: ContaDoMes | null }[]>;
 }): Record<string, (args: any) => Promise<Res>> {
   return {
+    // 28/10 (fase 3): a calculadora roda no worker (sem painel)
+    async calcular(a) { return calcular(String(a?.expressao ?? '')); },
     async mensagens_do_zeca() {
       if (!d.mensagens) return { ok: false, dados: { erro: 'mensagens indisponíveis' } };
       // 27/10: só o diário tem conta guardada — vira a explicação em frases, com os números daquela hora (os dois

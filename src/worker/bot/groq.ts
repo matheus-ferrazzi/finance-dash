@@ -51,9 +51,9 @@ export class ClienteGroq {
     const limites: { diario: boolean; ms: number }[] = [];
     let esperado = 0; // soma das esperas desta chamada: os 10 min valem para o total, não para cada uma
     const modelos = opcoes.modelos ?? this.modelos;
-    for (let i = 0, esperas = 0; i < modelos.length; ) {
+    for (let i = 0, esperas = 0, refeita = false; i < modelos.length; ) {
       const modelo = modelos[i];
-      const proximo = () => { i++; esperas = 0; };
+      const proximo = () => { i++; esperas = 0; refeita = false; };
       let r;
       try {
         r = await this.fetcher(`${this.base}/chat/completions`, {
@@ -86,6 +86,13 @@ export class ClienteGroq {
         esperado += ms;
         opcoes.aoEsperar?.(ms);
         await this.dormir(ms);
+        continue;
+      }
+      // 29/10: o Groq recusa a chamada de ferramenta fora do schema (faltou campo obrigatório); é sorteio do modelo,
+      // então tenta mais uma vez o mesmo e depois o próximo, em vez de responder "não consegui"
+      if (r.status === 400 && j?.error?.code === 'tool_use_failed') {
+        if (!refeita) { refeita = true; continue; }
+        proximo();
         continue;
       }
       const deModelo = /model/i.test(`${j?.error?.code ?? ''} ${j?.error?.message ?? ''}`);

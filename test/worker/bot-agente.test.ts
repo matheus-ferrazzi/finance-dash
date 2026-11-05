@@ -358,6 +358,7 @@ describe('fase 3: analista', () => {
     expect(sistema).toContain('Não comece linha com emoji');
     expect(sistema).not.toContain('um emoji no começo de cada linha');
     expect(sistema).not.toContain('só um: 👉');
+    expect(sistema).toContain('deixe claro que são só esses dias de cada mês');
   });
 });
 

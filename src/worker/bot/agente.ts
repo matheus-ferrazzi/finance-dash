@@ -4,6 +4,7 @@ import { escolherGrupos, ferramentasDe, TODOS_GRUPOS, type Grupo } from './escol
 import { LimiteGroq, type ClienteGroq, type MsgChat } from './groq';
 import type { Pergunta } from './entrada';
 import { respostaConfere } from './trava';
+import { explicacaoCorrida, frasePuxou } from './corrido';
 import { INDISPONIVEL, modeloConferente, type conferir } from './conferente';
 
 export const FALHA = '⚠️ Não consegui responder agora. Tenta de novo em alguns minutos.';
@@ -22,10 +23,9 @@ async function puxouRitmo(d: { painel: (c: string) => Promise<{ ok: boolean; dad
     return r.ok && Array.isArray(r.dados?.linhas) && r.dados.linhas.length ? r.dados : null;
   } catch { return null; }
 }
-function linhaPuxou(c: { linhas: { chave: string; valor: number }[] }): string {
-  const ns = c.linhas.map((l) => `${l.chave} (${brl(l.valor)})`);
-  return `👉 O que mais puxou o ritmo do dia a dia este mês: ${ns.length > 1 ? `${ns.slice(0, -1).join(', ')} e ${ns.at(-1)}` : ns[0]}.`;
-}
+/** 05/11: "me explica o diário" (ou citando o diário: "explica isso") — a conta guardada responde sem o modelo */
+const EXPLICA = /\b(expli\w*|entend\w*|detalh\w*)\b/i;
+const PORQUE = /por ?qu[eê]|\bpq\b/i;
 // 28/10 (fase 3): uma análise usa situação, consulta, cálculo e resposta
 const RODADAS = 6;
 const SEMPRE_MONTADO = new Set(['simular_compra', 'faturas', 'contas_do_mes', 'investimentos']);
@@ -75,7 +75,9 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Responda como quem olhou os números: diga o que aconteceu e por quê, com os valores. Não defina termos.',
   'Todo número vem de uma ferramenta. Para dados use situacao_mes, gasto_periodo, maiores_gastos, comparar ou consultar; para qualquer conta (soma, diferença, divisão, quantas vezes, %) use calcular. Nunca faça conta de cabeça.',
   'Se os dados não respondem, diga o que não dá para saber. Não chute.',
-  'Responda em português, tom contido, até 12 linhas, um emoji no começo de cada linha, *negrito* do WhatsApp para o número principal.',
+  // 05/11: um emoji no começo de cada linha deixava a resposta com cara de relatório; agora texto corrido
+  'Escreva em português, tom contido, como uma pessoa escreveria no WhatsApp: frases curtas, em 1 a 3 parágrafos, até 10 linhas.',
+  'Não comece linha com emoji; no máximo um emoji na resposta toda (ou nenhum). Lista com "•" só para enumerar itens (lojas, categorias). *Negrito* do WhatsApp só no número principal.',
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
   // 28/10 (conjunto de perguntas): "Origem: gasto_periodo (Mercado, mês_passado)" ia para o grupo
   'Não escreva nomes de ferramentas, de campos ou de parâmetros (gasto_periodo, explicacao, este_mes…): escreva como gente.',
@@ -92,7 +94,7 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   // 28/10 (conjunto de perguntas): o modelo não buscava o que puxou o ritmo; o código busca e manda junto com a pergunta
   'Se a pergunta vier com "O que mais puxou o ritmo", diga no porquê quais gastos foram, com os valores; não consulte isso de novo. O aluguel e as contas fixas não entram no ritmo.',
   'Não refaça as contas da "explicacao" (elas já vêm prontas) nem invente conta nova: se precisar de uma, use calcular. Valores sempre no formato R$ 1.234,56.',
-  'Na explicação: até 12 linhas, sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
+  'Na explicação: sem explicar a saudação ("Bom dia!"). "out/26" é o mês (outubro de 2026), nunca um dia.',
   ...(grupos.has('mensagens') ? MENSAGENS : []),
 ].join('\n');
 
@@ -101,7 +103,7 @@ const MENSAGENS = [
   'Se a pergunta vier com uma "Mensagem citada", ela é uma mensagem sua. Se perguntarem de uma mensagem sua sem citar ("explica o diário", "o que foi aquele alerta?"), use mensagens_do_zeca.',
   'Mensagem citada: a conta vem junto com ela. Sem citar: use o "explicacao" da mensagem em mensagens_do_zeca (números da hora em que ela saiu); se ela não tiver "explicacao", use o de situacao_mes, tire TODOS os números dele (nenhum da mensagem) e diga na primeira linha que são os números de agora.',
   'A cor de cada linha é a bolinha que está nela na mensagem: nunca diga outra cor. Só se a pergunta afirmar algo que a mensagem não diz (ex.: "fecha no azul" quando a linha diz vermelho e o valor é negativo), a primeira linha da resposta corrige, direto: "Na verdade não fecha no azul: pela média fecha em -R$ X (🔴)."',
-  'Na explicação, o emoji do começo de cada linha é só um: 👉 (nada antes nem depois dele). As bolinhas 🟢🟡🔴 só aparecem no meio da frase, quando você cita a cor de uma linha da mensagem.',
+  'As bolinhas 🟢🟡🔴 só aparecem no meio da frase, quando você cita a cor de uma linha da mensagem.',
   'Outras linhas das suas mensagens (sem "conta"; explique com os números da mensagem):',
   '- Bolinhas: 🟢 bom, 🟡 atenção, 🔴 ruim; a primeira linha da mensagem é o assunto e o tom.',
   '- "Atenção · Fora do padrão": um gasto bem maior do que costuma ser naquele lugar.',
@@ -159,6 +161,15 @@ async function contaDaCitada(citada: string, d: DepsResponder): Promise<ContaCit
   } catch { return null; }
 }
 
+/** 05/11: a conta do diário mais recente que a guardou (null: sem mensagens ou sem diário com conta) */
+async function diarioGuardado(d: DepsResponder): Promise<{ explicacao: string[]; quando: string | null } | null> {
+  try {
+    const ms: any[] = (await d.locais?.mensagens_do_zeca?.({}))?.dados?.mensagens ?? [];
+    const m = [...ms].reverse().find((x) => x.tipo === 'diario' && Array.isArray(x.explicacao));
+    return m ? { explicacao: m.explicacao, quando: typeof m.quando === 'string' ? m.quando : null } : null;
+  } catch { return null; }
+}
+
 /**
  * 27/10 (fase 1): o conjunto reduzido de ferramentas (escolha.ts) pode errar — "aquele pix do fulano é mercado" não
  * tem palavra de correção. Sem nenhuma ferramenta usada, refaz uma vez com todas; nunca uma terceira.
@@ -183,7 +194,8 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
   // 28/10 (fase 3): no vermelho, o que puxou o ritmo vem do código (o modelo não buscava nem com regra obrigatória)
   const puxou = PUXOU.test(`${p.texto} ${p.citada ?? ''}`) ? await puxouRitmo(d) : null;
   if (puxou) resultados.push(puxou);
-  const comPuxou = (t: string) => (puxou ? `${t}\n${linhaPuxou(puxou)}` : t);
+  // 05/11: a conta em texto corrido, com o que puxou o ritmo no fim
+  const corrida = (linhas: string[]) => explicacaoCorrida(linhas, puxou ? frasePuxou(puxou) : null);
   let ultima: { nome: string; dados: any } | null = null;
   // E1-M6: todas as ferramentas que responderam (uma vez cada, a última resposta de cada) — o texto montado
   // mostra todas, com um link só (o da última), em vez de só a última
@@ -240,23 +252,34 @@ async function tentar(p: Pergunta, d: DepsResponder, grupos: ReadonlySet<Grupo>)
     //        com a consulta do dia a dia junto (o que puxou o ritmo), ela vem depois das frases
     const sit = respondidas.get('situacao_mes');
     if (comTexto && sit && Array.isArray(sit.explicacao) && [...respondidas.keys()].every((k) => k === 'situacao_mes' || k === 'consultar')) {
-      const frases = sit.explicacao.map((l: string) => `👉 ${l}`).join('\n');
       const cons = respondidas.get('consultar');
       const extra = cons ? `\n\n${formatar('consultar', cons, d.painelUrl).replace(/\n\n👉 \S+$/, '')}` : '';
-      return comLink(comPuxou(frases) + extra, d.painelUrl, sit.link);
+      return comLink(corrida(sit.explicacao) + extra, d.painelUrl, sit.link);
     }
     // 28/10: explicando uma mensagem sem citar, a conta guardada da mais recente que tem conta (não a lista)
     //        — só se a pergunta fala do diário ou a mais recente é ela ("o último alerta" não vira a conta do diário)
     const ms: any[] = ultima?.nome === 'mensagens_do_zeca' ? ultima.dados?.mensagens ?? [] : [];
     const comConta = /di[áa]rio/i.test(p.texto) || Array.isArray(ms.at(-1)?.explicacao)
       ? [...ms].reverse().find((m) => Array.isArray(m.explicacao)) : null;
-    if (comTexto && comConta) return comPuxou(comConta.explicacao.map((l: string) => `👉 ${l}`).join('\n'));
+    if (comTexto && comConta) return comLink(corrida(comConta.explicacao), d.painelUrl, '/');
     if (ultima) return montadoDeTodas();
     // 27/10: explicando uma mensagem citada, a conta dela já é a resposta
-    if (conta) return comPuxou(conta.explicacao.map((l) => `👉 ${l}`).join('\n'));
+    if (conta) return comLink(corrida(conta.explicacao), d.painelUrl, '/');
     return null;
   };
   let modelo: string | null = null;
+  // 05/11: explicar o diário é sempre a mesma conta — o modelo inventava número, a trava barrava e ia a lista
+  //        montada (~10 mil tokens para nada). Agora a conta guardada vai direto, em texto corrido; "por quê" segue no modelo
+  if (EXPLICA.test(p.texto) && !PORQUE.test(p.texto)) {
+    const direto = conta && !conta.agora ? { explicacao: conta.explicacao, quando: null }
+      : !p.citada && /di[áa]rio/i.test(p.texto) ? await diarioGuardado(d) : null;
+    if (direto) {
+      ferramentas.push({ nome: 'mensagens_do_zeca', args: {}, ok: true });
+      const hoje = `${d.hoje.slice(8, 10)}/${d.hoje.slice(5, 7)}`;
+      const de = direto.quando && !direto.quando.startsWith(hoje) ? `Os números são do diário de ${direto.quando}.\n\n` : '';
+      return fimCom(comLink(de + corrida(direto.explicacao), d.painelUrl, '/'));
+    }
+  }
   try {
     for (let rodada = 0; rodada < RODADAS; rodada++) {
       const r = await d.groq.chat(msgs, ferramentasDe(grupos), { aoEsperar });

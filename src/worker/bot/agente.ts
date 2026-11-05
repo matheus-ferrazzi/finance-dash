@@ -81,6 +81,9 @@ const SISTEMA = (quem: string, hoje: string, grupos: ReadonlySet<Grupo>) => [
   'Não escreva links nem caminhos (/gastos etc.): o sistema acrescenta o link do painel.',
   // 28/10 (conjunto de perguntas): "Origem: gasto_periodo (Mercado, mês_passado)" ia para o grupo
   'Não escreva nomes de ferramentas, de campos ou de parâmetros (gasto_periodo, explicacao, este_mes…): escreva como gente.',
+  // 05/11: "compara esse mês com o passado" vinha dos dias 1 a 5 de cada mês, mas a resposta falava em "mês passado"
+  //        e parecia o mês inteiro
+  'Ao comparar, diga os períodos como a ferramenta devolveu: com "(dias 1 a N)", deixe claro que são só esses dias de cada mês.',
   'Use o mínimo de ferramentas: quase sempre uma basta. Só chame outra se a pergunta precisar dela.',
   ...(grupos.has('propostas') ? [
     'Para corrigir a categoria de um gasto: buscar_lancamentos e depois propor_categoria com a ref L1..L5 que ela devolveu. Para conta avulsa: propor_conta_avulsa. Gasto pago em dinheiro vivo: propor_gasto_dinheiro.',

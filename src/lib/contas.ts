@@ -31,10 +31,13 @@ export type Status = 'pago' | 'a_confirmar' | 'falta';
 
 export interface ItemConta {
   contaId: number | null; marcaId: number | null; nome: string; responsavel: string;
+  /** `pago` com status 'falta' = conta que soma paga só em parte (o que já saiu no banco) */
   previsto: number; pago: number | null; status: Status; dia: number | null;
   /** dia em que costuma vencer: o do último pagamento nos 3 meses anteriores; null sem histórico ou avulsa */
   vence?: number | null;
   parcela: string | null; avulsa: boolean;
+  /** conta que soma com a soma abaixo do previsto: sem o ✓ falta o resto; com o ✓ está paga (e o ✓ pode ser desfeito) */
+  somaCurta?: boolean;
   /** pagamento do banco que confirmou (base do "repetir todo mês"); null se não pago */
   origem: { descricao: string; banco: string } | null;
 }
@@ -50,6 +53,12 @@ export interface ResumoMes {
 
 const TOLERANCIA_AVULSA = 0.01;
 const MESES_PARA_PREVISTO = 3;
+/**
+ * Auditoria 11/11: conta que soma vários pagamentos (MEI em duas guias) só está paga quando a soma chega perto do
+ * previsto. Com uma guia de duas a tela dizia "Tudo pago". Abaixo desta fração, falta o resto — a não ser que
+ * alguém marque o ✓ (neste mês é só isso mesmo).
+ */
+const FRACAO_SOMA_PAGA = 0.7;
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
@@ -110,10 +119,14 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
       tiradas.push({ contaId: c.id, marcaId: tirada.id, nome: c.nome, responsavel: c.responsavel });
       continue;
     }
+    const somaPaga = r2(pg.reduce((s, m) => s + m.valor, 0));
+    const somaCurta = c.somar && pg.length > 0 && somaPaga < previsto * FRACAO_SOMA_PAGA;
+    const emParte = somaCurta && !marca;
     itens.push({
       contaId: c.id, marcaId: marca?.id ?? null, nome: c.nome, responsavel: c.responsavel, previsto,
-      pago: pg.length ? r2(pg.reduce((s, m) => s + m.valor, 0)) : null,
-      status: pg.length ? 'pago' : marca ? 'a_confirmar' : 'falta',
+      pago: pg.length ? somaPaga : null,
+      status: emParte ? 'falta' : pg.length ? 'pago' : marca ? 'a_confirmar' : 'falta',
+      ...(somaCurta ? { somaCurta: true } : {}),
       dia: pg.length ? Number(pg.map((m) => m.data).sort().at(-1)!.slice(8, 10)) : null, vence,
       parcela: c.parcelas !== null ? `${k + 1}/${c.parcelas}` : null, avulsa: false,
       origem: pg.length ? { descricao: pg[0].descricao, banco: pg[0].banco } : null,
@@ -133,7 +146,8 @@ export function montarMes(mes: string, contas: readonly ContaFixa[], marcas: rea
     });
   }
 
-  const total = r2(itens.reduce((s, i) => s + (i.pago ?? i.previsto), 0));
+  // paga em parte conta pelo previsto: o que já saiu entra no pago e o resto no que falta
+  const total = r2(itens.reduce((s, i) => s + (i.status === 'pago' ? i.pago ?? i.previsto : Math.max(i.previsto, i.pago ?? 0)), 0));
   const pago = r2(itens.reduce((s, i) => s + (i.pago ?? 0), 0));
   const aConfirmar = r2(itens.filter((i) => i.status === 'a_confirmar').reduce((s, i) => s + i.previsto, 0));
   return { mes, entrou: r2(entrou), total, pago, aConfirmar, falta: r2(total - pago), sobra: r2(entrou - total), itens, tiradas };

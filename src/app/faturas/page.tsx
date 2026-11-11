@@ -1,6 +1,6 @@
 import { getFaturas, getCreditoDespesas, currentDateSP, Resp } from '@/lib/queries';
 import { brl } from '@/lib/format';
-import { cicloAtual, cicloPedido, diaDoMes, ordenarPorPedido, proximosVencimentos, totalAPagar } from '@/lib/faturas';
+import { cicloAtual, cicloPedido, diaDoMes, ordenarPorPedido, proximosVencimentos, saldoNaoPago, somaDoCiclo, totalAPagar } from '@/lib/faturas';
 import { CardResposta } from '../components/CardResposta';
 import { LinhaVencimentos } from '../components/LinhaVencimentos';
 import { FaturaCard, FaturaView } from '../components/FaturaCard';
@@ -31,16 +31,22 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
   const views: FaturaView[] = faturas.map((f) => {
     const meus = creditos.filter((c) => c.banco === f.banco && c.responsavel === f.responsavel);
     const atual = cicloAtual(f.fechamento, hojeMs);
-    const noCiclo = meus.filter((c) => tempo(c.data) >= atual.start && tempo(c.data) < atual.end).reduce((s, c) => s + c.valor, 0);
+    // auditoria 11/11: o que faltou pagar da última fatura vem na próxima; os créditos do ciclo (negativos) abatem
+    const saldoAnterior = saldoNaoPago(f.ultima, hoje);
+    const noCiclo = somaDoCiclo(meus.filter((c) => tempo(c.data) >= atual.start && tempo(c.data) < atual.end).map((c) => c.valor), saldoAnterior);
     somaAtual.push(noCiclo);
     emCurso += noCiclo;
     // ?ciclo=fechada (link do "a pagar") ou AAAA-MM: as compras da fatura já fechada, não as do ciclo em curso
     const pedido = cicloPedido(searchParams.ciclo, f.fechamento, hoje);
     const { start, end, closeDay } = pedido ?? atual;
-    const items = meus
+    const doCiclo = meus
       .filter((c) => tempo(c.data) >= start && tempo(c.data) < end)
       .map((c) => ({ id: c.id, data: c.data, valor: c.valor, descricao: c.descricao, categoria: c.categoria }));
-    const soma = items.reduce((s, i) => s + i.valor, 0);
+    // no ciclo em curso, o saldo não pago da fatura anterior aparece como uma linha da lista
+    const items = !pedido && saldoAnterior > 0 && f.ultima
+      ? [{ id: `saldo-anterior-${f.id}`, data: f.ultima.vencimento, valor: saldoAnterior, descricao: 'Saldo não pago da fatura anterior', categoria: 'Loans and financing' }, ...doCiclo]
+      : doCiclo;
+    const soma = somaDoCiclo(items.map((i) => i.valor), 0);
     // próximo ciclo [end, end+1mês) — soma das parcelas futuras já lançadas
     const ne = new Date(end);
     const nextEnd = diaDoMes(ne.getUTCFullYear(), ne.getUTCMonth() + 1, closeDay);

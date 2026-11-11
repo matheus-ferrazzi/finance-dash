@@ -51,7 +51,7 @@ export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
   const apagarMarca = (id: number) => chamar(`/api/contas/marcas/${id}`, { method: 'DELETE' });
 
   async function tocar(i: ItemConta) {
-    if (i.status === 'pago' || i.avulsa || ocupado) return;
+    if ((i.status === 'pago' && !i.somaCurta) || i.avulsa || ocupado) return;
     if (i.marcaId !== null) await apagarMarca(i.marcaId);
     else if (i.contaId !== null) await post({ contaId: i.contaId, responsavel: i.responsavel });
   }
@@ -95,14 +95,15 @@ export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
       const chave = `${i.contaId ?? 'a'}-${i.marcaId ?? ''}-${i.nome}`;
       const Icone = i.status === 'pago' ? CheckCircle2 : i.status === 'a_confirmar' ? Clock : Circle;
       const cor = i.status === 'pago' ? 'text-accent' : i.status === 'a_confirmar' ? 'text-warn' : 'text-faint';
-      const valor = i.pago ?? i.previsto;
-      const difere = i.pago !== null && Math.abs(i.pago - i.previsto) > i.previsto * 0.05; // centavos de Vivo/Sabesp não poluem
+      const emParte = i.status !== 'pago' && i.pago !== null; // conta que soma, paga só em parte
+      const valor = emParte ? i.previsto : i.pago ?? i.previsto;
+      const difere = !emParte && i.pago !== null && Math.abs(i.pago - i.previsto) > i.previsto * 0.05; // centavos de Vivo/Sabesp não poluem
       return (
         <div key={chave} className="py-3 first:pt-0 last:pb-0">
           <div className="flex items-center gap-1">
             <button
               onClick={() => tocar(i)}
-              disabled={i.status === 'pago' || i.avulsa || ocupado}
+              disabled={(i.status === 'pago' && !i.somaCurta) || i.avulsa || ocupado}
               className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
             >
               <Icone size={24} className={`shrink-0 ${cor}`} />
@@ -113,9 +114,9 @@ export function ContasLista({ mes, resp, itens, tiradas, cartoes = [] }: {
                   {resp === 'casal' && respBadge(i.responsavel)}
                 </div>
                 <div className="mt-0.5 text-xs text-faint">
-                  {i.status === 'pago' && `pago dia ${i.dia} · no banco`}
+                  {i.status === 'pago' && `pago dia ${i.dia} · no banco${i.somaCurta ? ' · marcado como completo' : ''}`}
                   {i.status === 'a_confirmar' && 'marcado · esperando o banco'}
-                  {i.status === 'falta' && (i.avulsa ? 'avulsa' : 'toque para marcar como pago')}
+                  {i.status === 'falta' && (i.avulsa ? 'avulsa' : emParte ? <>pago <span className="money">{brl(i.pago!)}</span> até aqui · falta o resto</> : 'toque para marcar como pago')}
                 </div>
               </div>
               <div className="shrink-0 text-right">

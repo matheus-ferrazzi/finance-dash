@@ -35,6 +35,6 @@ export function textosCartoes(c: { banco: string; responsavel: string; usoPct: n
 
 export function contasResumo(itens: ItemConta[]): { pagas: number; total: number; falta: number } | null {
   if (itens.length === 0) return null;
-  const falta = itens.filter((i) => i.status !== 'pago').reduce((s, i) => s + i.previsto, 0);
+  const falta = itens.filter((i) => i.status !== 'pago').reduce((s, i) => s + Math.max(0, i.previsto - (i.pago ?? 0)), 0);
   return { pagas: itens.filter((i) => i.status === 'pago').length, total: itens.length, falta: Math.round(falta * 100) / 100 };
 }

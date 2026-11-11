@@ -18,6 +18,7 @@ import { componentesPrevistos, type Componentes } from './backtest';
 import { calibrarValidada, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
 import { situacaoFatura, type UltimaFatura } from './faturas';
+import { creditoPorVencimentoDe, ESTORNO_ABATE_FATURA, mediaMensalPorCategoria, sqlCiclosCartao, sqlSaldoAnterior } from './faturaPrevista';
 import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
@@ -95,12 +96,6 @@ function rf(resp: Resp, idx: number): { sql: string; p: string[] } {
 // regra única: nunca contar lançamento com data no futuro (parcela agendada)
 const HOJE = "(now() AT TIME ZONE 'America/Sao_Paulo')::date";
 
-/**
- * N9: crédito no cartão que abate a fatura em que cai. Medido contra o histórico de faturas (18/10/2026):
- * "Estorno de compra" e "Crédito de "LOJA"" (devolução) e os descontos do Nubank abatem; "Crédito de parcelamento"
- * não (jul e ago/26 fecharam iguais ao previsto com ele no ciclo), nem os créditos de renegociação do Bradesco.
- */
-const ESTORNO_ABATE_FATURA = `(descricao ILIKE 'Estorno de compra%' OR descricao ILIKE 'Crédito de "%' OR descricao ILIKE 'Desconto%')`;
 const RANGE = `data_lancamento >= $1::date AND data_lancamento < $2::date AND data_lancamento <= ${HOJE}`;
 
 export interface Kpis {
@@ -361,7 +356,9 @@ export async function getSyncStatus(): Promise<SyncStatus> {
 
 /**
  * Compras de crédito (despesa) numa janela ampla, pra montar a composição da fatura por cartão.
- * N9: estorno que abate a fatura vem junto, com valor negativo (o parcial do ciclo é o líquido).
+ * N9: estorno que abate a fatura vem junto, com valor negativo (o parcial do ciclo é o líquido). Auditoria 11/11: em
+ * cartão com fatura no histórico todo crédito abate (o "Crédito de parcelamento" anula o saldo não pago e as parcelas
+ * antecipadas de um plano encerrado) — a tela soma o saldo não pago da fatura anterior (faturas.ts).
  */
 export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
   const r = rf(resp, 1);
@@ -370,7 +367,9 @@ export async function getCreditoDespesas(resp: Resp): Promise<Lanc[]> {
             CASE WHEN classe = 'estorno' THEN -valor ELSE valor END AS valor, descricao,
             categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, COALESCE(banco,'—') AS banco, responsavel, classe
      FROM financas_lancamentos
-     WHERE (classe='despesa' OR (classe='estorno' AND tipo_movimento='Entrada' AND ${ESTORNO_ABATE_FATURA})) AND forma_pagamento='Crédito'
+     WHERE (classe='despesa' OR (classe='estorno' AND tipo_movimento='Entrada' AND (${ESTORNO_ABATE_FATURA}
+              OR EXISTS (SELECT 1 FROM financas_faturas_historico x WHERE x.account_id = financas_lancamentos.account_id))))
+       AND forma_pagamento='Crédito'
        AND data_lancamento >= (now() AT TIME ZONE 'America/Sao_Paulo')::date - 75
        AND data_lancamento <  (now() AT TIME ZONE 'America/Sao_Paulo')::date + 75${r.sql}
      ORDER BY data_lancamento DESC, valor DESC`,
@@ -1092,6 +1091,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
        WHERE l.classe='despesa' AND l.forma_pagamento='Crédito'
          AND trim(regexp_replace(regexp_replace(lower(coalesce(l.descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) NOT IN (SELECT chave FROM chaves_parceladas)
          AND NOT (COALESCE(l.parcela_total,0) > 1 OR l.descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$')
+         -- auditoria 11/11: dívida antiga não é compra nova (o "Encerramento de dívida" da renegociação é anulado no
+         -- mesmo dia por um desconto e entrava na média de todo mês futuro); as parcelas dela já vêm pelo vencimento
+         AND NOT ${DIVIDA_ANTIGA}
          AND date_trunc('month',l.data_lancamento) = ANY($1::date[])${rcn.sql}
        GROUP BY 1
      ) m`,
@@ -1102,53 +1104,27 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   // Ficam fora da média "variável" acima justamente pra não contar duas vezes.
   const rc = rf(resp, 3);
   const casaRows = await q<any>(
-    `SELECT categoria, ROUND(AVG(total),2) AS media FROM (
-       SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
-              date_trunc('month',data_lancamento) AS mes, SUM(valor) AS total
+    `SELECT categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria, SUM(valor)::float8 AS total
        FROM financas_lancamentos
-       WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($1::text[])
-         AND date_trunc('month',data_lancamento) = ANY($2::date[])${rc.sql}
-       GROUP BY 1,2
-     ) m GROUP BY categoria`,
+      WHERE classe='despesa' AND forma_pagamento='Débito' AND categoria = ANY($1::text[])
+        AND date_trunc('month',data_lancamento) = ANY($2::date[])${rc.sql}
+      GROUP BY 1`,
     [CASA_CATS, meses, ...rc.p],
   );
-  const despesaCasaPorCategoria: Record<string, number> = {};
-  casaRows.forEach((x) => { despesaCasaPorCategoria[x.categoria] = Number(x.media); });
+  // auditoria 11/11: mês-base sem a conta conta como zero (o gás de um mês em três entrava inteiro em todo mês futuro)
+  const despesaCasaPorCategoria = mediaMensalPorCategoria(casaRows.map((x) => ({ categoria: x.categoria, total: Number(x.total) })), meses.length);
 
-  // Compras no crédito pelo MÊS DE VENCIMENTO da fatura em que caem, nesta ordem:
-  // 1) fatura_id -> vencimento real; 2) fatura_prevista + deslocamento da conta, aprendido dos
-  // lançamentos que têm os dois (no Nubank fatura_prevista é o mês do vencimento; no Neon e no
-  // Santander, o mês anterior); 3) mês seguinte ao lançamento. Só o conhecido em hoje.
+  // Fatura de cada cartão pelo MÊS DE VENCIMENTO, com o que já está lançado (conhecido em hoje). Auditoria 11/11:
+  // saldo não pago da fatura anterior + compras − todos os créditos do ciclo (faturaPrevista.ts tem a medição)
   const r3 = rf(resp, 2);
-  const credVencRows = await q<any>(
-    `WITH desloc AS (
-       SELECT l.account_id,
-              mode() WITHIN GROUP (ORDER BY (EXTRACT(year FROM h.vencimento) * 12 + EXTRACT(month FROM h.vencimento))
-                - (left(l.fatura_prevista, 4)::int * 12 + right(l.fatura_prevista, 2)::int)) AS meses
-       FROM financas_lancamentos l JOIN financas_faturas_historico h ON h.id = l.fatura_id
-       WHERE l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
-       GROUP BY 1
-     )
-     SELECT to_char(COALESCE(
-              h.vencimento,
-              CASE WHEN l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
-                   THEN (to_date(l.fatura_prevista, 'YYYY-MM') + make_interval(months => COALESCE(d.meses, 0)::int))::date END,
-              (date_trunc('month', l.data_lancamento) + interval '1 month')::date), 'YYYY-MM') AS venc,
-            SUM(CASE WHEN l.classe = 'estorno' THEN -l.valor ELSE l.valor END)::float8 AS total
-     FROM financas_lancamentos l
-     LEFT JOIN financas_faturas_historico h ON h.id = l.fatura_id
-     LEFT JOIN desloc d ON d.account_id = l.account_id
-     -- parcela de parcelamento de fatura (pagamento_fatura que SAI no cartão) também vence na fatura;
-     -- N9 (auditoria 17/10, medido 18/10): estorno de compra e desconto abatem a fatura do mesmo vencimento
-     WHERE (l.classe = 'despesa' OR (l.classe = 'pagamento_fatura' AND l.tipo_movimento = 'Saída')
-            OR (l.classe = 'estorno' AND l.tipo_movimento = 'Entrada' AND ${ESTORNO_ABATE_FATURA.replace(/descricao/g, 'l.descricao')}))
-       AND l.forma_pagamento = 'Crédito'
-       AND (l.data_lancamento <= $1::date OR ((l.criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= $1::date)${r3.sql}
-     GROUP BY 1`,
-    [hoje, ...r3.p],
+  const [cicloRows, saldoRows] = await Promise.all([
+    q<any>(sqlCiclosCartao(r3.sql.replace('responsavel', 'l.responsavel')), [hoje, ...r3.p]),
+    q<any>(sqlSaldoAnterior(resp === 'casal' ? '' : ' AND c.responsavel = $2'), resp === 'casal' ? [hoje] : [hoje, resp]),
+  ]);
+  const creditoPorVencimento = creditoPorVencimentoDe(
+    cicloRows.map((x) => ({ conta: x.conta, venc: x.venc, compras: Number(x.compras), abate: Number(x.abate), outrosCreditos: Number(x.outros), temHistorico: Boolean(x.tem_historico) })),
+    saldoRows.map((x) => ({ conta: x.conta, venc: x.venc, valor: Number(x.valor) })),
   );
-  const creditoPorVencimento: Record<string, number> = {};
-  credVencRows.forEach((x) => { creditoPorVencimento[x.venc] = Number(x.total); });
 
   // N6/L3 (auditoria 17/10): cartão em que a Pluggy não entrega todas as compras (Neon: só uma parcela por compra
   // e nada do ciclo em curso). "Incompleto" = em 2 das 4 últimas faturas fechadas o total passou das compras

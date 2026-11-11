@@ -25,6 +25,20 @@ export function situacaoFatura(f: FaturaFechada, hoje: string): { situacao: Situ
   return { situacao: 'atrasada', falta: resto };
 }
 
+/**
+ * Auditoria 11/11: o que faltou pagar da última fatura, quando ela já venceu — entra na fatura seguinte (com o
+ * "Crédito de parcelamento" do ciclo abatendo, quando o banco parcela). A que ainda vai vencer não conta.
+ */
+export function saldoNaoPago(u: FaturaFechada | null, hoje: string): number {
+  if (!u || u.vencimento >= hoje) return 0;
+  return Math.max(0, r2(u.total - u.pago));
+}
+
+/** Parcial do ciclo em curso: compras e créditos do ciclo (crédito negativo) + o saldo não pago; nunca negativo. */
+export function somaDoCiclo(valores: readonly number[], saldoAnterior: number): number {
+  return Math.max(0, r2(valores.reduce((s, v) => s + v, 0) + saldoAnterior));
+}
+
 /** O que ainda sai das contas pelas faturas fechadas: o que falta das a vencer e das atrasadas. */
 export function totalAPagar(fs: readonly { situacao: Situacao; falta: number }[]): number {
   return r2(fs.filter((f) => f.situacao === 'a_vencer' || f.situacao === 'atrasada').reduce((s, f) => s + f.falta, 0));

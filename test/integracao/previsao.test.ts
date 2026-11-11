@@ -51,14 +51,15 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_id, fatura_prevista)
       VALUES ('c1', '2026-07-10', 100, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2026-07-10', 'neon', 'fat-ago', '2026-07'),
              ('c2', '2026-08-10', 40, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2026-08-10', 'neon', NULL, '2026-08'),
-             ('c3', '2026-08-12', 25, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-08-12', 'nu', NULL, NULL)`);
+             ('c3', '2026-08-12', 25, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-08-12', 'nu', NULL, NULL),
+             ('c-pg', '2026-08-05', 300, 'Pagamento recebido', 'Crédito', 'Neon', 'Ariane', 'pagamento_fatura', 'Entrada', '2026-08-05', 'neon', NULL, NULL)`);
     const base = await queries.getProjecaoBase('casal', '2026-08-15');
     expect(base.creditoPorVencimento['2026-08']).toBe(100);  // pelo fatura_id
     expect(base.creditoPorVencimento['2026-09']).toBe(65);   // 40 (prevista ago + 1) + 25 (sem nada: mês seguinte)
     expect(base.faturaReal).toEqual({ '2026-08': 300 });
   });
 
-  it('N9: estorno de compra e desconto de antecipação abatem a fatura do vencimento; crédito de parcelamento não', async () => {
+  it('N9: estorno de compra e desconto de antecipação abatem a fatura do vencimento; sem fatura no histórico, crédito de parcelamento não', async () => {
     // medido contra financas_faturas_historico (18/10): fatura real = compras − estorno de compra;
     // jul e ago/26 do Matheus fecharam iguais ao previsto mesmo com "Crédito de parcelamento" no ciclo
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista)
@@ -70,6 +71,30 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
              ('n9-x', '2041-03-09', 999, 'CRED RENEG DIVIDA', 'Crédito', 'Bradesco', 'Matheus', 'estorno', 'Entrada', '2041-03-09', 'n9b', '2041-04')`);
     const base = await queries.getProjecaoBase('casal', '2041-03-20');
     expect(base.creditoPorVencimento['2041-04']).toBeCloseTo(140, 2);
+  });
+
+  it('auditoria 11/11: em cartão com fatura no histórico, a prevista = saldo não pago da anterior + compras − todos os créditos', async () => {
+    // fatura de março (900) paga em parte (400): 500 de saldo; no ciclo de abril o banco encerra um plano antigo —
+    // as parcelas antecipadas vêm como compra e o "Crédito de parcelamento" as anula junto com o saldo
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES ('a11-mar', 'a11', '2043-03-06', 900)`);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista)
+      VALUES ('a11-pg', '2043-03-05', 400, 'Pagamento recebido', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2043-03-05', 'a11', '2043-04'),
+             ('a11-c', '2043-03-10', 2100, 'Renegociação de pendências', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2043-03-10', 'a11', '2043-04'),
+             ('a11-d', '2043-03-10', 60, 'Desconto de antecipação', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2043-03-10', 'a11', '2043-04'),
+             ('a11-p', '2043-03-10', 2400, 'Crédito de parcelamento', 'Crédito', 'Nubank', 'Ariane', 'estorno', 'Entrada', '2043-03-10', 'a11', '2043-04')`);
+    const base = await queries.getProjecaoBase('casal', '2043-03-20');
+    expect(base.creditoPorVencimento['2043-04']).toBeCloseTo(140, 2); // 500 + 2100 − 60 − 2400
+    // antes de a fatura de março vencer, o saldo ainda não conta (ela pode ser paga inteira)
+    const antes = await queries.getProjecaoBase('casal', '2043-03-05');
+    expect(antes.creditoPorVencimento['2043-04'] ?? 0).toBe(0);
+    expect((await queries.getProjecaoBase('Matheus', '2043-03-20')).creditoPorVencimento['2043-04'] ?? 0).toBe(0);
+  });
+
+  it('auditoria 11/11: média da casa conta como zero o mês-base sem a conta (gás de um mês em três)', async () => {
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
+      ('gas-1', '2051-03-10', 120, 'ULTRAGAZ', 'Gas', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2051-03-10')`);
+    const b = await queries.getProjecaoBase('casal', '2051-05-10');
+    expect(b.despesaCasaPorCategoria.Gas).toBe(40);
   });
 
   it('N6/L3: cartão com compras faltando (Neon) põe na próxima fatura o limite usado que nenhuma compra explica', async () => {
@@ -86,9 +111,12 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
              ('n6-d', '2042-08-10', 80, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2042-08-10', 'n6', 'n6-4'),
              ('n6c-a', '2042-07-15', 50, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-07-15', 'n6c', 'n6c-1'),
              ('n6c-b', '2042-08-15', 60, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-08-15', 'n6c', 'n6c-2'),
-             ('n6c-c', '2042-09-15', 30, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-09-15', 'n6c', NULL)`);
+             ('n6c-c', '2042-09-15', 30, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-09-15', 'n6c', NULL),
+             ('n6c-pg', '2042-09-10', 60, 'Pagamento recebido', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2042-09-10', 'n6c', NULL)`);
     const base = await queries.getProjecaoBase('casal', '2042-09-20');
-    // Neon: usado 400, nenhuma compra a vencer conhecida → 400 na fatura de out; Nubank (completo): só a compra de 30
+    // Neon: usado 400, nenhuma compra a vencer conhecida → 400 na fatura de out; Nubank (completo): só a compra de 30.
+    // Auditoria 11/11: a última fatura do Neon (80) não tem pagamento — o saldo não pago já está dentro do limite
+    // usado, não soma por cima (80 de saldo + 320 que nada explica = 400)
     expect(base.creditoPorVencimento['2042-10']).toBeCloseTo(430, 2);
     const ari = await queries.getProjecaoBase('Matheus', '2042-09-20');
     expect(ari.creditoPorVencimento['2042-10'] ?? 0).toBe(0);
@@ -329,12 +357,14 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('n3-2', '2044-05-15', 300, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NB', 'Matheus', 'pagamento_fatura', 'Entrada', '2044-05-15', 'n3-cartao-b'),
       ('n3-3', '2044-05-15', 300, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NB', 'Matheus', 'pagamento_fatura', 'Entrada', '2044-05-15', 'n3-cartao-b')`);
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista) VALUES
-      ('n3-4', '2044-05-26', 120, 'Parcelamento de Fatura', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Saída', '2044-05-02', 'n3-cartao-a', '2044-06')`);
+      ('n3-4', '2044-05-26', 120, 'Parcelamento de Fatura', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Saída', '2044-05-02', 'n3-cartao-a', '2044-06'),
+      ('n3-5', '2044-05-03', 280, 'Crédito de parcelamento', 'Cashback', 'Crédito', 'NA', 'Ariane', 'estorno', 'Entrada', '2044-05-03', 'n3-cartao-a', '2044-06')`);
     const b = await queries.getProjecaoBase('casal', '2044-05-16');
     // cartão A venceu em 02/05 (o resto foi parcelado): 0; cartão B: 800 − 300 − 300. 19/10: dois pagamentos iguais
     // no mesmo dia são dois — a cópia "só data" do Nubank já sai na ingestão (semGemeosDePagamento, #42)
     expect(b.mesCorrente.faturaRestante).toBe(200);
-    // a parcela do parcelamento de fatura vence com a fatura de junho
+    // a parcela do parcelamento de fatura vence com a fatura de junho; os 280 não pagos de maio vêm junto e o
+    // "Crédito de parcelamento" os anula (auditoria 11/11)
     expect(b.creditoPorVencimento['2044-06']).toBeCloseTo(120, 2);
     // mês sem nenhuma fatura no histórico: indefinido (a previsão volta à conta antiga)
     expect((await queries.getProjecaoBase('casal', '2045-05-16')).mesCorrente.faturaRestante).toBeUndefined();

@@ -55,6 +55,32 @@ describe('montarMes — contas fixas', () => {
     expect(r.itens.map((i) => i.pago)).toEqual([350, 177.60]);
   });
 
+  // auditoria 11/11: o MEI são duas guias; com uma só paga a tela dizia "Tudo pago"
+  const mei = conta({ id: 2, nome: 'MEI', padrao: 'DARF', valorPrevisto: 177.60, somar: true });
+  const meiAgosto = [mov('2026-08-03', 80.00, 'PAGAMENTO DARF EM CANAIS'), mov('2026-08-03', 97.60, 'PAGAMENTO DARF EM CANAIS')];
+
+  it('conta que soma paga só em parte (uma guia de duas) continua faltando, com o que já saiu', () => {
+    const r = montarMes('2026-09', [mei], [], [...meiAgosto, mov('2026-09-03', 80.00, 'PAGAMENTO DARF EM CANAIS')]);
+    expect(r.itens[0]).toMatchObject({ status: 'falta', previsto: 177.60, pago: 80 });
+    expect(r).toMatchObject({ total: 177.60, pago: 80, falta: 97.60 });
+  });
+
+  it('conta que soma com a soma perto do previsto (consulta a menos no mês) é paga', () => {
+    const curso = conta({ id: 1, nome: 'Curso', padrao: 'Clinica', valorPrevisto: 300, somar: true });
+    const r = montarMes('2026-09', [curso], [], [
+      mov('2026-08-03', 300, 'PIX ENVIADO Clinica Exemplo'), mov('2026-08-10', 50, 'PIX ENVIADO Clinica Exemplo'),
+      mov('2026-09-03', 300, 'PIX ENVIADO Clinica Exemplo'),
+    ]);
+    expect(r.itens[0]).toMatchObject({ status: 'pago', pago: 300 });
+  });
+
+  it('conta que soma paga em parte e marcada com o ✓ é paga: quem marcou disse que neste mês é só isso', () => {
+    const marca: Marca = { id: 9, mes: '2026-09', contaId: 2, responsavel: 'Ariane', nome: null, valor: null, pago: true };
+    const r = montarMes('2026-09', [mei], [marca], [...meiAgosto, mov('2026-09-03', 80.00, 'PAGAMENTO DARF EM CANAIS')]);
+    expect(r.itens[0]).toMatchObject({ status: 'pago', pago: 80 });
+    expect(r.falta).toBe(0);
+  });
+
   it('banco da conta filtra: fatura do Nubank conta só a linha do Nubank, não o espelho no Santander', () => {
     const r = montarMes('2026-08', [conta({ id: 1, nome: 'Nubank', padrao: '^Pagamento de fatura$', banco: 'Nubank', valorPrevisto: 190 })], [], [
       mov('2026-08-03', 188.7, 'Pagamento de fatura', { banco: 'Nubank' }),

@@ -21,6 +21,8 @@ describe('blocos da home', () => {
   it('contasResumo: pagas pelo banco, total e quanto falta; null sem contas', () => {
     const i = (status: string, previsto: number, pago: number | null) => ({ status, previsto, pago }) as any;
     expect(contasResumo([i('pago', 100, 100), i('a_confirmar', 50, null), i('falta', 30, null)])).toEqual({ pagas: 1, total: 3, falta: 80 });
+    // auditoria 11/11: conta paga em parte falta só o resto
+    expect(contasResumo([i('falta', 180, 80)])).toEqual({ pagas: 0, total: 1, falta: 100 });
     expect(contasResumo([])).toBeNull();
   });
 });

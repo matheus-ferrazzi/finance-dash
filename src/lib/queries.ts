@@ -1159,7 +1159,9 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     [hoje, ...rnd.p],
   );
   for (const x of naoDetalhadoRows) {
-    const falta = Math.round(Math.max(0, Number(x.usado) - Number(x.conhecidas)) * 100) / 100;
+    // auditoria 11/11: o saldo não pago da última fatura já está dentro do limite usado — não soma por cima
+    const saldoDaConta = saldoRows.filter((r) => r.conta === x.account_id && r.venc === x.venc).reduce((t, r) => t + Number(r.valor), 0);
+    const falta = Math.round(Math.max(0, Number(x.usado) - Number(x.conhecidas) - saldoDaConta) * 100) / 100;
     if (falta > 0) creditoPorVencimento[x.venc] = Math.round(((creditoPorVencimento[x.venc] ?? 0) + falta) * 100) / 100;
   }
 

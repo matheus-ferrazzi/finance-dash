@@ -51,7 +51,8 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_id, fatura_prevista)
       VALUES ('c1', '2026-07-10', 100, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2026-07-10', 'neon', 'fat-ago', '2026-07'),
              ('c2', '2026-08-10', 40, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2026-08-10', 'neon', NULL, '2026-08'),
-             ('c3', '2026-08-12', 25, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-08-12', 'nu', NULL, NULL)`);
+             ('c3', '2026-08-12', 25, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2026-08-12', 'nu', NULL, NULL),
+             ('c-pg', '2026-08-05', 300, 'Pagamento recebido', 'Crédito', 'Neon', 'Ariane', 'pagamento_fatura', 'Entrada', '2026-08-05', 'neon', NULL, NULL)`);
     const base = await queries.getProjecaoBase('casal', '2026-08-15');
     expect(base.creditoPorVencimento['2026-08']).toBe(100);  // pelo fatura_id
     expect(base.creditoPorVencimento['2026-09']).toBe(65);   // 40 (prevista ago + 1) + 25 (sem nada: mês seguinte)
@@ -110,9 +111,12 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
              ('n6-d', '2042-08-10', 80, 'loja', 'Crédito', 'Neon', 'Ariane', 'despesa', 'Saída', '2042-08-10', 'n6', 'n6-4'),
              ('n6c-a', '2042-07-15', 50, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-07-15', 'n6c', 'n6c-1'),
              ('n6c-b', '2042-08-15', 60, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-08-15', 'n6c', 'n6c-2'),
-             ('n6c-c', '2042-09-15', 30, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-09-15', 'n6c', NULL)`);
+             ('n6c-c', '2042-09-15', 30, 'loja', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '2042-09-15', 'n6c', NULL),
+             ('n6c-pg', '2042-09-10', 60, 'Pagamento recebido', 'Crédito', 'Nubank', 'Ariane', 'pagamento_fatura', 'Entrada', '2042-09-10', 'n6c', NULL)`);
     const base = await queries.getProjecaoBase('casal', '2042-09-20');
-    // Neon: usado 400, nenhuma compra a vencer conhecida → 400 na fatura de out; Nubank (completo): só a compra de 30
+    // Neon: usado 400, nenhuma compra a vencer conhecida → 400 na fatura de out; Nubank (completo): só a compra de 30.
+    // Auditoria 11/11: a última fatura do Neon (80) não tem pagamento — o saldo não pago já está dentro do limite
+    // usado, não soma por cima (80 de saldo + 320 que nada explica = 400)
     expect(base.creditoPorVencimento['2042-10']).toBeCloseTo(430, 2);
     const ari = await queries.getProjecaoBase('Matheus', '2042-09-20');
     expect(ari.creditoPorVencimento['2042-10'] ?? 0).toBe(0);
@@ -353,12 +357,14 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
       ('n3-2', '2044-05-15', 300, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NB', 'Matheus', 'pagamento_fatura', 'Entrada', '2044-05-15', 'n3-cartao-b'),
       ('n3-3', '2044-05-15', 300, 'Pagamento recebido', 'Credit card payment', 'Crédito', 'NB', 'Matheus', 'pagamento_fatura', 'Entrada', '2044-05-15', 'n3-cartao-b')`);
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista) VALUES
-      ('n3-4', '2044-05-26', 120, 'Parcelamento de Fatura', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Saída', '2044-05-02', 'n3-cartao-a', '2044-06')`);
+      ('n3-4', '2044-05-26', 120, 'Parcelamento de Fatura', 'Credit card payment', 'Crédito', 'NA', 'Ariane', 'pagamento_fatura', 'Saída', '2044-05-02', 'n3-cartao-a', '2044-06'),
+      ('n3-5', '2044-05-03', 280, 'Crédito de parcelamento', 'Cashback', 'Crédito', 'NA', 'Ariane', 'estorno', 'Entrada', '2044-05-03', 'n3-cartao-a', '2044-06')`);
     const b = await queries.getProjecaoBase('casal', '2044-05-16');
     // cartão A venceu em 02/05 (o resto foi parcelado): 0; cartão B: 800 − 300 − 300. 19/10: dois pagamentos iguais
     // no mesmo dia são dois — a cópia "só data" do Nubank já sai na ingestão (semGemeosDePagamento, #42)
     expect(b.mesCorrente.faturaRestante).toBe(200);
-    // a parcela do parcelamento de fatura vence com a fatura de junho
+    // a parcela do parcelamento de fatura vence com a fatura de junho; os 280 não pagos de maio vêm junto e o
+    // "Crédito de parcelamento" os anula (auditoria 11/11)
     expect(b.creditoPorVencimento['2044-06']).toBeCloseTo(120, 2);
     // mês sem nenhuma fatura no histórico: indefinido (a previsão volta à conta antiga)
     expect((await queries.getProjecaoBase('casal', '2045-05-16')).mesCorrente.faturaRestante).toBeUndefined();

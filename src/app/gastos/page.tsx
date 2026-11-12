@@ -19,7 +19,10 @@ function resolveResp(v?: string): Resp {
 }
 
 // Onda 5: "Pra onde foi o dinheiro, e o dia a dia está dentro do que cabe?"
-export default async function Gastos({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string; grupo?: string; tipo?: string; forma?: string } }) {
+export default async function Gastos(
+  props: { searchParams: Promise<{ resp?: string; mes?: string; p?: string; grupo?: string; tipo?: string; forma?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const per = resolvePeriodo(searchParams.p, searchParams.mes);
   const hoje = currentDateSP();

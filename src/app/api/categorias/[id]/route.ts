@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { apagarRegra } from '@/lib/queries';
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ erro: 'Regra inválida.' }, { status: 400 });
   const r = await apagarRegra(id);

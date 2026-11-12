@@ -24,7 +24,10 @@ function resolveResp(v?: string): Resp {
 
 const HORIZONTE_MAX = 24;
 
-export default async function Previsibilidade({ searchParams }: { searchParams: { resp?: string; mes?: string; todos?: string } }) {
+export default async function Previsibilidade(
+  props: { searchParams: Promise<{ resp?: string; mes?: string; todos?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const hoje = currentDateSP();
 

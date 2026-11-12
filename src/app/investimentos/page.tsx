@@ -10,7 +10,8 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Investimentos({ searchParams }: { searchParams: { resp?: string } }) {
+export default async function Investimentos(props: { searchParams: Promise<{ resp?: string }> }) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const [inv, aportes, patrimonio] = await Promise.all([
     getInvestimentos(resp), getAporteMensal(resp, 12), getPatrimonioHistorico(resp),

@@ -22,7 +22,8 @@ function resolveResp(v?: string): Resp {
 const CORES = CORES_GRUPOS;
 
 // Home: "como o mês vai fechar" sem rolar. Cada número leva à tela que aprofunda, já filtrada.
-export default async function Home({ searchParams }: { searchParams: { resp?: string; mes?: string } }) {
+export default async function Home(props: { searchParams: Promise<{ resp?: string; mes?: string }> }) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const atual = currentMonthSP();
   const pedido = mesValido(searchParams.mes);

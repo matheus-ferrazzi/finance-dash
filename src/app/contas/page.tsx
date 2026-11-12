@@ -13,7 +13,8 @@ function resolveResp(v?: string): Resp {
 }
 
 // Onda 5: "O que ainda falta pagar este mês?" — o mês vem do seletor do topo (?mes=), como nas outras telas
-export default async function Contas({ searchParams }: { searchParams: { resp?: string; mes?: string } }) {
+export default async function Contas(props: { searchParams: Promise<{ resp?: string; mes?: string }> }) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const mes = normalizeMes(searchParams.mes);
   const [r, faturas] = await Promise.all([getContasDoMes(resp, mes), getFaturas(resp).catch(() => [])]);

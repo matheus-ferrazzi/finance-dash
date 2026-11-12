@@ -143,6 +143,8 @@ export function montarSaude(s: SaudeDados): string | null {
 export interface BackupDados {
   h_desde_ok: number | null; h_desde_n8n: number | null; n8n_workflows: number | null; h_desde_offsite: number | null;
   tamanho: number | null; tabelas: number | null; falhas_24h: number | null; ultimo_erro: string | null;
+  /** auditoria 11/11: resultado e idade do último teste de restore (cron de domingo); ausentes = fonte antiga, sem linha */
+  restore_ok?: boolean | null; h_desde_restore?: number | null;
 }
 /** As linhas de problema do backup (usadas também no aviso técnico do D). */
 export function linhasBackup(s: BackupDados): string[] {
@@ -158,6 +160,12 @@ export function linhasBackup(s: BackupDados): string[] {
   if (hOff > 72) probs.push(`• Copia no PC: ${hOff === 9999 ? 'nunca foi puxada' : 'ultima ha ' + hOff + 'h'}`);
   if ((s.falhas_24h || 0) > 0) {
     probs.push(`• ${s.falhas_24h} falha(s) em 24h` + (s.ultimo_erro ? ` — ultima: ${clean(s.ultimo_erro)}` : ''));
+  }
+  // o teste de restore roda aos domingos: backup que não volta é backup que não existe. 9 dias = uma semana e folga
+  if (s.h_desde_restore !== undefined) {
+    if (s.h_desde_restore === null) probs.push('• Teste de restore do backup nunca rodou');
+    else if (s.restore_ok === false) probs.push(`• Teste de restore do backup falhou (há ${Math.round(s.h_desde_restore)}h)`);
+    else if (s.h_desde_restore > 9 * 24) probs.push(`• Teste de restore do backup não roda há ${Math.round(s.h_desde_restore / 24)} dias`);
   }
   return probs;
 }

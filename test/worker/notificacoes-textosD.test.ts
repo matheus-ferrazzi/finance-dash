@@ -154,6 +154,13 @@ describe('técnico', () => {
   it('tudo bem: null', () => {
     expect(montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [] })).toBeNull();
   });
+  it('auditoria 11/11: teste de restore que falhou ou que não roda há mais de 9 dias entra no aviso técnico', () => {
+    const tec = (b: object) => montarTecnico({ saude: saudeOk as any, backup: { ...backupOk, ...b } as any, consentimentos: [] });
+    expect(tec({ restore_ok: true, h_desde_restore: 50 })).toBeNull();
+    expect(tec({ restore_ok: false, h_desde_restore: 50 })).toContain('🔴 Teste de restore do backup falhou (há 50h)');
+    expect(tec({ restore_ok: true, h_desde_restore: 240 })).toContain('🔴 Teste de restore do backup não roda há 10 dias');
+    expect(tec({ restore_ok: null, h_desde_restore: null })).toContain('🔴 Teste de restore do backup nunca rodou');
+  });
   it('🔴 para o que quebrou, 🟡 para consentimento a vencer, 🔴 para vencido', () => {
     const t = montarTecnico({ saude: { ...saudeOk, worker_falhas_24h: 1 } as any, backup: backupOk as any, consentimentos: [{ banco: 'B1', responsavel: 'R', dias: 10 }, { banco: 'B2', responsavel: 'R', dias: -1 }] })!;
     expect(t).toBe([

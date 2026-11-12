@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { creditoPorVencimentoDe, mediaMensalPorCategoria, type CicloCartao } from '../../src/lib/faturaPrevista';
-import { saldoNaoPago, somaDoCiclo } from '../../src/lib/faturas';
+import { faturasPagasEmParte, saldoNaoPago, somaDoCiclo } from '../../src/lib/faturas';
 
 const ciclo = (p: Partial<CicloCartao> & { conta: string; venc: string }): CicloCartao =>
   ({ compras: 0, abate: 0, outrosCreditos: 0, temHistorico: true, ...p });
@@ -79,5 +79,13 @@ describe('ciclo em curso da tela de Faturas', () => {
   it('somaDoCiclo: compras e créditos do ciclo mais o saldo não pago, nunca negativo', () => {
     expect(somaDoCiclo([300, 200.5, -450], 500)).toBe(550.5);
     expect(somaDoCiclo([100, -900], 500)).toBe(0);
+  });
+
+  it('faturasPagasEmParte: a parcelada aparece com o que foi pago e o que virou parcelas; paga inteira e a vencer não', () => {
+    const c = (banco: string, u: object | null) => ({ banco, responsavel: 'Ariane', ultima: u ? ult(u) : null });
+    expect(faturasPagasEmParte([
+      c('A', { situacao: 'parcelada', falta: 0, parcelado: 520 }), c('B', { situacao: 'paga', pago: 900, falta: 0 }),
+      c('C', { situacao: 'a_vencer' }), c('D', null),
+    ])).toEqual([{ banco: 'A', responsavel: 'Ariane', total: 900, pago: 400, resto: 500 }]);
   });
 });

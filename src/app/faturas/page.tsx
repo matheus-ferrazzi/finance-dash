@@ -1,6 +1,6 @@
 import { getFaturas, getCreditoDespesas, currentDateSP, Resp } from '@/lib/queries';
 import { brl } from '@/lib/format';
-import { cicloAtual, cicloPedido, diaDoMes, ordenarPorPedido, proximosVencimentos, saldoNaoPago, somaDoCiclo, totalAPagar } from '@/lib/faturas';
+import { cicloAtual, cicloPedido, diaDoMes, faturasPagasEmParte, ordenarPorPedido, proximosVencimentos, saldoNaoPago, somaDoCiclo, totalAPagar } from '@/lib/faturas';
 import { CardResposta } from '../components/CardResposta';
 import { LinhaVencimentos } from '../components/LinhaVencimentos';
 import { FaturaCard, FaturaView } from '../components/FaturaCard';
@@ -73,6 +73,7 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
     banco: v.banco, responsavel: v.responsavel, fechamento: v.fechamento, ultima: v.ultima, somaCiclo: somaAtual[k],
   })), hoje);
   const aCobrar = vencs.filter((v) => v.situacao !== 'parcial');
+  const emParte = faturasPagasEmParte(faturas);
   const proxima = aCobrar[0];
   const dd = (d: string | null) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : '');
   const secao = 'mb-1.5 mt-4 px-1 text-xs font-medium text-muted';
@@ -86,8 +87,17 @@ export default async function Faturas({ searchParams }: { searchParams: { resp?:
           apoio={`${proxima.banco} (${proxima.responsavel}) ${proxima.situacao === 'atrasada' ? 'venceu' : 'vence'} ${dd(proxima.vence)}`
             + (aCobrar.length > 1 ? ` · + ${aCobrar.length - 1} fatura(s)` : '')} />
       ) : (
-        <CardResposta pergunta="Próximo pagamento" valor="R$ 0 agora" dinheiro={false} complemento={<span className="text-accent">tudo pago</span>}
-          apoio={<>As faturas que fecham agora já somam <span className="money">{brl(emCurso)}</span> (parcial — ainda pode entrar compra)</>} />
+        <CardResposta pergunta="Próximo pagamento" valor="R$ 0 agora" dinheiro={false}
+          complemento={emParte.length ? <span className="text-warn">nada vence agora</span> : <span className="text-accent">tudo pago</span>}
+          apoio={<>
+            {emParte.map((p) => (
+              <span key={`${p.banco}:${p.responsavel}`} className="block text-warn">
+                {`${p.banco} (${p.responsavel}): fatura de `}<span className="money">{brl(p.total)}</span>{' paga em parte ('}<span className="money">{brl(p.pago)}</span>
+                {'); '}<span className="money">{brl(p.resto)}</span>{' viraram parcelas — o custo está na Trilha'}
+              </span>
+            ))}
+            As faturas que fecham agora já somam <span className="money">{brl(emCurso)}</span> (parcial — ainda pode entrar compra)
+          </>} />
       )}
 
       <div className={secao}>Próximos vencimentos</div>

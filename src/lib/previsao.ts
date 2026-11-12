@@ -3,6 +3,7 @@
 // referência `hoje` ('AAAA-MM-DD', fuso SP) — é o que permite calcular a previsão
 // "como se fosse" uma data passada e comparar com o que aconteceu.
 import { brl, currentDateSP, mesLabel, parseValorBR } from './format';
+import type { Renegociacao } from './renegociacao';
 
 /** compromissos cadastrados manualmente (aluguel, luz, água, financiamentos — a Pluggy não sabe "até quando") */
 export interface CompromissoManual {
@@ -52,6 +53,8 @@ export interface ProjecaoBase {
   saldoContas: { total: number; contas: SaldoConta[] };
   /** fontes de receita recorrentes nos meses-base, com o valor mensal típico (mediana) */
   fontesReceita: ReceitaPrevista[];
+  /** mediana mensal do que entrou além do típico nos meses-base (plantão, PIX recebidos); fora da previsão principal */
+  receitaExtraMediana?: number;
   /** gasto LIVRE no débito (fora casa e fora contas travadas) — o dia a dia */
   despesaVariavelMediaMensal: number;
   /** contas travadas pagas no débito (consórcio, seguro, impostos, tarifas…): média mensal */
@@ -70,6 +73,8 @@ export interface ProjecaoBase {
   /** cartão sem histórico de fatura (Bradesco, "GASTOS CARTAO" no débito): pagamento mensal repetido
    *  nos 3 meses fechados (0 se variou) e o que já saiu neste mês */
   cartaoSemFatura?: { mensal: number; pagoNoMes: number };
+  /** auditoria 11/11: renegociações no cartão (crédito de parcelamento), com o plano que cada uma encerrou e abriu */
+  renegociacoes?: Renegociacao[];
   compromissosManuais: CompromissoManual[];
   /** o cadastro como está (valor cheio), para a tela de cadastro; compromissosManuais já vem com a parte da pessoa */
   compromissosCadastrados: CompromissoManual[];
@@ -197,6 +202,26 @@ export function receitaRecorrente(entradas: readonly EntradaReceita[], mesesBase
     }))
     .filter((f) => f.valor > 0)
     .sort((a, b) => b.valor - a.valor);
+}
+
+/**
+ * Auditoria 11/11 (decisão do Matheus): os "extras de sempre" — o que entrou num mês além do típico (plantão, PIX
+ * recebidos, bônus). A previsão principal segue sem eles (conservadora); esta é a mediana mensal nos meses-base,
+ * para a segunda linha da tela. Mês abaixo do típico ou sem entrada conta zero.
+ */
+export function receitaExtraMediana(entradas: readonly EntradaReceita[], mesesBase: readonly string[], fontes: readonly ReceitaPrevista[]): number {
+  if (!mesesBase.length) return 0;
+  const tipico = fontes.reduce((s, f) => s + f.valor, 0);
+  const porMes = new Map<string, number>();
+  for (const e of entradas) porMes.set(e.mes, (porMes.get(e.mes) ?? 0) + e.valor);
+  return Math.round(mediana(mesesBase.map((m) => Math.max(0, (porMes.get(m) ?? 0) - tipico))) * 100) / 100;
+}
+
+/** A base com os extras de sempre somados à receita dos meses futuros (o mês em andamento não muda). */
+export function comExtras(base: ProjecaoBase): ProjecaoBase {
+  const extra = base.receitaExtraMediana ?? 0;
+  if (extra <= 0) return base;
+  return { ...base, fontesReceita: [...base.fontesReceita, { fonte: 'extras', nome: 'extras de sempre', valor: extra, diaTipico: 15, responsavel: 'casal' }] };
 }
 
 /**

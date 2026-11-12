@@ -7,6 +7,8 @@
 // acerta quando o crédito cobre exatamente o saldo não pago — o saldo ficava de fora e os dois se anulavam. Quando o
 // banco encerra um plano antigo, as parcelas antecipadas entram como compra e o crédito que as anula ficava de fora.
 
+import { sqlDividaOuAtraso } from './trilha';
+
 /** Estorno de compra, devolução ("Crédito de "LOJA"") e descontos: abatem em qualquer cartão. */
 export const ESTORNO_ABATE_FATURA = `(descricao ILIKE 'Estorno de compra%' OR descricao ILIKE 'Crédito de "%' OR descricao ILIKE 'Desconto%')`;
 
@@ -17,6 +19,8 @@ export interface CicloCartao {
   abate: number;
   /** os outros créditos no cartão (crédito de parcelamento, renegociação…) */
   outrosCreditos: number;
+  /** dentro de `compras`: as parcelas de compra (parcelado, sem dívida antiga) */
+  parcelasCompra?: number;
   /** o cartão tem fatura no histórico: dá para saber o saldo não pago, então todos os créditos abatem */
   temHistorico: boolean;
 }
@@ -49,6 +53,19 @@ export function creditoPorVencimentoDe(ciclos: readonly CicloCartao[], saldos: r
   return out;
 }
 
+/** Parcela de compra no cartão: parcelada (pelo campo ou pelo "n/m" no fim da descrição) e que não é dívida antiga. */
+export const PARCELA_DE_COMPRA = `((COALESCE(l.parcela_total, 0) > 1 OR l.descricao ~ '\\s\\d{1,2}\\s*/\\s*\\d{1,2}$')
+              AND NOT ${sqlDividaOuAtraso('l.descricao', 'categoria_efetiva(l.descricao, l.categoria, l.contraparte_doc)')})`;
+
+/** Total das parcelas de compra no crédito por mês (YYYY-MM-DD do dia 1), nos meses de $1::date[]; `filtro` a partir de $2. */
+export function sqlParcelasCompraPorMes(filtro = ''): string {
+  return `SELECT to_char(date_trunc('month', l.data_lancamento), 'YYYY-MM') AS mes, SUM(l.valor)::float8 AS total
+            FROM financas_lancamentos l
+           WHERE l.classe = 'despesa' AND l.forma_pagamento = 'Crédito' AND ${PARCELA_DE_COMPRA}
+             AND date_trunc('month', l.data_lancamento) = ANY($1::date[])${filtro}
+           GROUP BY 1`;
+}
+
 /**
  * Lançamentos no crédito por cartão e mês de vencimento da fatura em que caem, nesta ordem: 1) fatura_id → vencimento
  * real; 2) fatura_prevista + deslocamento da conta, aprendido dos lançamentos que têm os dois (no Nubank
@@ -73,6 +90,7 @@ export function sqlCiclosCartao(filtro = ''): string {
               (date_trunc('month', l.data_lancamento) + interval '1 month')::date), 'YYYY-MM') AS venc,
             -- parcela de parcelamento de fatura (pagamento_fatura que SAI no cartão) também vence na fatura
             COALESCE(SUM(l.valor) FILTER (WHERE l.classe <> 'estorno'), 0)::float8 AS compras,
+            COALESCE(SUM(l.valor) FILTER (WHERE l.classe = 'despesa' AND ${PARCELA_DE_COMPRA}), 0)::float8 AS parcelas_compra,
             COALESCE(SUM(l.valor) FILTER (WHERE l.classe = 'estorno' AND ${abate}), 0)::float8 AS abate,
             COALESCE(SUM(l.valor) FILTER (WHERE l.classe = 'estorno' AND NOT ${abate}), 0)::float8 AS outros,
             EXISTS (SELECT 1 FROM financas_faturas_historico x WHERE x.account_id = l.account_id) AS tem_historico

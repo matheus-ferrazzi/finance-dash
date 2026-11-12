@@ -18,7 +18,7 @@ import { componentesPrevistos, type Componentes } from './backtest';
 import { calibrarValidada, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
 import { situacaoFatura, type UltimaFatura } from './faturas';
-import { creditoPorVencimentoDe, ESTORNO_ABATE_FATURA, mediaMensalPorCategoria, sqlCiclosCartao, sqlMovimentosRenegociacao, sqlSaldoAnterior } from './faturaPrevista';
+import { creditoPorVencimentoDe, ESTORNO_ABATE_FATURA, mediaMensalPorCategoria, sqlCiclosCartao, sqlMovimentosRenegociacao, sqlParcelasCompraPorMes, sqlSaldoAnterior } from './faturaPrevista';
 import { detectarRenegociacoes, doPlano, moverParcelasEncerradas, type MovReneg } from './renegociacao';
 import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
@@ -1136,11 +1136,16 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   // Fatura de cada cartão pelo MÊS DE VENCIMENTO, com o que já está lançado (conhecido em hoje). Auditoria 11/11:
   // saldo não pago da fatura anterior + compras − todos os créditos do ciclo (faturaPrevista.ts tem a medição)
   const r3 = rf(resp, 2);
-  const [cicloRows, saldoRows, renegRows] = await Promise.all([
+  const [cicloRows, saldoRows, renegRows, parcRows] = await Promise.all([
     q<any>(sqlCiclosCartao(r3.sql.replace('responsavel', 'l.responsavel')), [hoje, ...r3.p]),
     q<any>(sqlSaldoAnterior(resp === 'casal' ? '' : ' AND c.responsavel = $2'), resp === 'casal' ? [hoje] : [hoje, resp]),
     q<any>(sqlMovimentosRenegociacao(r3.sql.replace('responsavel', 'l.responsavel')), [hoje, ...r3.p]),
+    q<any>(sqlParcelasCompraPorMes(r3.sql.replace('responsavel', 'l.responsavel')), [meses, ...r3.p]),
   ]);
+  // auditoria 11/11: parcelas de compra — a média dos meses-base (mês sem parcela conta zero) e o já lançado por vencimento
+  const parcelasCompraMedia = Math.round((parcRows.reduce((t, x) => t + Number(x.total), 0) / Math.max(1, meses.length)) * 100) / 100;
+  const parcelasCompraPorVencimento: Record<string, number> = {};
+  for (const x of cicloRows) parcelasCompraPorVencimento[x.venc] = Math.round(((parcelasCompraPorVencimento[x.venc] ?? 0) + Number(x.parcelas_compra)) * 100) / 100;
   const saldosAnteriores = saldoRows.map((x) => ({ conta: x.conta, venc: x.venc, valor: Number(x.valor) }));
   // plano antigo que uma renegociação encerrou: as parcelas que a Pluggy ainda lista nos meses seguintes contam na
   // fatura do crédito que as anulou (renegociacao.ts)
@@ -1360,6 +1365,8 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     faturaReal,
     cartaoSemFatura,
     renegociacoes,
+    parcelasCompraMedia,
+    parcelasCompraPorVencimento,
     compromissosManuais,
     compromissosCadastrados,
   };

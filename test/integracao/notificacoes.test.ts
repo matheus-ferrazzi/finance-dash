@@ -16,7 +16,7 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     // financas_backup é criada pelo script de backup da VPS (fora das migrações): só as colunas que o bot lê
     await pool.query(`CREATE TABLE financas_backup (feito_em timestamptz, ok boolean, n8n_ok boolean, n8n_workflows int,
-      puxado_em timestamptz, tamanho_bytes bigint, tabelas int, erro text)`);
+      puxado_em timestamptz, tamanho_bytes bigint, tabelas int, erro text, restore_ok boolean, restore_em timestamptz)`);
     await pool.query(readFileSync('db/migrations/008_notificacoes.sql', 'utf8'));
   });
   afterAll(async () => { await pool?.end(); });
@@ -72,13 +72,17 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
       -- da primeira rodada que conseguiria mandá-lo); a marca d'água continua impedindo repetir
       ('gx8', ${hoje} - 5, 710, 'LOJA ATRASADA', 'Shopping', 'Débito', 'despesa', 'B', 'X', now() - interval '5 days'),
       ('gx9', ${hoje} - 8, 730, 'LOJA ANTIGA', 'Shopping', 'Débito', 'despesa', 'B', 'X', now() - interval '8 days')`);
-    await pool.query(`INSERT INTO financas_backup (feito_em, ok, n8n_ok, n8n_workflows, puxado_em, tamanho_bytes, tabelas)
-      VALUES (now() - interval '2 hours', true, true, 20, now() - interval '5 hours', 1048576, 30)`);
+    await pool.query(`INSERT INTO financas_backup (feito_em, ok, n8n_ok, n8n_workflows, puxado_em, tamanho_bytes, tabelas, restore_ok, restore_em)
+      VALUES (now() - interval '2 hours', true, true, 20, now() - interval '5 hours', 1048576, 30, NULL, NULL),
+             (now() - interval '50 hours', true, true, 20, now() - interval '49 hours', 1048576, 30, true, now() - interval '49 hours'),
+             (now() - interval '74 hours', true, true, 20, now() - interval '73 hours', 1048576, 30, false, now() - interval '25 hours')`);
     const f = criarFontes(pool, 'http://painel', (async (u: string) => ({ ok: u.endsWith('/api/previsao'), status: 200, json: async () => ({ mesLabel: 'm' }) })) as any);
     expect(((await f.fatura()) as any[]).map((x) => [x.banco, x.dias])).toEqual([['B1', 2]]);
     expect(((await f.gasto()) as any[]).map((x) => x.id_transacao)).toEqual(['gx8', 'gx1', 'gx7']);
     expect(await f.ritmo()).toEqual({ mesLabel: 'm' });
     expect(await f.saude()).toHaveProperty('h_lancamentos');
+    // auditoria 11/11: o técnico lê o teste de restore mais recente (o de 25 h atrás, que falhou), não o do backup mais novo
+    expect(await f.backup()).toMatchObject({ restore_ok: false, h_desde_restore: 25 });
     // 22/10: a saúde traz qual tarefa falhou, quando e o erro (o aviso dizia só "Ingestão (worker)")
     await pool.query(`INSERT INTO pluggy_execucoes (tarefa, modo, inicio, fim, ok, erro) VALUES
       ('tesouro', 'real', now() - interval '2 hours', now() - interval '2 hours', false, 'fetch failed'),

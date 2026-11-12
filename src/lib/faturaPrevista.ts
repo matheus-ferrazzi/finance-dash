@@ -87,6 +87,41 @@ export function sqlCiclosCartao(filtro = ''): string {
 }
 
 /**
+ * Lançamentos do cartão que contam a história de uma renegociação (renegociacao.ts): o "Crédito de parcelamento", o
+ * desconto da financeira e as parcelas (de compra ou de dívida), com o mês de vencimento pela mesma regra de
+ * sqlCiclosCartao. Só cartão com fatura no histórico, dos últimos 200 dias em diante, conhecido em hoje ($1).
+ */
+export function sqlMovimentosRenegociacao(filtro = ''): string {
+  return `WITH desloc AS (
+       SELECT l.account_id,
+              mode() WITHIN GROUP (ORDER BY (EXTRACT(year FROM h.vencimento) * 12 + EXTRACT(month FROM h.vencimento))
+                - (left(l.fatura_prevista, 4)::int * 12 + right(l.fatura_prevista, 2)::int)) AS meses
+       FROM financas_lancamentos l JOIN financas_faturas_historico h ON h.id = l.fatura_id
+       WHERE l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
+       GROUP BY 1
+     )
+     SELECT CASE WHEN l.classe = 'estorno' AND l.descricao ILIKE 'Crédito de parcelamento%' THEN 'credito'
+                 WHEN l.classe = 'estorno' THEN 'desconto' ELSE 'parcela' END AS tipo,
+            l.account_id AS conta, to_char(l.data_lancamento, 'YYYY-MM-DD') AS data,
+            to_char(COALESCE(
+              h.vencimento,
+              CASE WHEN l.fatura_prevista ~ '^\\d{4}-\\d{2}$'
+                   THEN (to_date(l.fatura_prevista, 'YYYY-MM') + make_interval(months => COALESCE(d.meses, 0)::int))::date END,
+              (date_trunc('month', l.data_lancamento) + interval '1 month')::date), 'YYYY-MM') AS venc,
+            l.valor::float8 AS valor, COALESCE(l.descricao, '') AS descricao, l.parcela_numero AS pn, l.parcela_total AS pt
+     FROM financas_lancamentos l
+     LEFT JOIN financas_faturas_historico h ON h.id = l.fatura_id
+     LEFT JOIN desloc d ON d.account_id = l.account_id
+     WHERE l.forma_pagamento = 'Crédito' AND l.account_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM financas_faturas_historico x WHERE x.account_id = l.account_id)
+       AND ((l.classe = 'estorno' AND l.tipo_movimento = 'Entrada'
+             AND (l.descricao ILIKE 'Crédito de parcelamento%' OR l.descricao ILIKE 'Desconto (NuFinanceira)%'))
+            OR (l.classe = 'despesa' AND COALESCE(l.parcela_total, 0) > 1))
+       AND l.data_lancamento >= $1::date - 200
+       AND (l.data_lancamento <= $1::date OR ((l.criado_em AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo')::date <= $1::date)${filtro}`;
+}
+
+/**
  * O que faltou pagar de cada fatura já vencida em hoje ($1): total − o que o próprio cartão registrou como pagamento
  * de 10 dias antes a 20 dias depois do vencimento. Vai para o mês de vencimento da fatura seguinte. Fatura que ainda
  * não venceu fica de fora (pode ser paga inteira). `filtro`: SQL extra sobre `c` (pluggy_contas), a partir de $2.

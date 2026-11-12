@@ -32,6 +32,13 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
                 {d.restantes === null ? ' · sem data de fim' : ` · faltam ${d.restantes} · até ${mesLabel(d.fim!)}`}
                 <BotaoNaoDivida chave={d.chave} nome={d.nome} />
               </span>
+              {d.refin && (
+                <span className="w-full text-faint">
+                  {`refinanciado em ${d.refin.data.slice(8, 10)}/${d.refin.data.slice(5, 7)}: `}<span className="tnum money">{brl(d.refin.refinanciado)}</span>
+                  {' viraram '}<span className="tnum money">{brl(d.refin.total)}</span>{` em ${d.plano} parcelas`}
+                  {d.refin.custo > 0 ? <>{' · custo '}<span className="tnum money text-despesa">{brl(d.refin.custo)}</span></> : ' · sem custo a mais'}
+                </span>
+              )}
             </div>
           ))}
           {atrasos.map((a) => (

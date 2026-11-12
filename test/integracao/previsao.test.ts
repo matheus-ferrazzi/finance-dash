@@ -90,6 +90,50 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect((await queries.getProjecaoBase('Matheus', '2043-03-20')).creditoPorVencimento['2043-04'] ?? 0).toBe(0);
   });
 
+  it('auditoria 11/11: renegociação que encerra um plano antigo — a parcela que sobrou na Pluggy sai do mês seguinte e da trilha', async () => {
+    // fatura de março (900) paga em parte (400); em 10/03 o banco junta os 500 com as 2 parcelas que faltavam do plano
+    // de 3 × 200 num plano novo de 6 × 210: crédito de 895 + desconto de 5
+    await pool.query(`INSERT INTO financas_faturas_historico (id, account_id, vencimento, total) VALUES ('rn-mar', 'rn', '2053-03-06', 900)`);
+    const linha = (id: string, data: string, valor: number, desc: string, classe: string, mov: string, criado: string, fp: string, n: number | null, t: number | null) =>
+      `('${id}', '${data}', ${valor}, '${desc}', 'Loans and financing', 'Crédito', 'Nubank', 'Ariane', '${classe}', '${mov}', '${criado}', 'rn', '${fp}', ${n ?? 'NULL'}, ${t ?? 'NULL'})`;
+    const reneg = 'Renegociação de pendências';
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista, parcela_numero, parcela_total) VALUES ${[
+      linha('rn-pg', '2053-03-05', 400, 'Pagamento recebido', 'pagamento_fatura', 'Entrada', '2053-03-05', '2053-04', null, null),
+      linha('rn-v1', '2053-02-12', 200, reneg, 'despesa', 'Saída', '2053-02-12', '2053-03', 1, 3),
+      linha('rn-v2', '2053-03-12', 200, reneg, 'despesa', 'Saída', '2053-02-12', '2053-04', 2, 3),
+      linha('rn-v3', '2053-04-12', 200, reneg, 'despesa', 'Saída', '2053-02-12', '2053-05', 3, 3),
+      linha('rn-cr', '2053-03-10', 895, 'Crédito de parcelamento', 'estorno', 'Entrada', '2053-03-10', '2053-04', null, null),
+      linha('rn-ds', '2053-03-10', 5, 'Desconto (NuFinanceira)', 'estorno', 'Entrada', '2053-03-10', '2053-04', null, null),
+      ...[1, 2, 3, 4, 5, 6].map((n) => linha(`rn-n${n}`, n === 1 ? '2053-03-10' : `2053-0${n + 2}-10`, 210, reneg, 'despesa', 'Saída', '2053-03-10', `2053-0${n + 3}`, n, 6)),
+    ].join(',')}`);
+    const base = await queries.getProjecaoBase('casal', '2053-03-20');
+    // abril: 500 de saldo + parcela 2 e 3 do plano velho (400) + 1ª do novo (210) − desconto 5 − crédito 895
+    expect(base.creditoPorVencimento['2053-04']).toBeCloseTo(210, 2);
+    // maio: só a 2ª do plano novo — a parcela 3 do plano velho não vai ser cobrada lá
+    expect(base.creditoPorVencimento['2053-05']).toBeCloseTo(210, 2);
+    expect(base.renegociacoes).toHaveLength(1);
+    const t = await queries.getTrilhaDados('2053-03-20');
+    const dividas = t.dividas.filter((d) => d.nome.startsWith('renegocia'));
+    expect(dividas.map((d) => d.plano)).toEqual([6]);
+    expect(dividas[0].refin).toEqual({ data: '2053-03-10', refinanciado: 900, total: 1260, custo: 360 });
+    // a pessoa que não tem o cartão não vê nada disso
+    expect((await queries.getProjecaoBase('Matheus', '2053-03-20')).renegociacoes).toEqual([]);
+  });
+
+  it('auditoria 11/11: os extras de sempre ficam fora da receita prevista e vêm à parte, pela mediana', async () => {
+    const mesesBase = ['2054-01', '2054-02', '2054-03', '2054-04', '2054-05', '2054-06'];
+    const linhas = mesesBase.flatMap((m, k) => [
+      `('ex-s${k}', '${m}-05', 5000, 'SALARIO EMPRESA X', 'Salary', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '${m}-05')`,
+      ...(k % 2 ? [`('ex-p${k}', '${m}-20', ${400 + k * 100}, 'PIX RECEBIDO PESSOA ${'ABCDEF'[k]}', 'Transfers', 'Débito', 'Itaú', 'Matheus', 'receita', 'Entrada', '${m}-20')`] : []),
+    ]);
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES ${linhas.join(',')}`);
+    const b = await queries.getProjecaoBase('casal', '2054-07-10');
+    expect(b.fontesReceita.reduce((s, f) => s + f.valor, 0)).toBe(5000);
+    // cada PIX vem de uma pessoa diferente (o mesmo pagador em 2+ meses viraria fonte recorrente)
+    // extras por mês: 0, 500, 0, 700, 0, 900 → mediana (0 + 500) / 2
+    expect(b.receitaExtraMediana).toBe(250);
+  });
+
   it('auditoria 11/11: média da casa conta como zero o mês-base sem a conta (gás de um mês em três)', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
       ('gas-1', '2051-03-10', 120, 'ULTRAGAZ', 'Gas', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2051-03-10')`);

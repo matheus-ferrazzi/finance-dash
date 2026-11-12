@@ -7,7 +7,7 @@ import { CardResposta } from '../components/CardResposta';
 import { Elo } from '../components/Elo';
 import { GraficoSaida } from '../components/GraficoSaida';
 import { brl, currentDateSP, mesLabel } from '@/lib/format';
-import { addMonths, avisosDeCadastro, diasNoMes } from '@/lib/previsao';
+import { addMonths, avisosDeCadastro, diasNoMes, comExtras } from '@/lib/previsao';
 import { mancheteSaida, saiDoVermelho } from '@/lib/decisoes';
 import { debitoParaSairAte, niveisMeta, projecaoComDebito, tabelaMeta } from '@/lib/meta';
 import { detalheMesAtual, detalheMesFuturo, detalheMesPassado, indiceDoMes, linhasDaLista, notaVisaoIndividual, semPassadosSeFalhar } from '@/lib/mesAMes';
@@ -41,6 +41,10 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
   const ritmo = computeRitmo(base, projecao[0]);
   const linhas = linhasDaLista(projecao, passados, calib, ritmo.diasRestantes, diasNoMes(projecao[0].mes));
   const sai = saiDoVermelho(projecao, calib);
+  // auditoria 11/11: segunda linha — a mesma previsão contando os extras de sempre (a principal segue sem eles)
+  const extra = base.receitaExtraMediana ?? 0;
+  const projExtras = extra > 0 ? computeProjecao(comExtras(base), HORIZONTE_MAX) : null;
+  const saiExtras = projExtras ? saiDoVermelho(projExtras, null).provavel : null;
   const manchete = mancheteSaida(sai, !!calib, passados.map((m) => ({ previsto: m.previsto.saldo, real: m.real.saldo })), HORIZONTE_MAX);
 
   // meta de gasto no débito: o que mais decide "quando saio do vermelho"
@@ -78,6 +82,13 @@ export default async function Previsibilidade({ searchParams }: { searchParams: 
           <CardResposta pergunta="Saindo do vermelho" dinheiro={false} tom={manchete.tom} valor={manchete.valor}
             apoio={<>
               {textoMeta}
+              {projExtras && projecao[1] && (
+                <span className="mt-1 block text-[11px] text-muted">
+                  Contando os extras de sempre (plantão, PIX recebidos: mediana de <span className="money">{brl(extra)}</span>/mês em 6 meses), a sobra de {projecao[1].mesLabel}{' '}
+                  vai de <span className="money">{brl(projecao[1].saldo)}</span> para <span className="money">{brl(projExtras[1].saldo)}</span>
+                  {saiExtras ? <> e sai do vermelho em {mesLabel(saiExtras)}.</> : <> e ainda não sai em {HORIZONTE_MAX} meses.</>}
+                </span>
+              )}
               {calib && sai.piorCaso !== sai.provavel && <> Pelo pior caso, {sai.piorCaso ? mesLabel(sai.piorCaso) : `não sai em ${HORIZONTE_MAX} meses`}.</>}
               {notaVisaoIndividual(resp) && <span className="mt-1 block text-[11px] text-faint">{notaVisaoIndividual(resp)}</span>}
               {!calib && manchete.erro && (

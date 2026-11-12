@@ -41,7 +41,11 @@ export interface LancDivida {
   parcelaNumero?: number | null;
 }
 /** `plano` = nº de parcelas do plano (N9): a mesma dívida pode ter dois planos com a mesma descrição */
-export interface DividaAtiva { chave: string; nome: string; banco: string; plano: number | null; valorParcela: number; restantes: number | null; fim: string | null }
+export interface DividaAtiva {
+  chave: string; nome: string; banco: string; plano: number | null; valorParcela: number; restantes: number | null; fim: string | null;
+  /** auditoria 11/11: o plano nasceu de uma renegociação — quanto foi refinanciado, o total das parcelas e a diferença */
+  refin?: { data: string; refinanciado: number; total: number; custo: number };
+}
 /** Correções do casal (F4b): grupos marcados "não é dívida" saem; "é dívida" entram mesmo sem a regra pegar. */
 export interface MarcasDivida { nao: ReadonlySet<string>; sim: ReadonlySet<string> }
 const SEM_MARCAS: MarcasDivida = { nao: new Set(), sim: new Set() };

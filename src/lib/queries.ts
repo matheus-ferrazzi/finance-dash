@@ -18,12 +18,13 @@ import { componentesPrevistos, type Componentes } from './backtest';
 import { calibrarValidada, doRegime, faixaMes, faixaMesCorrente, type Calibracao } from './faixa';
 import { saiDoVermelho } from './decisoes';
 import { situacaoFatura, type UltimaFatura } from './faturas';
-import { creditoPorVencimentoDe, ESTORNO_ABATE_FATURA, mediaMensalPorCategoria, sqlCiclosCartao, sqlSaldoAnterior } from './faturaPrevista';
+import { creditoPorVencimentoDe, ESTORNO_ABATE_FATURA, mediaMensalPorCategoria, sqlCiclosCartao, sqlMovimentosRenegociacao, sqlSaldoAnterior } from './faturaPrevista';
+import { detectarRenegociacoes, doPlano, moverParcelasEncerradas, type MovReneg } from './renegociacao';
 import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
 import {
-  addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaRecorrente,
+  addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaExtraMediana, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
 } from './previsao';
 
@@ -583,7 +584,7 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
     `WITH fut AS (
        SELECT trim(regexp_replace(regexp_replace(lower(coalesce(descricao,'')), '[0-9]', '', 'g'), '\\s+', ' ', 'g')) AS chave,
               descricao, valor, data_lancamento, categoria_efetiva(descricao, categoria, contraparte_doc) AS categoria,
-              COALESCE(banco,'—') AS banco, responsavel, parcela_numero, parcela_total
+              COALESCE(banco,'—') AS banco, responsavel, parcela_numero, parcela_total, COALESCE(account_id, '') AS conta
        FROM financas_lancamentos
        WHERE classe='despesa' AND data_lancamento > (now() AT TIME ZONE 'America/Sao_Paulo')::date${r.sql}
      )
@@ -595,6 +596,7 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
             mode() WITHIN GROUP (ORDER BY responsavel) AS responsavel,
             (array_agg(descricao ORDER BY data_lancamento ASC))[1] AS proxima_desc,
             (array_agg(parcela_numero ORDER BY data_lancamento ASC))[1] AS proxima_num,
+            mode() WITHIN GROUP (ORDER BY conta) AS conta,
             MAX(parcela_total) AS plano
      FROM fut
      WHERE length(chave) >= 4
@@ -602,7 +604,9 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
      ORDER BY data_fim DESC`,
     r.p,
   );
-  return rows.map((x) => {
+  // auditoria 11/11: plano que uma renegociação encerrou não é mais compromisso (a Pluggy ainda lista as parcelas)
+  const encerrados = (await getRenegociacoes(resp)).flatMap((x) => (x.encerrado ? [x.encerrado] : []));
+  return rows.filter((x) => !encerrados.some((p) => doPlano(p, { conta: x.conta, descricao: x.proxima_desc ?? '', parcelaTotal: x.plano == null ? null : Number(x.plano), valor: Number(x.valor_parcela) }))).map((x) => {
     // parcela pelo campo do banco (Nubank); senão "3/4" no fim da descrição. Exige atual <= total pra
     // não ler data como parcela ("05/09" viraria "parcela 5 de 9"), e o total tem que ser > 1.
     const m = String(x.proxima_desc ?? '').match(/(?:^|\s)(\d{1,2})\s*\/\s*(\d{1,2})(?:\s|$)/);
@@ -615,6 +619,21 @@ export async function getCompromissosParcelados(resp: Resp): Promise<Compromisso
       parcelaAtual: parcelaValida ? pAtual : null, parcelaTotal: parcelaValida ? pTotal : null,
     };
   });
+}
+
+const paraMovReneg = (x: any): MovReneg => ({
+  tipo: x.tipo, conta: x.conta, data: x.data, venc: x.venc, valor: Number(x.valor), descricao: x.descricao,
+  parcelaNumero: x.pn == null ? null : Number(x.pn), parcelaTotal: x.pt == null ? null : Number(x.pt),
+});
+
+/** Renegociações no cartão conhecidas em `hoje` (a mesma detecção que a previsão usa). */
+export async function getRenegociacoes(resp: Resp, hoje: string = currentDateSP()) {
+  const r = rf(resp, 2);
+  const [movs, saldos] = await Promise.all([
+    q<any>(sqlMovimentosRenegociacao(r.sql.replace('responsavel', 'l.responsavel')), [hoje, ...r.p]),
+    q<any>(sqlSaldoAnterior(resp === 'casal' ? '' : ' AND c.responsavel = $2'), resp === 'casal' ? [hoje] : [hoje, resp]),
+  ]);
+  return detectarRenegociacoes(movs.map(paraMovReneg), saldos.map((x) => ({ conta: x.conta, venc: x.venc, valor: Number(x.valor) })));
 }
 
 export async function getCompromissosManuais(resp: Resp): Promise<CompromissoManual[]> {
@@ -1117,13 +1136,20 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   // Fatura de cada cartão pelo MÊS DE VENCIMENTO, com o que já está lançado (conhecido em hoje). Auditoria 11/11:
   // saldo não pago da fatura anterior + compras − todos os créditos do ciclo (faturaPrevista.ts tem a medição)
   const r3 = rf(resp, 2);
-  const [cicloRows, saldoRows] = await Promise.all([
+  const [cicloRows, saldoRows, renegRows] = await Promise.all([
     q<any>(sqlCiclosCartao(r3.sql.replace('responsavel', 'l.responsavel')), [hoje, ...r3.p]),
     q<any>(sqlSaldoAnterior(resp === 'casal' ? '' : ' AND c.responsavel = $2'), resp === 'casal' ? [hoje] : [hoje, resp]),
+    q<any>(sqlMovimentosRenegociacao(r3.sql.replace('responsavel', 'l.responsavel')), [hoje, ...r3.p]),
   ]);
+  const saldosAnteriores = saldoRows.map((x) => ({ conta: x.conta, venc: x.venc, valor: Number(x.valor) }));
+  // plano antigo que uma renegociação encerrou: as parcelas que a Pluggy ainda lista nos meses seguintes contam na
+  // fatura do crédito que as anulou (renegociacao.ts)
+  const renegociacoes = detectarRenegociacoes(renegRows.map(paraMovReneg), saldosAnteriores);
   const creditoPorVencimento = creditoPorVencimentoDe(
-    cicloRows.map((x) => ({ conta: x.conta, venc: x.venc, compras: Number(x.compras), abate: Number(x.abate), outrosCreditos: Number(x.outros), temHistorico: Boolean(x.tem_historico) })),
-    saldoRows.map((x) => ({ conta: x.conta, venc: x.venc, valor: Number(x.valor) })),
+    moverParcelasEncerradas(
+      cicloRows.map((x) => ({ conta: x.conta, venc: x.venc, compras: Number(x.compras), abate: Number(x.abate), outrosCreditos: Number(x.outros), temHistorico: Boolean(x.tem_historico) })),
+      renegociacoes),
+    saldosAnteriores,
   );
 
   // N6/L3 (auditoria 17/10): cartão em que a Pluggy não entrega todas as compras (Neon: só uma parcela por compra
@@ -1160,7 +1186,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
   );
   for (const x of naoDetalhadoRows) {
     // auditoria 11/11: o saldo não pago da última fatura já está dentro do limite usado — não soma por cima
-    const saldoDaConta = saldoRows.filter((r) => r.conta === x.account_id && r.venc === x.venc).reduce((t, r) => t + Number(r.valor), 0);
+    const saldoDaConta = saldosAnteriores.filter((r) => r.conta === x.account_id && r.venc === x.venc).reduce((t, r) => t + r.valor, 0);
     const falta = Math.round(Math.max(0, Number(x.usado) - Number(x.conhecidas) - saldoDaConta) * 100) / 100;
     if (falta > 0) creditoPorVencimento[x.venc] = Math.round(((creditoPorVencimento[x.venc] ?? 0) + falta) * 100) / 100;
   }
@@ -1324,6 +1350,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
       ...(casaNoMesCasalPorCategoria ? { casaNoMesCasalPorCategoria } : {}),
     },
     fontesReceita,
+    receitaExtraMediana: receitaExtraMediana(entradas, basesReceita, fontesReceita),
     despesaVariavelMediaMensal: debito.livre,
     despesaFixaDebitoMedia: debito.fixo,
     fracaoRestanteDebito,
@@ -1332,6 +1359,7 @@ export async function getProjecaoBase(resp: Resp, hoje: string = currentDateSP()
     creditoPorVencimento,
     faturaReal,
     cartaoSemFatura,
+    renegociacoes,
     compromissosManuais,
     compromissosCadastrados,
   };
@@ -1515,7 +1543,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     getMovimentosDiarios('casal', desde, hoje),
     // lançamentos da janela e parcelas futuras já conhecidas em hoje: dívidas e juros saem daqui
     q<any>(
-      `SELECT descricao, categoria, COALESCE(banco,'—') AS banco, forma_pagamento AS forma,
+      `SELECT descricao, categoria, COALESCE(banco,'—') AS banco, forma_pagamento AS forma, COALESCE(account_id, '') AS conta,
               to_char(data_lancamento,'YYYY-MM-DD') AS data, valor::float8 AS valor, parcela_total AS "parcelaTotal", parcela_numero AS "parcelaNumero"
        FROM financas_lancamentos
        WHERE ${SEM_ESPELHO}
@@ -1550,16 +1578,24 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   const alvo = addMonths(mesAtual, 12);
   // auditoria 17/10 (N3): parcelaTotal e parcelaNumero chegam ao agrupamento — sem eles, dois planos da mesma
   // renegociação (um em 3× e outro em 8× no Nubank) viravam uma dívida só, com a parcela de um e o prazo do outro
-  const lancs = divRows.map((x) => ({
-    descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor),
+  const todos = divRows.map((x) => ({
+    descricao: x.descricao ?? '', categoria: x.categoria, banco: x.banco, forma: x.forma, data: x.data, valor: Number(x.valor), conta: x.conta as string,
     parcelaTotal: x.parcelaTotal == null ? null : Number(x.parcelaTotal), parcelaNumero: x.parcelaNumero == null ? null : Number(x.parcelaNumero),
   }));
+  // auditoria 11/11: plano que uma renegociação encerrou sai da trilha (a Pluggy ainda lista as parcelas dele)
+  const renegs = base.renegociacoes ?? [];
+  const lancs = todos.filter((l) => !renegs.some((r) => r.encerrado && doPlano(r.encerrado, l)));
   // juros só da janela de atraso (W2: a busca agora traz também plano parcelado antigo, que não é atraso de agora)
   const juros = lancs.filter((l) => l.data >= desde && l.data <= hoje && ehAtraso(l.descricao, l.categoria)).map((l) => l.data.slice(0, 7));
   const porMes = new Map(aplRows.map((x) => [x.mes as string, Math.round(Number(x.liq) * 100) / 100]));
   return {
     hoje,
-    dividas: agruparDividas(lancs, hoje, marcas),
+    // o plano que nasceu de uma renegociação leva junto quanto foi refinanciado e quanto as parcelas somam
+    dividas: agruparDividas(lancs, hoje, marcas).map((d) => {
+      const r = [...renegs].reverse().find((x) => x.novo && x.custo !== null && d.plano === x.novo.parcelas && Math.abs(d.valorParcela - x.novo.valor) < 0.005
+        && lancs.some((l) => l.banco === d.banco && doPlano(x.novo!, l)));
+      return r ? { ...d, refin: { data: r.data, refinanciado: r.refinanciado, total: r.novo!.total, custo: r.custo! } } : d;
+    }),
     atrasos: [
       ...Array.from(new Set(juros)).sort().map((mes) => ({ mes, motivo: 'juros' as const })),
       ...mesesComContaNegativa(saldo.total, movs, desde, hoje).map((mes) => ({ mes, motivo: 'conta_negativa' as const })),

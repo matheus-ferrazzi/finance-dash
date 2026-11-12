@@ -34,6 +34,17 @@ export function saldoNaoPago(u: FaturaFechada | null, hoje: string): number {
   return Math.max(0, r2(u.total - u.pago));
 }
 
+/**
+ * Auditoria 11/11: faturas pagas só em parte, com o resto parcelado pelo banco — a tela dizia "tudo pago". Não há
+ * nada a pagar agora, mas o resto virou dívida (com custo, que a Trilha mostra).
+ */
+export function faturasPagasEmParte(
+  cs: readonly { banco: string; responsavel: string; ultima: UltimaFatura | null }[],
+): { banco: string; responsavel: string; total: number; pago: number; resto: number }[] {
+  return cs.flatMap((c) => (c.ultima && c.ultima.situacao === 'parcelada'
+    ? [{ banco: c.banco, responsavel: c.responsavel, total: c.ultima.total, pago: c.ultima.pago, resto: r2(c.ultima.total - c.ultima.pago) }] : []));
+}
+
 /** Parcial do ciclo em curso: compras e créditos do ciclo (crédito negativo) + o saldo não pago; nunca negativo. */
 export function somaDoCiclo(valores: readonly number[], saldoAnterior: number): number {
   return Math.max(0, r2(valores.reduce((s, v) => s + v, 0) + saldoAnterior));

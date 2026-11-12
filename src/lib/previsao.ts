@@ -64,6 +64,13 @@ export interface ProjecaoBase {
   fracaoRestanteDebito?: number | null;
   /** compras novas no crédito por mês (fora parcelamentos) — vira fatura */
   creditoNovoMedio: number;
+  /**
+   * auditoria 11/11: parcelas de COMPRA (sem dívida) — a média mensal nos meses-base e, por mês de vencimento, o que já
+   * está lançado. A diferença é o que ainda vai ser contratado: o casal compra parcelado todo mês e a fatura de um mês
+   * distante só tinha as parcelas de hoje.
+   */
+  parcelasCompraMedia?: number;
+  parcelasCompraPorVencimento?: Record<string, number>;
   /** média mensal por categoria da casa (aluguel/luz/água/internet/telefone/gás) */
   despesaCasaPorCategoria: Record<string, number>;
   /** 'AAAA-MM' do vencimento -> compras no crédito já lançadas (conhecidas em hoje) que vencem nele */
@@ -415,15 +422,23 @@ export function compromissoAtivoNoMes(c: CompromissoManual, mes: string): boolea
   return true;
 }
 
+const PARCELAS_NOVAS_A_PARTIR_DE = 3;
+
 /**
  * Fatura que sai da conta num mês FUTURO, pelo vencimento:
  * - fatura real conhecida (histórico) manda;
  * - senão, compras já lançadas que vencem nele + as compras novas que ainda vão
- *   acontecer: no mês seguinte, só a fração do mês corrente que falta; depois, a média cheia.
+ *   acontecer: no mês seguinte, só a fração do mês corrente que falta; depois, a média cheia;
+ * - mais as parcelas de compra que ainda vão ser contratadas: a média mensal menos as já lançadas para o mês.
  * Antes usava as parcelas DATADAS no mês, que oscilavam sem relação com a fatura.
  */
-function faturaFutura(base: ProjecaoBase, mes: string, fracaoNovas: number): number {
-  return base.faturaReal[mes] ?? (base.creditoPorVencimento[mes] ?? 0) + base.creditoNovoMedio * fracaoNovas;
+function faturaFutura(base: ProjecaoBase, mes: string, fracaoNovas: number, mesesAFrente: number): number {
+  if (base.faturaReal[mes] !== undefined) return base.faturaReal[mes];
+  // só de 3 meses em diante: as faturas dos 2 meses seguintes já estão quase definidas pelas compras feitas (no teste
+  // contra o passado, acrescentar nelas piorava: viés de −7 para +735 a 2 meses; a 3 meses, de −963 para −13)
+  const parcelasQueFaltam = mesesAFrente < PARCELAS_NOVAS_A_PARTIR_DE ? 0
+    : Math.max(0, (base.parcelasCompraMedia ?? 0) - (base.parcelasCompraPorVencimento?.[mes] ?? 0));
+  return (base.creditoPorVencimento[mes] ?? 0) + base.creditoNovoMedio * fracaoNovas + parcelasQueFaltam;
 }
 
 /**
@@ -529,7 +544,7 @@ export function computeProjecao(base: ProjecaoBase, horizonMeses: number, hoje: 
 
     const despesaVariavel = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
     const receita = receitaMensal;
-    const fatura = faturaFutura(base, mes, i === 1 ? (diasAnchor - diaHojeNum) / diasAnchor : 1) + (base.cartaoSemFatura?.mensal ?? 0);
+    const fatura = faturaFutura(base, mes, i === 1 ? (diasAnchor - diaHojeNum) / diasAnchor : 1, i) + (base.cartaoSemFatura?.mensal ?? 0);
     const parcelas = Math.min(fatura, base.creditoPorVencimento[mes] ?? 0);
     const saldo = receita - despesaFixa - despesaManual - despesaCasa - despesaVariavel - fatura;
     saldoProjetado += saldo;

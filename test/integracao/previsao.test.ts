@@ -134,6 +134,22 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(b.receitaExtraMediana).toBe(250);
   });
 
+  it('auditoria 11/11: parcelas de compra — média dos meses-base (sem dívida, mês vazio = 0) e o já lançado por vencimento', async () => {
+    const l = (id: string, data: string, valor: number, desc: string, cat: string, criado: string, fp: string | null, n: number, t: number) =>
+      `('${id}', '${data}', ${valor}, '${desc}', '${cat}', 'Crédito', 'Nubank', 'Ariane', 'despesa', 'Saída', '${criado}', 'pf', ${fp ? `'${fp}'` : 'NULL'}, ${n}, ${t})`;
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em, account_id, fatura_prevista, parcela_numero, parcela_total) VALUES ${[
+      l('pf-abr', '2055-04-10', 300, 'LOJA A', 'Shopping', '2055-04-10', null, 2, 3),
+      l('pf-mai', '2055-05-10', 300, 'LOJA A', 'Shopping', '2055-05-10', null, 3, 3),
+      // dívida antiga parcelada não é compra: fica fora da média
+      l('pf-div', '2055-05-12', 500, 'Renegociação de pendências', 'Loans and financing', '2055-05-12', null, 1, 4),
+      // parcela já lançada para agosto, conhecida desde junho
+      l('pf-ago', '2055-07-20', 90, 'LOJA B', 'Shopping', '2055-06-01', '2055-08', 2, 2),
+    ].join(',')}`);
+    const b = await queries.getProjecaoBase('casal', '2055-07-10');
+    expect(b.parcelasCompraMedia).toBe(200); // (300 + 300 + 0) / 3 meses-base
+    expect(b.parcelasCompraPorVencimento?.['2055-08']).toBe(90);
+  });
+
   it('auditoria 11/11: média da casa conta como zero o mês-base sem a conta (gás de um mês em três)', async () => {
     await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES
       ('gas-1', '2051-03-10', 120, 'ULTRAGAZ', 'Gas', 'Débito', 'X', 'Ariane', 'despesa', 'Saída', '2051-03-10')`);

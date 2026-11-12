@@ -1,0 +1,54 @@
+# Auditoria 11/11/2026: os testes de integração só rodam com banco. Sem CI eles ficavam pulados e a suíte aparecia
+# verde; rodados à mão, pegaram uma dupla contagem antes do merge. Aqui rodam em todo PR, num Postgres descartável.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_PASSWORD: teste
+          POSTGRES_DB: personal_hub_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Tipos
+        run: npx tsc --noEmit -p .
+      - name: Testes (unitários e de integração)
+        env:
+          # banco descartável do próprio job; valor de teste, o mesmo do README
+          TEST_DATABASE_URL: postgres://postgres:teste@127.0.0.1:5432/personal_hub_db
+        run: npx vitest run --reporter=default --reporter=json --outputFile=/tmp/vitest.json
+      - name: Nenhum teste pulado
+        # teste pulado é teste que não rodou: se o banco não subir, a suíte "passa" sem a integração
+        run: node -e 'const r=require("/tmp/vitest.json");console.log(`${r.numPassedTests} passaram, ${r.numPendingTests} pulados`);if(r.numPendingTests>0)process.exit(1)'
+      - name: Build do painel
+        run: npx next build
+      - name: Build do worker
+        run: npm run build:worker

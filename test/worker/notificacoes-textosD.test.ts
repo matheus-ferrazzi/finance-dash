@@ -29,6 +29,17 @@ describe('diário', () => {
     const u = montarDiario({ ...dia, diasRestantes: 0, contas: [] }, 'L');
     expect(u).toBe([`🔴 *Último dia do mês* · out/26 fecha em ${brl(-500)}`, '☀️ *Bom dia!*', `💸 Último dia do mês: dá pra gastar *${brl(50)}* hoje`, `🔴 out/26 fecha em *${brl(-500)}*`, '👉 L'].join('\n\n'));
   });
+  it('auditoria 11/11: fatura com saldo em aberto vira o título do diário e uma linha de aviso; limite estourado, uma linha', () => {
+    const t = montarDiario({ ...dia, avisos: [
+      { tipo: 'fatura_parcial', banco: 'B1', responsavel: 'Ariane', total: 900, pago: 400, falta: 500, vencimento: '2041-03-08', venceu: false },
+      { tipo: 'limite', banco: 'B2', responsavel: 'Matheus', usado: 1080, limite: 1000 },
+      { tipo: 'fatura_nao_cabe', banco: 'B3', responsavel: 'Ariane', fatura: 700, vencimento: '2041-03-10', disponivel: 450, falta: 250 },
+    ] }, 'L');
+    expect(t).toContain(`🟡 Fatura B3 (Ariane) de ${brl(700)} vence em 10/03 e o previsto nas contas até lá é ${brl(450)}: *faltam ${brl(250)}*. Parcelar no banco tem juros`);
+    expect(t.split(String.fromCharCode(10))[0]).toBe(`🔴 *Fatura com saldo em aberto* · B1 (Ariane): faltam ${brl(500)}`);
+    expect(t).toContain(`🔴 Fatura B1 (Ariane) vence em 08/03: foram pagos ${brl(400)} de ${brl(900)}, *faltam ${brl(500)}*. O que ficar sem pagar o banco parcela com juros`);
+    expect(t).toContain(`🟡 Limite do B2 (Matheus) estourado: ${brl(1080)} usados de ${brl(1000)}`);
+  });
   it('Onda 2: avisos por exceção numa seção própria, depois do fecha-em e antes das contas', () => {
     const t = montarDiario({ ...dia, avisos: [
       { tipo: 'negativo', banco: 'B1', responsavel: 'Ariane', valor: -42.5 },
@@ -142,6 +153,13 @@ const backupOk = { h_desde_ok: 5, h_desde_n8n: 5, n8n_workflows: 1, h_desde_offs
 describe('técnico', () => {
   it('tudo bem: null', () => {
     expect(montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [] })).toBeNull();
+  });
+  it('auditoria 11/11: teste de restore que falhou ou que não roda há mais de 9 dias entra no aviso técnico', () => {
+    const tec = (b: object) => montarTecnico({ saude: saudeOk as any, backup: { ...backupOk, ...b } as any, consentimentos: [] });
+    expect(tec({ restore_ok: true, h_desde_restore: 50 })).toBeNull();
+    expect(tec({ restore_ok: false, h_desde_restore: 50 })).toContain('🔴 Teste de restore do backup falhou (há 50h)');
+    expect(tec({ restore_ok: true, h_desde_restore: 240 })).toContain('🔴 Teste de restore do backup não roda há 10 dias');
+    expect(tec({ restore_ok: null, h_desde_restore: null })).toContain('🔴 Teste de restore do backup nunca rodou');
   });
   it('🔴 para o que quebrou, 🟡 para consentimento a vencer, 🔴 para vencido', () => {
     const t = montarTecnico({ saude: { ...saudeOk, worker_falhas_24h: 1 } as any, backup: backupOk as any, consentimentos: [{ banco: 'B1', responsavel: 'R', dias: 10 }, { banco: 'B2', responsavel: 'R', dias: -1 }] })!;

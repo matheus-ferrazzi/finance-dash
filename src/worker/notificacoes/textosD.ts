@@ -66,6 +66,16 @@ function linhaAviso(a: Aviso): string {
     case 'juros': return `🔴 Juros de atraso no ${a.banco} (${a.responsavel}): ${brl(a.valor)}`;
     case 'orcamento': return `${a.emoji} ${a.item} passou de ${a.pct}% do teto: ${brl(a.gasto)} de ${brl(a.teto)}`;
     case 'fora_do_padrao': return `🧐 Fora do padrão: ${a.descricao}, ${brl(a.valor)} (costuma ser ${brl(a.mediana)})`;
+    case 'fatura_parcial': {
+      const dia = `${a.vencimento.slice(8, 10)}/${a.vencimento.slice(5, 7)}`;
+      const pagos = a.pago > 0.01 ? `foram pagos ${brl(a.pago)} de ${brl(a.total)}` : `nada foi pago dos ${brl(a.total)}`;
+      return `🔴 Fatura ${a.banco} (${a.responsavel}) ${a.venceu ? `venceu em ${dia}` : `vence em ${dia}`}: ${pagos}, *faltam ${brl(a.falta)}*. O que ficar sem pagar o banco parcela com juros`;
+    }
+    case 'fatura_nao_cabe': {
+      const dia = `${a.vencimento.slice(8, 10)}/${a.vencimento.slice(5, 7)}`;
+      return `🟡 Fatura ${a.banco} (${a.responsavel}) de ${brl(a.fatura)} vence em ${dia} e o previsto nas contas até lá é ${brl(a.disponivel)}: *faltam ${brl(a.falta)}*. Parcelar no banco tem juros`;
+    }
+    case 'limite': return `🟡 Limite do ${a.banco} (${a.responsavel}) estourado: ${brl(a.usado)} usados de ${brl(a.limite)}`;
   }
 }
 
@@ -85,6 +95,8 @@ function tituloDiario(r: ResumoDiario): string {
   if (neg && neg.tipo === 'negativo') return titulo('ruim', 'Conta no negativo', `${neg.banco} (${neg.responsavel})`);
   const juros = r.avisos?.find((a) => a.tipo === 'juros');
   if (juros && juros.tipo === 'juros') return titulo('ruim', 'Juros de atraso', `${juros.banco} (${juros.responsavel})`);
+  const parcial = r.avisos?.find((a) => a.tipo === 'fatura_parcial');
+  if (parcial && parcial.tipo === 'fatura_parcial') return titulo('ruim', 'Fatura com saldo em aberto', `${parcial.banco} (${parcial.responsavel}): faltam ${brl(parcial.falta)}`);
   if (r.diasRestantes <= 0) return titulo(r.fechaCom < 0 ? 'ruim' : 'bom', 'Último dia do mês', fecha);
   if (r.fechaCom < 0) return titulo('ruim', 'Mês no vermelho', fecha);
   if (r.ritmoAtualDia > r.ritmoSeguroDia) {

@@ -63,7 +63,9 @@ const SQL_BACKUP = `SELECT json_build_object(
   'tamanho',         (SELECT tamanho_bytes FROM financas_backup WHERE ok ORDER BY feito_em DESC LIMIT 1),
   'tabelas',         (SELECT tabelas FROM financas_backup WHERE ok ORDER BY feito_em DESC LIMIT 1),
   'falhas_24h',      (SELECT COUNT(*) FROM financas_backup WHERE (NOT ok OR n8n_ok = false) AND feito_em > NOW() - interval '24 hours'),
-  'ultimo_erro',     (SELECT erro FROM financas_backup WHERE NOT ok AND feito_em > NOW() - interval '36 hours' ORDER BY feito_em DESC LIMIT 1)
+  'ultimo_erro',     (SELECT erro FROM financas_backup WHERE NOT ok AND feito_em > NOW() - interval '36 hours' ORDER BY feito_em DESC LIMIT 1),
+  'restore_ok',      (SELECT restore_ok FROM financas_backup WHERE restore_em IS NOT NULL ORDER BY restore_em DESC LIMIT 1),
+  'h_desde_restore', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(restore_em)))/3600,1) FROM financas_backup)
 ) AS st`;
 
 const SQL_CONSENT = `SELECT banco, responsavel,

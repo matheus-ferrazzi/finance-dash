@@ -25,7 +25,15 @@ export async function GET() {
     sobraParaODiaADia: p.sobraParaODiaADia,
     // 27/10: guardada com a mensagem enviada — o Zeca explica o diário com os números daquela hora
     conta: contaDaPrevisao(p),
-    avisos: dadosAvisos ? avisosDoDia(dadosAvisos) : [],
+    // auditoria 11/11: os avisos de cartão (fatura com saldo em aberto, limite) saem das faturas já lidas aqui
+    avisos: avisosDoDia({
+      ...(dadosAvisos ?? { saldos: [], encargos: [], orcamento: [], foraDoPadrao: [] }), hoje,
+      caixa: { saldo: p.saldoHoje, aReceber: p.receitasAReceber.map((x) => ({ dia: x.diaTipico, valor: x.valor })) },
+      cartoes: faturas.flatMap((f) => (f.ultima ? [{
+        banco: f.banco, responsavel: f.responsavel, total: f.ultima.total, pago: f.ultima.pago, parcelado: f.ultima.parcelado,
+        vencimento: f.ultima.vencimento, usado: f.usado, limite: f.limite,
+      }] : [])),
+    }),
     // N5: contas do caderno + faturas fechadas dos cartões dos dois, vencendo hoje/amanhã
     contas: [...contasDoDia(contas.itens, dia, diasNoMes(mes)), ...faturasDoDia(faturas, hoje, contas.itens)]
       .sort((a, b) => (a.quando === b.quando ? 0 : a.quando === 'hoje' ? -1 : 1)),

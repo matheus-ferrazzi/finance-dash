@@ -10,7 +10,8 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Diagnostico({ searchParams }: { searchParams: { resp?: string } }) {
+export default async function Diagnostico(props: { searchParams: Promise<{ resp?: string }> }) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const d = await getDiagnostico(resp);
 

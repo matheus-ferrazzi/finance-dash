@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { alterarValorAvulsa, apagarMarca } from '@/lib/queries';
 import { validarValor } from '@/lib/validation';
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ erro: 'id inválido' }, { status: 400 });
 
@@ -11,7 +12,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 }
 
 // Alterar o valor de uma avulsa ainda não confirmada pelo banco.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ erro: 'id inválido' }, { status: 400 });
   const body = await req.json().catch(() => null);

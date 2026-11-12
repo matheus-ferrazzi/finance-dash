@@ -7,7 +7,8 @@ function parseId(raw: string): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ erro: 'id inválido' }, { status: 400 });
 
@@ -21,7 +22,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = parseId(params.id);
   if (id === null) return NextResponse.json({ erro: 'id inválido' }, { status: 400 });
 

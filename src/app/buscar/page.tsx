@@ -14,7 +14,8 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Buscar({ searchParams }: { searchParams: { resp?: string; q?: string } }) {
+export default async function Buscar(props: { searchParams: Promise<{ resp?: string; q?: string }> }) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const q = (searchParams.q ?? '').trim();
   // E3: gastos em dinheiro vivo também aparecem (linha 💵, sem "Mudar categoria")

@@ -13,7 +13,8 @@ function titulo(s: string): string {
   return s.split(' ').map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
 }
 
-export default async function Assinaturas({ searchParams }: { searchParams: { resp?: string } }) {
+export default async function Assinaturas(props: { searchParams: Promise<{ resp?: string }> }) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const lista = await getAssinaturas(resp);
   const totalMes = lista.reduce((s, a) => s + a.valorMedio, 0);

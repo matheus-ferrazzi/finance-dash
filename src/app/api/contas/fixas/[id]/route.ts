@@ -3,7 +3,8 @@ import { alterarValorConta, encerrarConta } from '@/lib/queries';
 import { validarValor } from '@/lib/validation';
 
 // "Remover de vez": a conta para de aparecer depois de `ultimoMes`; os meses anteriores continuam no histórico.
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ erro: 'id inválido' }, { status: 400 });
 
@@ -15,7 +16,8 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 }
 
 // "Alterar valor": previsto da conta a partir do mês informado; o pago continua vindo do banco.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ erro: 'id inválido' }, { status: 400 });
   const body = await req.json().catch(() => null);

@@ -10,7 +10,10 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Casa({ searchParams }: { searchParams: { resp?: string; mes?: string; p?: string } }) {
+export default async function Casa(
+  props: { searchParams: Promise<{ resp?: string; mes?: string; p?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const per = resolvePeriodo(searchParams.p, searchParams.mes);
 

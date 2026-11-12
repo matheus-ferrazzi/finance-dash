@@ -11,9 +11,12 @@ function resolveResp(v?: string): Resp {
   return v === 'Matheus' || v === 'Ariane' ? v : 'casal';
 }
 
-export default async function Simulador({ searchParams }: {
-  searchParams: { resp?: string; mudanca?: string; aluguel?: string; custo?: string };
-}) {
+export default async function Simulador(
+  props: {
+    searchParams: Promise<{ resp?: string; mudanca?: string; aluguel?: string; custo?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const [base, { calib }] = await Promise.all([getProjecaoBase(resp), getCalibracaoPara(resp)]);
   const atual = currentMonthSP();

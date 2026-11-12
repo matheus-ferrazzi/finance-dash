@@ -16,7 +16,10 @@ function ddmm(ms: number): string {
   return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-export default async function Faturas({ searchParams }: { searchParams: { resp?: string; cartao?: string; ciclo?: string } }) {
+export default async function Faturas(
+  props: { searchParams: Promise<{ resp?: string; cartao?: string; ciclo?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const resp = resolveResp(searchParams.resp);
   const [faturas, creditos] = await Promise.all([getFaturas(resp), getCreditoDespesas(resp)]);
 

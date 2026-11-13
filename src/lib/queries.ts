@@ -23,6 +23,7 @@ import { detectarRenegociacoes, doPlano, moverParcelasEncerradas, type MovReneg 
 import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
+import type { DividaExternaInput, DividaExternaTela } from './dividasExternas';
 import {
   addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaExtraMediana, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
@@ -1543,7 +1544,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   const mesAtual = hoje.slice(0, 7);
   const desde = `${addMonths(mesAtual, -(MESES_ATRASO - 1))}-01`; // janela de atraso: o mês anterior e o atual
   const iniPassados = `${addMonths(mesAtual, -MESES_SOBRA)}-01`;
-  const [base, passados, saldo, movs, divRows, aplRows, marcas, metas] = await Promise.all([
+  const [base, passados, saldo, movs, divRows, aplRows, marcas, metas, externas] = await Promise.all([
     baseCasal ?? getProjecaoBase('casal', hoje),
     getMesesPassados('casal', hoje),
     getSaldoContas('casal'),
@@ -1579,6 +1580,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     ),
     getMarcasDivida(),
     getMetasTrilha(),
+    getDividasExternas(),
   ]);
   const proj = computeProjecao(base, 24, hoje);
   const debitoAtual = base.despesaVariavelMediaMensal + (base.despesaFixaDebitoMedia ?? 0);
@@ -1613,6 +1615,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     gastoTravado: { fixos: proj[1]?.despesaManual ?? 0, casa: proj[1]?.despesaCasa ?? 0, debitoTravado: base.despesaFixaDebitoMedia ?? 0 },
     aplicado: base.patrimonioAtual,
     metas,
+    externas: { informado: externas.informado, abertas: externas.abertas.map((x) => ({ credor: x.credor, responsavel: x.responsavel, valor: x.valor, negativada: x.negativada })) },
     aplicacaoMensal: Array.from({ length: MESES_SOBRA }, (_, i) => addMonths(mesAtual, -(MESES_SOBRA - i))).map((mes) => ({ mes, valor: porMes.get(mes) ?? 0 })),
   };
 }
@@ -1844,6 +1847,46 @@ export async function marcarDivida(
   } finally {
     cli.release();
   }
+}
+
+// ==================== DÍVIDAS FORA DO BANCO (13/11, plano realista) ====================
+
+/** As dívidas em aberto e se já houve algum cadastro ou consulta (sem isso, "nome limpo" não se dá por cumprido). */
+export async function getDividasExternas(): Promise<{ informado: boolean; abertas: DividaExternaTela[] }> {
+  const rows = await q<any>(
+    `SELECT id, credor, responsavel, valor::float8 AS valor, negativada, origem, to_char(referencia, 'YYYY-MM-DD') AS referencia,
+            observacao, quitada_em IS NOT NULL AS quitada
+       FROM financas_dividas_externas ORDER BY negativada DESC, valor DESC, id`,
+  );
+  return {
+    informado: rows.length > 0,
+    abertas: rows.filter((x) => !x.quitada).map((x) => ({
+      id: Number(x.id), credor: x.credor, responsavel: x.responsavel, valor: Number(x.valor), negativada: Boolean(x.negativada),
+      origem: x.origem, referencia: x.referencia, observacao: x.observacao ?? null,
+    })),
+  };
+}
+
+export async function criarDividaExterna(d: DividaExternaInput): Promise<number> {
+  const rows = await qw<any>(
+    `INSERT INTO financas_dividas_externas (credor, responsavel, valor, negativada, observacao) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [d.credor, d.responsavel, d.valor, d.negativada, d.observacao],
+  );
+  return Number(rows[0].id);
+}
+
+/** Marca como quitada (sai da fase, fica no histórico) ou reabre. */
+export async function quitarDividaExterna(id: number, quitada: boolean): Promise<boolean> {
+  return (await qw(
+    `UPDATE financas_dividas_externas
+        SET quitada_em = CASE WHEN $2 THEN (now() AT TIME ZONE 'America/Sao_Paulo')::date END, atualizado_em = now()
+      WHERE id = $1 RETURNING id`,
+    [id, quitada],
+  )).length > 0;
+}
+
+export async function apagarDividaExterna(id: number): Promise<boolean> {
+  return (await qw(`DELETE FROM financas_dividas_externas WHERE id = $1 RETURNING id`, [id])).length > 0;
 }
 
 export async function apagarMarcacao(id: number): Promise<boolean> {

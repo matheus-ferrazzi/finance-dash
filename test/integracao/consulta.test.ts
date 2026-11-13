@@ -26,7 +26,7 @@ describe.skipIf(!url)('consulta livre do Zeca (integração)', () => {
     });
     pool = new Pool({ connectionString: url });
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
-    for (const m of ['001_c1_ingestao', '006_categorias_painel', '007_trilha_ajustes', '010_bot_acoes', '011_gastos_dinheiro']) {
+    for (const m of ['001_c1_ingestao', '006_categorias_painel', '007_trilha_ajustes', '019_dividas_externas', '010_bot_acoes', '011_gastos_dinheiro']) {
       await pool.query(readFileSync(`db/migrations/${m}.sql`, 'utf8'));
     }
     const l = (id: string, data: string, valor: number, descricao: string, categoria: string, forma: string, classe = 'despesa', quem = 'Matheus') =>

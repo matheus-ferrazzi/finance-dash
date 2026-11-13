@@ -24,6 +24,60 @@ export function BotaoNaoDivida({ chave, nome }: { chave: string; nome: string })
   return <button type="button" onClick={tirar} className="min-h-[44px] px-2 text-[11px] text-muted underline">não é dívida</button>;
 }
 
+/** 13/11: quitar ou apagar uma dívida fora do banco. */
+export function BotoesDividaExterna({ id, credor }: { id: number; credor: string }) {
+  async function quitar() {
+    if (!confirm(`Marcar ${credor} como quitada? Ela sai da lista e fica no histórico.`)) return;
+    const erro = await enviar(`/api/trilha/externa/${id}`, 'PATCH', { quitada: true });
+    if (erro) alert(erro); else window.location.reload();
+  }
+  async function apagar() {
+    if (!confirm(`Apagar ${credor}? Use só se foi cadastrada por engano.`)) return;
+    const erro = await enviar(`/api/trilha/externa/${id}`, 'DELETE');
+    if (erro) alert(erro); else window.location.reload();
+  }
+  return (
+    <>
+      <button type="button" onClick={quitar} className="min-h-[44px] px-2 text-[11px] text-accent underline">quitada</button>
+      <button type="button" onClick={apagar} className="min-h-[44px] px-2 text-[11px] text-muted underline">apagar</button>
+    </>
+  );
+}
+
+/** 13/11: cadastrar uma dívida fora do banco (o que suja o nome e a Pluggy não vê). */
+export function NovaDividaExterna() {
+  const [aberto, setAberto] = useState(false);
+  const [credor, setCredor] = useState('');
+  const [valor, setValor] = useState('');
+  const [responsavel, setResponsavel] = useState<'Matheus' | 'Ariane'>('Matheus');
+  const [negativada, setNegativada] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  async function salvar() {
+    const e = await enviar('/api/trilha/externa', 'POST', { credor, valor, responsavel, negativada });
+    if (e) setErro(e); else window.location.reload();
+  }
+  if (!aberto) {
+    return <button type="button" onClick={() => setAberto(true)} className="min-h-[44px] px-1 text-[11px] text-accent">Adicionar dívida</button>;
+  }
+  const campo = 'min-h-[44px] rounded-lg border border-border bg-surface-2 px-2 text-sm';
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <input value={credor} onChange={(e) => setCredor(e.target.value)} placeholder="Para quem" aria-label="Para quem é a dívida" className={`${campo} w-40`} />
+      <input inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" aria-label="Valor da dívida" className={`${campo} w-28`} />
+      <select value={responsavel} onChange={(e) => setResponsavel(e.target.value as 'Matheus' | 'Ariane')} aria-label="De quem é a dívida" className={campo}>
+        <option value="Matheus">Matheus</option>
+        <option value="Ariane">Ariane</option>
+      </select>
+      <label className="flex min-h-[44px] items-center gap-1 text-xs text-muted">
+        <input type="checkbox" checked={negativada} onChange={(e) => setNegativada(e.target.checked)} /> negativada
+      </label>
+      <button type="button" onClick={salvar} className="min-h-[44px] rounded-lg bg-accent px-3 text-xs text-base">Salvar</button>
+      <button type="button" onClick={() => { setAberto(false); setErro(null); }} className="min-h-[44px] px-2 text-xs text-muted">Cancelar</button>
+      {erro && <span className="w-full text-xs text-despesa">{erro}</span>}
+    </div>
+  );
+}
+
 /** F4b: ajustar a meta da reserva (meses) ou do patrimônio (%). */
 export function AjustarMeta({ chave, valorTela, padrao }: { chave: ChaveMeta; valorTela: number; padrao: boolean }) {
   const [aberto, setAberto] = useState(false);

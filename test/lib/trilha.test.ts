@@ -77,37 +77,75 @@ const dados = (p: Partial<DadosTrilha> = {}): DadosTrilha => ({
   sobraPrevista: [{ mes: '2026-11', sobra: 10 }, { mes: '2026-12', sobra: 10 }, { mes: '2027-01', sobra: 10 }],
   textoMeta: 'meta do débito', gastoTravado: { fixos: 100, casa: 50, debitoTravado: 50 },
   aplicado: 0, aplicacaoMensal: [{ mes: '2026-07', valor: 100 }, { mes: '2026-08', valor: 100 }, { mes: '2026-09', valor: 100 }],
+  // 13/11: nome limpo já informado e sem nada em aberto, para os testes das outras fases
+  externas: { informado: true, abertas: [] },
   ...p,
 });
 
+// 13/11/2026 (plano realista): as fases mudaram. 1 = parar de criar dívida (3 meses com sobra, sem juros de atraso e
+// sem conta negativa); 2 = nome limpo (dívidas fora do banco); 3 = reserva; 4 = patrimônio. Parcela em dia não trava
+// fase nenhuma: fica ao lado, como "dívidas em dia".
 describe('avaliar a trilha', () => {
-  it('com dívida: fase 1 atual, quando = última parcela, próximo passo cita o mês', () => {
-    const t = avaliarTrilha(dados({ dividas: [{ chave: 'reneg|B', nome: 'reneg', banco: 'B', plano: null, valorParcela: 10, restantes: 3, fim: '2027-03' }] }));
-    expect(t.atual).toBe(1);
-    expect(t.fases[0]).toMatchObject({ status: 'atual', quando: 'mar/27' });
-    expect(t.fases[0].proximoPasso).toContain('mar/27');
-    expect(t.fases[1].status).toBe('cumprida'); // sobra já cumprida aparece como cumprida mesmo depois da atual
+  const emDia = [{ chave: 'reneg|B', nome: 'reneg', banco: 'B', plano: null, valorParcela: 10, restantes: 3, fim: '2027-03' }];
+
+  it('parcela em dia não trava a fase 1: com 3 meses de sobra e sem atraso, ela está cumprida', () => {
+    const t = avaliarTrilha(dados({ dividas: emDia }));
+    expect(t.fases[0]).toMatchObject({ titulo: 'Parar de criar dívida', status: 'cumprida', quando: null });
+    expect(t.atual).toBe(3);
   });
-  it('dívida sem fim conhecido e atraso: quando sem data; atraso conta até 2 meses depois', () => {
-    expect(avaliarTrilha(dados({ dividas: [{ chave: 'emp|B', nome: 'emp', banco: 'B', plano: null, valorParcela: 10, restantes: null, fim: null }] })).fases[0].quando).toBe('sem data de fim conhecida');
+  it('sobra negativa num dos 3 meses: fase 1 é a atual, o "quando" vem da previsão e o passo é a meta', () => {
+    const t = avaliarTrilha(dados({ passados: [{ mes: '2026-07', sobra: 100, receita: 1000 }, { mes: '2026-08', sobra: -1, receita: 1000 }, { mes: '2026-09', sobra: 10, receita: 1000 }] }));
+    expect(t.atual).toBe(1);
+    expect(t.sobra.cumpridos).toBe(2);
+    expect(t.fases[0]).toMatchObject({ status: 'atual', quando: 'jan/27', proximoPasso: 'meta do débito' });
+  });
+  it('juros ou conta negativa abrem a fase 1 mesmo com sobra; contam até 2 meses depois; o passo cita o mês', () => {
     const t = avaliarTrilha(dados({ atrasos: [{ mes: '2026-09', motivo: 'juros' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases[0].quando).toBe('nov/26');
     expect(t.fases[0].proximoPasso).toContain('set/26');
   });
-  it('sem dívida e sem atraso: fase 1 cumprida; com sobra negativa num dos 3 meses a fase 2 é a atual', () => {
-    const t = avaliarTrilha(dados({ passados: [{ mes: '2026-07', sobra: 100, receita: 1000 }, { mes: '2026-08', sobra: -1, receita: 1000 }, { mes: '2026-09', sobra: 10, receita: 1000 }] }));
-    expect(t.atual).toBe(2);
-    expect(t.fases[0].status).toBe('cumprida');
-    expect(t.sobra.cumpridos).toBe(2);
-    expect(t.fases[1]).toMatchObject({ quando: 'jan/27', proximoPasso: 'meta do débito' });
+  it('com atraso e sem sobra, o "quando" é o mais distante dos dois', () => {
+    const t = avaliarTrilha(dados({
+      atrasos: [{ mes: '2026-09', motivo: 'conta_negativa' }],
+      passados: [{ mes: '2026-07', sobra: -5, receita: 1000 }, { mes: '2026-08', sobra: -5, receita: 1000 }, { mes: '2026-09', sobra: -5, receita: 1000 }],
+    }));
+    expect(t.fases[0].quando).toBe('jan/27'); // a 3ª sobra prevista seguida; o atraso limparia em nov/26
   });
   it('previsão sem 3 sobras seguidas em 24 meses; menos de 3 meses fechados não cumpre', () => {
     const t = avaliarTrilha(dados({ passados: [], sobraPrevista: [{ mes: '2026-11', sobra: 1 }, { mes: '2026-12', sobra: -1 }, { mes: '2027-01', sobra: 1 }] }));
-    expect(t.atual).toBe(2);
-    expect(t.fases[1].quando).toBe('pela previsão, não acontece em 24 meses');
+    expect(t.atual).toBe(1);
+    expect(t.fases[0].quando).toBe('pela previsão, não acontece em 24 meses');
     expect(t.sobra.cumpridos).toBe(0);
   });
+
+  it('nome limpo: sem nada informado a fase não está cumprida e pede o cadastro ou a consulta', () => {
+    const t = avaliarTrilha(dados({ externas: { informado: false, abertas: [] } }));
+    expect(t.atual).toBe(2);
+    expect(t.fases[1]).toMatchObject({ titulo: 'Nome limpo', status: 'atual', quando: 'falta informar' });
+    expect(t.nomeLimpo).toEqual({ informado: false, negativadas: 0, total: 0 });
+  });
+  it('nome limpo: dívida negativada em aberto — total, e o "quando" pelo que a previsão sobra por mês', () => {
+    const t = avaliarTrilha(dados({
+      externas: { informado: true, abertas: [
+        { credor: 'Banco X', responsavel: 'Matheus', valor: 900, negativada: true },
+        { credor: 'Loja Y', responsavel: 'Matheus', valor: 300, negativada: false },
+      ] },
+      sobraPrevista: [{ mes: '2026-11', sobra: 100 }, { mes: '2026-12', sobra: 200 }, { mes: '2027-01', sobra: 300 }],
+    }));
+    expect(t.atual).toBe(2);
+    expect(t.nomeLimpo).toEqual({ informado: true, negativadas: 1, total: 900 });
+    expect(t.fases[1].quando).toBe('mar/27'); // 900 ÷ 200 de sobra média = 5 meses a partir de out/26
+    expect(t.fases[1].proximoPasso).toBe(`1 dívida negativada, ${marcaDinheiro(900)} no total.`);
+  });
+  it('nome limpo: negativada sem sobra prevista não tem data; só dívida não negativada, a fase está cumprida', () => {
+    const neg = { informado: true, abertas: [{ credor: 'Banco X', responsavel: 'Matheus', valor: 900, negativada: true }] };
+    const t = avaliarTrilha(dados({ externas: neg, sobraPrevista: [{ mes: '2026-11', sobra: -10 }] }));
+    expect(t.fases[1].quando).toBe('quando começar a sobrar');
+    const limpo = avaliarTrilha(dados({ externas: { informado: true, abertas: [{ credor: 'Loja Y', responsavel: 'Ariane', valor: 300, negativada: false }] } }));
+    expect(limpo.fases[1]).toMatchObject({ status: 'cumprida', quando: null, proximoPasso: 'Nome limpo: manter.' });
+  });
+
   it('reserva: meta = 6 × gasto travado; ritmo da aplicação dá a data; sem aplicação, sem previsão', () => {
     const t = avaliarTrilha(dados()); // meta 6 × 200 = 1200, aplicado 0, ritmo 100 → 12 meses
     expect(t.atual).toBe(3);
@@ -134,8 +172,8 @@ describe('avaliar a trilha', () => {
     expect(semRenda.patrimonio.pct).toBe(0);
     expect(semRenda.fases[3].proximoPasso).not.toContain('NaN');
   });
-  it('fase cumprida que volta a falhar reabre (dívida nova com sobra e reserva em dia)', () => {
-    const t = avaliarTrilha(dados({ aplicado: 5000, dividas: [{ chave: 'nova|B', nome: 'nova', banco: 'B', plano: null, valorParcela: 1, restantes: 1, fim: '2026-11' }] }));
+  it('fase cumprida que volta a falhar reabre (atraso novo com nome limpo e reserva em dia)', () => {
+    const t = avaliarTrilha(dados({ aplicado: 5000, atrasos: [{ mes: '2026-10', motivo: 'juros' }] }));
     expect(t.atual).toBe(1);
     expect(t.fases.map((f) => f.status)).toEqual(['atual', 'cumprida', 'cumprida', 'depois']);
   });
@@ -198,16 +236,16 @@ describe('pendências do F3 (auditoria 13/10)', () => {
   it('mês vazio não conta como mês que sobrou', () => {
     const t = avaliarTrilha(dados({ passados: [{ mes: '2026-07', sobra: 100, receita: 1000 }, { mes: '2026-08', sobra: 0, receita: 0 }, { mes: '2026-09', sobra: 10, receita: 1000 }] }));
     expect(t.sobra.cumpridos).toBe(2);
-    expect(t.fases[1].status).not.toBe('cumprida');
+    expect(t.fases[0].status).not.toBe('cumprida');
   });
   // (c) o "quando" da fase 2 ignorava os meses fechados que já sobraram (atrasava)
-  it('"quando" da fase 2 continua a sequência dos meses fechados que sobraram', () => {
+  it('"quando" da sobra continua a sequência dos meses fechados que sobraram', () => {
     const t = avaliarTrilha(dados({
       passados: [{ mes: '2026-07', sobra: -5, receita: 1000 }, { mes: '2026-08', sobra: 50, receita: 1000 }, { mes: '2026-09', sobra: 10, receita: 1000 }],
       sobraPrevista: [{ mes: '2026-10', sobra: 10 }, { mes: '2026-11', sobra: 10 }, { mes: '2026-12', sobra: 10 }],
     }));
     // ago e set sobraram; out (previsto) fecha a sequência de 3
-    expect(t.fases[1].quando).toBe('out/26');
+    expect(t.fases[0].quando).toBe('out/26');
   });
   // (a) dívida no cartão sem as parcelas futuras lançadas ainda sumia da trilha
   it('parcela n de m sem as futuras lançadas: continua aberta, com o fim estimado', () => {

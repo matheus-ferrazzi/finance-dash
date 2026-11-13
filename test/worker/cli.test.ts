@@ -14,6 +14,7 @@ describe('lerArgs', () => {
   it('tarefa com opções', () => {
     expect(lerArgs(['transacoes', '--dry-run', '--desde', '2024-10-01', '--limite', '0.5']))
       .toEqual({ tarefa: 'transacoes', dryRun: true, desde: '2024-10-01', limite: 0.5 });
+    expect(lerArgs(['transacoes', '--desde', '2026-06-01', '--so-existentes'])).toEqual({ tarefa: 'transacoes', dryRun: false, desde: '2026-06-01', soExistentes: true });
   });
   it('rejeita tarefa, data e limite inválidos', () => {
     expect(() => lerArgs(['apagar-tudo'])).toThrow(/tarefa/);

@@ -167,4 +167,10 @@ describe('classificação pelo destino (13/11)', () => {
   it('"ENCARGOS DE ATRASO" no cartão vinha como tarifa: é custo de atraso', () => {
     expect(corrigirCategoria('Bank fees', 'ENCARGOS DE ATRASO')).toBe('Late payment and overdraft costs');
   });
+  it('compra no cartão que chega sem categoria é despesa (vinha como "estorno": a compra sumia do gasto)', () => {
+    expect(classificar(null, 'DGC ESTILO TATTOO        SAO PAULO    BR', true, 'Crédito', 'Ariane')).toBe('despesa');
+    // entrada sem categoria no cartão continua estorno; no débito a regra antiga fica
+    expect(classificar(null, 'CREDITO QUALQUER', false, 'Crédito', 'Ariane')).toBe('estorno');
+    expect(classificar('Outros', 'ALGO', true, 'Débito', 'Ariane')).toBe('estorno');
+  });
 });

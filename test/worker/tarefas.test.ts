@@ -28,6 +28,13 @@ describe('transacoes', () => {
     expect(c.repo.execucoes).toHaveLength(1);
   });
 
+  it('--so-existentes (13/11): reaplica as regras só no que já está no banco — não insere o novo nem remove o que sumiu', async () => {
+    const c = cenario('real');
+    const ex = await TAREFAS.transacoes(c, { soExistentes: true });
+    expect(c.repo.aplicado).toEqual([{ linhas: ['a', 'x1', 'x2', 'x3'], remover: [] }]);
+    expect((ex.contagens.contas as any)['Nubank/Matheus/Crédito']).toMatchObject({ novos: 0, remover: 0 });
+  });
+
   it('real: aplica linhas e remove o que sumiu, sem tocar a linha da borda', async () => {
     const c = cenario('real');
     await TAREFAS.transacoes(c, {});

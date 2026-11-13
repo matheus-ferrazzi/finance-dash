@@ -111,7 +111,12 @@ export default async function Previsibilidade(
           </CardResposta>
         </div>
         <div>
-          <div className="mb-3"><MetaDebito meta={meta} /></div>
+          {/* 13/11 (plano realista): a meta só do débito dava para cumprir passando a compra para o cartão; o plano mede o total */}
+          <Elo href="/plano" acao="abrir o plano">O que mudar para sair do vermelho: os tetos do dia a dia, por grupo, em degraus.</Elo>
+          <details className="mb-3">
+            <summary className="cursor-pointer px-1 text-xs text-muted">Meta só do débito (conta antiga)</summary>
+            <div className="mt-2"><MetaDebito meta={meta} /></div>
+          </details>
 
           {aberto ? (
             <DetalheMes

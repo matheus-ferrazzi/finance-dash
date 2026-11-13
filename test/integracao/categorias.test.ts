@@ -21,6 +21,7 @@ describe.skipIf(!url)('categorias pelo painel (integração)', () => {
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/019_dividas_externas.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/020_plano.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
   afterAll(async () => {

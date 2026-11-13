@@ -43,6 +43,8 @@ export interface Args {
   dryRun: boolean;
   desde?: string;
   limite?: number;
+  /** 13/11: só reaplica as regras no que já existe (não insere nem remove) */
+  soExistentes?: boolean;
   /** D2: grava o gráfico da notificação (só com --dry-run) */
   png?: string;
   /** 22/10: bot-perguntar "<pergunta>" [--citada "<texto>"] */
@@ -90,7 +92,8 @@ export function lerArgs(argv: string[]): Args {
       const v = Number(resto[++i]);
       if (!(v > 0 && v <= 1)) throw new Error('--limite precisa ser um número entre 0 e 1');
       out.limite = v;
-    } else throw new Error(`opção desconhecida: ${a}`);
+    } else if (a === '--so-existentes') out.soExistentes = true;
+    else throw new Error(`opção desconhecida: ${a}`);
   }
   return out;
 }

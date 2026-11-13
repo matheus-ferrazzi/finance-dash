@@ -20,6 +20,12 @@ export interface Contexto {
 export interface OpcoesTarefa {
   desde?: string;
   limite?: number;
+  /**
+   * 13/11: reaplica as regras só nos lançamentos que já estão no banco — não insere o que a Pluggy trouxe de novo nem
+   * remove o que ela deixou de devolver. Para reprocessar a classificação numa janela longa sem a conferência junto
+   * (numa janela de meses o cartão Bradesco troca os ids das parcelas e a conferência removeria linhas).
+   */
+  soExistentes?: boolean;
 }
 export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens' | 'tesouro';
 
@@ -116,10 +122,12 @@ async function transacoes(ctx: Contexto, opts: OpcoesTarefa) {
           .map((l) => l.id_transacao);
         const plano = planejarReconciliacao(new Set(uteis.map((t) => t.id)), candidatos, opts.limite);
         if (ctx.modo !== 'dry-run') await ctx.repo.gravarCruas(txs);
-        if (ctx.modo === 'real') await ctx.repo.aplicarConta(linhas, plano.remover);
-        porConta[chave(c)] = { pluggy: txs.length, ...dif, remover: plano.remover.length, abortado: plano.abortado };
+        const aplicar = opts.soExistentes ? linhas.filter((l) => banco.has(l.id_transacao)) : linhas;
+        const remover = opts.soExistentes ? [] : plano.remover;
+        if (ctx.modo === 'real') await ctx.repo.aplicarConta(aplicar, remover);
+        porConta[chave(c)] = { pluggy: txs.length, ...dif, ...(opts.soExistentes ? { novos: 0 } : {}), remover: remover.length, abortado: opts.soExistentes ? null : plano.abortado };
         // W3 (23/10): abortar a conferência é falha da rodada (o aviso técnico diz qual conta), não só uma contagem
-        if (plano.abortado) {
+        if (plano.abortado && !opts.soExistentes) {
           const sumiriam = candidatos.filter((id) => !uteis.some((t) => t.id === id)).length;
           falhas.push(`${chave(c)}: conferência abortada (${plano.abortado}): sumiriam ${sumiriam} de ${candidatos.length} lançamentos`);
         }

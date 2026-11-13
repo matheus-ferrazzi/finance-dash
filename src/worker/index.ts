@@ -202,7 +202,7 @@ async function main() {
     return;
   }
 
-  const ex = await TAREFAS[args.tarefa as keyof typeof TAREFAS]({ ...base(), modo: args.dryRun ? 'dry-run' : modo }, { desde: args.desde, limite: args.limite });
+  const ex = await TAREFAS[args.tarefa as keyof typeof TAREFAS]({ ...base(), modo: args.dryRun ? 'dry-run' : modo }, { desde: args.desde, limite: args.limite, soExistentes: args.soExistentes });
   console.log(JSON.stringify(ex, null, 2));
   await pool.end();
   process.exitCode = ex.ok ? 0 : 1;

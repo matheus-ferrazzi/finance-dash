@@ -70,6 +70,7 @@ export function classificar(cat: string | null | undefined, desc: string | null 
     if (parc.some((p) => d.includes(p))) return 'transferencia_interna';
     return saida ? 'despesa' : 'receita';
   }
-  if (c === 'Outros') return 'estorno';
+  // 13/11: compra no cartão que chega sem categoria (Neon) é despesa — como "estorno" ela sumia do gasto
+  if (c === 'Outros') return saida && forma === 'Crédito' ? 'despesa' : 'estorno';
   return saida ? 'despesa' : 'estorno';
 }

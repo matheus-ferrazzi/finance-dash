@@ -144,10 +144,16 @@ Cada passo é um PR com teste, validado contra o dado real antes do deploy.
 - A parcela de compra que ainda vai ser contratada entra na previsão de 3 meses em diante, não no plano: o plano
   conta o gasto no mês da compra, do jeito que a meta já conta.
 
-## Para o Matheus responder
+## Decisões fechadas em 13/11
 
-1. Os tetos de partida. Posso propor os números a partir dos dados (por exemplo, mercado no nível de outubro,
-   delivery pela metade) para vocês ajustarem na tela, ou a tela nasce vazia e vocês preenchem.
-2. Degraus em 3 meses, ou teto cheio desde o primeiro mês.
-3. A mensagem de terça e sexta do Zeca passa a falar do plano por grupo (qual grupo está acima), ou continua só
-   com o total.
+1. **Tetos de partida** propostos pelos dados e ajustáveis na tela: Mercado R$ 1.600 (nível de out/26), Comer fora e
+   delivery R$ 850 (delivery de ~10 para 4 pedidos), Lazer e digital R$ 650 (assinaturas no menor mês + ingresso e
+   livro, sem viagem), Compras R$ 1.000. Saúde, pet, transporte e resto entram pela média. Dia a dia: de R$ 7.494
+   para R$ 5.564. No piso da renda isso ainda dá −R$ 561 por mês até jul/27 (fim da parcela do Nubank).
+2. **Degraus em 3 meses.**
+3. **O Zeca avisa qual grupo está acima do teto.**
+4. **Dívidas: consulta sob demanda** na API Brasil (botão no app), com uma consulta inicial para popular. Produtos:
+   Endividamento Bancário PF (SCR + score) e Dossiê de Crédito PF (pendências com credor e valor). O app guarda só
+   dívidas e score; dados cadastrais e PDF são descartados. Construído contra o modo de homologação.
+5. **"Parar de criar dívida"** junta o que eram duas fases: 3 meses seguidos com sobra, sem juros de atraso, sem
+   conta negativa e com as faturas pagas inteiras. Decisão minha de desenho, a partir da ordem que o Matheus deu.

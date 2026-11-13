@@ -17,7 +17,7 @@ describe.skipIf(!url)('rotas /api/resumo/* (integração)', () => {
     });
     pool = new Pool({ connectionString: url });
     await pool.query(readFileSync('test/integracao/base.sql', 'utf8'));
-    for (const m of ['001_c1_ingestao', '003_contas_do_mes', '004_contas_pela_tela', '006_categorias_painel', '007_trilha_ajustes', '010_bot_acoes', '011_gastos_dinheiro', '013_previsto_foto']) {
+    for (const m of ['001_c1_ingestao', '003_contas_do_mes', '004_contas_pela_tela', '006_categorias_painel', '007_trilha_ajustes', '019_dividas_externas', '010_bot_acoes', '011_gastos_dinheiro', '013_previsto_foto']) {
       await pool.query(readFileSync(`db/migrations/${m}.sql`, 'utf8'));
     }
     const d = (n: number) => `(now() AT TIME ZONE 'America/Sao_Paulo')::date - ${n}`;

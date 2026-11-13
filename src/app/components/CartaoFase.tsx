@@ -1,16 +1,17 @@
 import Link from 'next/link';
 import { brl, mesLabel } from '@/lib/format';
 import { linkPara } from '@/lib/links';
-import type { DadosTrilha, Fase, Trilha } from '@/lib/trilha';
-import { AjustarMeta, BotaoNaoDivida } from './AjustesTrilha';
+import type { DadosTrilha, DividaAtiva, Fase, Trilha } from '@/lib/trilha';
+import type { DividaExternaTela } from '@/lib/dividasExternas';
+import { AjustarMeta, BotaoNaoDivida, BotoesDividaExterna, NovaDividaExterna } from './AjustesTrilha';
 import { TextoComValores } from './TextoComValores';
 
-type Props = { fase: Fase; trilha: Trilha; metasPadrao: { meses: boolean; patrimonio: boolean } }
-  & Pick<DadosTrilha, 'dividas' | 'atrasos' | 'gastoTravado' | 'aplicacaoMensal'>;
+type Props = { fase: Fase; trilha: Trilha; metasPadrao: { meses: boolean; patrimonio: boolean }; externas?: DividaExternaTela[] }
+  & Pick<DadosTrilha, 'atrasos' | 'gastoTravado' | 'aplicacaoMensal'>;
 const ROTULO = { cumprida: '✓ cumprida', atual: 'agora', depois: 'depois' } as const;
 
 /** Uma fase da trilha (F3) com o detalhe que a sustenta. */
-export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplicacaoMensal, metasPadrao }: Props) {
+export function CartaoFase({ fase, trilha, atrasos, gastoTravado, aplicacaoMensal, metasPadrao, externas = [] }: Props) {
   const r = trilha.reserva;
   const fracao = r.meta > 0 ? Math.min(1, r.aplicado / r.meta) : 1;
   return (
@@ -21,40 +22,41 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
       </div>
       {fase.quando && <div className="mt-1 text-xs text-muted">{`Quando: ${fase.quando}`}</div>}
 
+      {/* 13/11: parar de criar dívida = sem juros, sem conta negativa e com sobra nos meses fechados */}
       {fase.n === 1 && (
-        <div className="mt-2 space-y-1 text-xs">
-          {dividas.length === 0 && <div className="text-muted">Nenhuma dívida em aberto.</div>}
-          {dividas.map((d) => (
-            <div key={`${d.chave}#${d.plano ?? ''}`} className="flex flex-wrap justify-between gap-x-3">
-              <span className="min-w-0 first-letter:uppercase">{d.nome} <span className="text-faint">· {d.banco}</span></span>
-              <span className="shrink-0 text-muted">
-                <span className="tnum money">{brl(d.valorParcela)}</span>
-                {d.restantes === null ? ' · sem data de fim' : ` · faltam ${d.restantes} · até ${mesLabel(d.fim!)}`}
-                <BotaoNaoDivida chave={d.chave} nome={d.nome} />
-              </span>
-              {d.refin && (
-                <span className="w-full text-faint">
-                  {`refinanciado em ${d.refin.data.slice(8, 10)}/${d.refin.data.slice(5, 7)}: `}<span className="tnum money">{brl(d.refin.refinanciado)}</span>
-                  {' viraram '}<span className="tnum money">{brl(d.refin.total)}</span>{` em ${d.plano} parcelas`}
-                  {d.refin.custo > 0 ? <>{' · custo '}<span className="tnum money text-despesa">{brl(d.refin.custo)}</span></> : ' · sem custo a mais'}
-                </span>
-              )}
-            </div>
-          ))}
+        <div className="mt-2 text-xs">
           {atrasos.map((a) => (
             <div key={`${a.mes}|${a.motivo}`} className="text-despesa">{`${a.motivo === 'juros' ? 'juros de atraso' : 'conta negativa'} em ${mesLabel(a.mes)}`}</div>
           ))}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {trilha.sobra.meses.length === 0 && <span className="text-muted">Ainda não há meses fechados.</span>}
+            {trilha.sobra.meses.map((m) => (
+              <Link key={m.mes} href={linkPara('previsao', { mes: m.mes }, '')} className={`inline-flex min-h-[40px] items-center ${m.sobra >= 0 ? 'text-accent' : 'text-despesa'}`}>
+                {`${mesLabel(m.mes)} ${m.sobra >= 0 ? '✓' : '✗'} `}<span className="tnum money">{brl(m.sobra)}</span>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
+      {/* 13/11: nome limpo = as dívidas fora do banco (cadastro ou consulta) */}
       {fase.n === 2 && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-          {trilha.sobra.meses.length === 0 && <span className="text-muted">Ainda não há meses fechados.</span>}
-          {trilha.sobra.meses.map((m) => (
-            <Link key={m.mes} href={linkPara('previsao', { mes: m.mes }, '')} className={`inline-flex min-h-[40px] items-center ${m.sobra >= 0 ? 'text-accent' : 'text-despesa'}`}>
-              {`${mesLabel(m.mes)} ${m.sobra >= 0 ? '✓' : '✗'} `}<span className="tnum money">{brl(m.sobra)}</span>
-            </Link>
+        <div className="mt-2 space-y-1 text-xs">
+          {externas.length === 0 && <div className="text-muted">{trilha.nomeLimpo.informado ? 'Nenhuma dívida em aberto fora do banco.' : 'Nada informado ainda.'}</div>}
+          {externas.map((d) => (
+            <div key={d.id} className="flex flex-wrap items-center justify-between gap-x-3">
+              <span className="min-w-0">
+                {d.credor} <span className="text-faint">· {d.responsavel}</span>
+                <span className={d.negativada ? ' text-despesa' : ' text-muted'}>{d.negativada ? ' · negativada' : ' · sem negativação'}</span>
+                {d.origem === 'consulta' && <span className="text-faint"> · veio da consulta</span>}
+              </span>
+              <span className="shrink-0 text-muted">
+                <span className="tnum money">{brl(d.valor)}</span>
+                <BotoesDividaExterna id={d.id} credor={d.credor} />
+              </span>
+            </div>
           ))}
+          <NovaDividaExterna />
         </div>
       )}
 
@@ -90,6 +92,41 @@ export function CartaoFase({ fase, trilha, dividas, atrasos, gastoTravado, aplic
       )}
 
       <div className="mt-2 text-xs"><TextoComValores texto={fase.proximoPasso} /></div>
+    </div>
+  );
+}
+
+/**
+ * 13/11 (plano realista): as parcelas em dia ficam ao lado das fases, sem travar nenhuma — parcela renegociada e
+ * paga em dia está resolvida. Mostra quando cada uma acaba e, na que nasceu de renegociação, o custo.
+ */
+export function DividasEmDia({ dividas }: { dividas: DividaAtiva[] }) {
+  if (dividas.length === 0) return null;
+  return (
+    <div className="card mb-3">
+      <div className="flex items-center justify-between">
+        <b className="text-sm">Dívidas em dia</b>
+        <span className="text-[11px] text-muted">não travam nenhuma fase</span>
+      </div>
+      <div className="mt-2 space-y-1 text-xs">
+        {dividas.map((d) => (
+          <div key={`${d.chave}#${d.plano ?? ''}`} className="flex flex-wrap justify-between gap-x-3">
+            <span className="min-w-0 first-letter:uppercase">{d.nome} <span className="text-faint">· {d.banco}</span></span>
+            <span className="shrink-0 text-muted">
+              <span className="tnum money">{brl(d.valorParcela)}</span>
+              {d.restantes === null ? ' · sem data de fim' : ` · faltam ${d.restantes} · até ${mesLabel(d.fim!)}`}
+              <BotaoNaoDivida chave={d.chave} nome={d.nome} />
+            </span>
+            {d.refin && (
+              <span className="w-full text-faint">
+                {`refinanciado em ${d.refin.data.slice(8, 10)}/${d.refin.data.slice(5, 7)}: `}<span className="tnum money">{brl(d.refin.refinanciado)}</span>
+                {' viraram '}<span className="tnum money">{brl(d.refin.total)}</span>{` em ${d.plano} parcelas`}
+                {d.refin.custo > 0 ? <>{' · custo '}<span className="tnum money text-despesa">{brl(d.refin.custo)}</span></> : ' · sem custo a mais'}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -21,6 +21,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await pool.query(readFileSync('db/migrations/001_c1_ingestao.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/019_dividas_externas.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/013_previsto_foto.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
@@ -148,6 +149,30 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     const b = await queries.getProjecaoBase('casal', '2055-07-10');
     expect(b.parcelasCompraMedia).toBe(200); // (300 + 300 + 0) / 3 meses-base
     expect(b.parcelasCompraPorVencimento?.['2055-08']).toBe(90);
+  });
+
+  it('13/11: dívidas fora do banco — cadastro, quitar, apagar, e a fase "nome limpo" da trilha', async () => {
+    // sem nenhum registro: nada informado (não saber não é estar limpo)
+    expect(await queries.getDividasExternas()).toEqual({ informado: false, abertas: [] });
+    expect((await queries.getTrilhaDados('2056-03-20')).externas).toEqual({ informado: false, abertas: [] });
+    const a = await queries.criarDividaExterna({ credor: 'Banco X', responsavel: 'Matheus', valor: 900, negativada: true, observacao: null });
+    const b = await queries.criarDividaExterna({ credor: 'Loja Y', responsavel: 'Ariane', valor: 300, negativada: false, observacao: 'acordo' });
+    const lista = await queries.getDividasExternas();
+    expect(lista.informado).toBe(true);
+    expect(lista.abertas.map((x) => [x.credor, x.valor, x.negativada, x.origem])).toEqual([['Banco X', 900, true, 'manual'], ['Loja Y', 300, false, 'manual']]);
+    expect(lista.abertas[0].referencia).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((await queries.getTrilhaDados('2056-03-20')).externas?.abertas).toEqual([
+      { credor: 'Banco X', responsavel: 'Matheus', valor: 900, negativada: true }, { credor: 'Loja Y', responsavel: 'Ariane', valor: 300, negativada: false },
+    ]);
+    // quitada sai das abertas, mas continua "informado"; reabrir volta; apagar some
+    expect(await queries.quitarDividaExterna(a, true)).toBe(true);
+    expect((await queries.getDividasExternas()).abertas.map((x) => x.credor)).toEqual(['Loja Y']);
+    expect(await queries.quitarDividaExterna(a, false)).toBe(true);
+    expect(await queries.apagarDividaExterna(b)).toBe(true);
+    expect(await queries.apagarDividaExterna(b)).toBe(false);
+    expect(await queries.quitarDividaExterna(999999, true)).toBe(false);
+    expect((await queries.getDividasExternas()).abertas.map((x) => x.credor)).toEqual(['Banco X']);
+    await pool.query('DELETE FROM financas_dividas_externas');
   });
 
   it('auditoria 11/11: média da casa conta como zero o mês-base sem a conta (gás de um mês em três)', async () => {

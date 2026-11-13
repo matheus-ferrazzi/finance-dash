@@ -1,4 +1,4 @@
-// Trilha do casal (F3): sair das dívidas → fazer sobrar → reserva → patrimônio. Regras e textos puros.
+// Trilha do casal (F3; fases de 13/11/2026): parar de criar dívida → nome limpo → reserva → patrimônio. Regras e textos puros.
 import { addMonths } from './previsao';
 import { mesLabel } from './format';
 
@@ -161,7 +161,13 @@ export interface DadosTrilha {
   aplicacaoMensal: { mes: string; valor: number }[];
   /** metas ajustadas pelo casal; ausente = padrão */
   metas?: MetasTrilha;
+  /**
+   * 13/11: dívidas fora do banco (cadastro ou consulta), só as em aberto. `informado` = já houve cadastro ou consulta;
+   * sem isso a fase "nome limpo" não se dá por cumprida (não saber não é estar limpo).
+   */
+  externas?: { informado: boolean; abertas: DividaExterna[] };
 }
+export interface DividaExterna { credor: string; responsavel: string; valor: number; negativada: boolean }
 export type StatusFase = 'cumprida' | 'atual' | 'depois';
 export interface Fase { n: 1 | 2 | 3 | 4; titulo: string; status: StatusFase; quando: string | null; proximoPasso: string }
 export interface Trilha {
@@ -169,6 +175,7 @@ export interface Trilha {
   reserva: { meta: number; aplicado: number; ritmo: number; meses: number };
   patrimonio: { pct: number; meta: number };
   sobra: { cumpridos: number; meses: { mes: string; sobra: number }[] };
+  nomeLimpo: { informado: boolean; negativadas: number; total: number };
 }
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
@@ -187,35 +194,47 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
   const mesAtual = d.hoje.slice(0, 7);
   const metas = d.metas ?? METAS_PADRAO;
 
-  // 1. dívidas: atraso só some da janela MESES_ATRASO meses depois
-  const semFim = d.dividas.some((x) => x.fim === null);
+  // 13/11 (plano realista): parcela em dia não trava fase (fica ao lado, como "dívidas em dia").
+  // 1. parar de criar dívida: 3 meses fechados com sobra, sem juros de atraso e sem conta negativa. O atraso só some
+  // da janela MESES_ATRASO meses depois
   const ultAtraso = d.atrasos.map((a) => a.mes).sort().pop() ?? null;
-  const ultParcela = d.dividas.map((x) => x.fim).filter((f): f is string => !!f).sort().pop() ?? null;
-  const limpaEm = [ultParcela, ultAtraso ? addMonths(ultAtraso, MESES_ATRASO) : null].filter((x): x is string => !!x).sort().pop() ?? null;
-  const f1ok = d.dividas.length === 0 && d.atrasos.length === 0;
-  const q1 = f1ok ? null : semFim ? 'sem data de fim conhecida' : limpaEm ? mesLabel(limpaEm) : null;
-  const p1 = ultAtraso
-    ? `Houve juros ou conta negativa em ${mesLabel(ultAtraso)}: pagar a fatura inteira e não deixar a conta negativa.`
-    : semFim ? 'Manter a fatura paga inteira; há dívida sem data de fim conhecida.'
-    : ultParcela ? `Manter a fatura paga inteira; a última parcela de dívida é em ${mesLabel(ultParcela)}.`
-    : 'Sem dívidas: manter assim.';
-
-  // 2. fazer sobrar
   const meses = d.passados.slice(-MESES_SOBRA);
   // F3 (b): mês sem dado nenhum (nada entrou) não é mês em que sobrou
   const sobrou = (m: { sobra: number; receita?: number }) => m.sobra >= 0 && (m.receita === undefined || m.receita > 0);
   const cumpridos = meses.filter(sobrou).length;
-  const f2ok = meses.length >= MESES_SOBRA && cumpridos === MESES_SOBRA;
+  const sobraOk = meses.length >= MESES_SOBRA && cumpridos === MESES_SOBRA;
+  const f1ok = sobraOk && d.atrasos.length === 0;
   // F3 (c): a sequência começa nos meses fechados que já sobraram (antes só olhava a previsão e atrasava)
   const seq = [...meses.map((m) => ({ mes: m.mes, ok: sobrou(m), previsto: false })),
     ...d.sobraPrevista.map((m) => ({ mes: m.mes, ok: m.sobra >= 0, previsto: true }))];
-  let q2 = 'pela previsão, não acontece em 24 meses';
-  for (let j = MESES_SOBRA - 1; j < seq.length; j++) {
+  let mesSobra: string | null = null;
+  for (let j = MESES_SOBRA - 1; j < seq.length && !sobraOk; j++) {
     const janela = seq.slice(j - MESES_SOBRA + 1, j + 1);
     // meses seguidos (sem buraco entre o último fechado e o primeiro previsto)
     const seguidos = janela.every((m, k) => k === 0 || m.mes === addMonths(janela[k - 1].mes, 1));
-    if (seq[j].previsto && seguidos && janela.every((m) => m.ok)) { q2 = mesLabel(seq[j].mes); break; }
+    if (seq[j].previsto && seguidos && janela.every((m) => m.ok)) { mesSobra = seq[j].mes; break; }
   }
+  const mesAtraso = ultAtraso ? addMonths(ultAtraso, MESES_ATRASO) : null;
+  const q1 = f1ok ? null
+    : !sobraOk && !mesSobra ? 'pela previsão, não acontece em 24 meses'
+    : mesLabel([mesSobra, mesAtraso].filter((x): x is string => !!x).sort().pop()!);
+  const p1 = ultAtraso
+    ? `Houve juros ou conta negativa em ${mesLabel(ultAtraso)}: pagar a fatura inteira e não deixar a conta negativa.`
+    : d.textoMeta;
+
+  // 2. nome limpo: as dívidas fora do banco que estão negativadas
+  const ext = d.externas ?? { informado: false, abertas: [] };
+  const negativadas = ext.abertas.filter((x) => x.negativada);
+  const totalNeg = r2(negativadas.reduce((s, x) => s + x.valor, 0));
+  const f2ok = ext.informado && negativadas.length === 0;
+  const sobraMedia = d.sobraPrevista.length ? d.sobraPrevista.slice(0, 12).reduce((s, m) => s + m.sobra, 0) / Math.min(12, d.sobraPrevista.length) : 0;
+  const q2 = f2ok ? null
+    : !ext.informado ? 'falta informar'
+    : sobraMedia > 0 ? mesLabel(addMonths(mesAtual, Math.ceil(totalNeg / sobraMedia)))
+    : 'quando começar a sobrar';
+  const p2 = f2ok ? 'Nome limpo: manter.'
+    : !ext.informado ? 'Cadastrar ou consultar as dívidas fora do banco, para saber o que falta para o nome ficar limpo.'
+    : `${negativadas.length} dívida${negativadas.length === 1 ? '' : 's'} negativada${negativadas.length === 1 ? '' : 's'}, ${marcaDinheiro(totalNeg)} no total.`;
 
   // 3. reserva
   const g = d.gastoTravado;
@@ -241,8 +260,8 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
   return {
     atual,
     fases: [
-      { n: 1, titulo: 'Sair das dívidas', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
-      { n: 2, titulo: 'Fazer sobrar', status: st(2, f2ok), quando: f2ok ? null : q2, proximoPasso: d.textoMeta },
+      { n: 1, titulo: 'Parar de criar dívida', status: st(1, f1ok), quando: q1, proximoPasso: p1 },
+      { n: 2, titulo: 'Nome limpo', status: st(2, f2ok), quando: q2, proximoPasso: p2 },
       { n: 3, titulo: 'Reserva de emergência', status: st(3, f3ok), quando: q3, proximoPasso: p3 },
       // F3 (d): o passo diz o % de hoje (a faixa do topo só mostra o passo)
       { n: 4, titulo: 'Construir patrimônio', status: st(4, false), quando: null, proximoPasso: `Hoje: ${Math.round(pct * 100)}% do que entra vai para aplicação. Aplicar ${Math.round(metas.metaPatrimonio * 1000) / 10}% do que entra (${marcaDinheiro(receitaMedia * metas.metaPatrimonio)}/mês).` },
@@ -250,5 +269,6 @@ export function avaliarTrilha(d: DadosTrilha): Trilha {
     reserva: { meta, aplicado: d.aplicado, ritmo, meses: metas.mesesReserva },
     patrimonio: { pct, meta: metas.metaPatrimonio },
     sobra: { cumpridos, meses: meses.map((m) => ({ mes: m.mes, sobra: m.sobra })) },
+    nomeLimpo: { informado: ext.informado, negativadas: negativadas.length, total: totalNeg },
   };
 }

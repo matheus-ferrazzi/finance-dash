@@ -192,7 +192,10 @@ export function montarMensal(r: ResumoMensal, link: string): string {
 }
 
 /** Andamento da meta de gastos (débito + crédito; terça e sexta 9h). Sem meta (menos de 3 meses de dado): nada. */
-export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, link: string): string | null {
+export function montarMeta(
+  r: { mesLabel: string; estado: EstadoMeta | null; peloPlano?: boolean; diasNoMes?: number; orcamento?: { item: string; emoji: string; teto: number; gasto: number }[] },
+  link: string,
+): string | null {
   const e = r.estado;
   if (!e) return null;
   const topo = e.situacao === 'estourou' ? titulo('ruim', 'Meta de gastos estourada', `${brl(e.gasto - e.meta)} acima`)
@@ -207,6 +210,17 @@ export function montarMeta(r: { mesLabel: string; estado: EstadoMeta | null }, l
     l.push(e.acimaNoRitmo > 0
       ? `🔴 No ritmo atual fecha em ${brl(e.previstoFim)} (${brl(e.acimaNoRitmo)} acima)`
       : `✅ No ritmo atual fecha em ${brl(e.previstoFim)}, dentro da meta`);
+  }
+  // 13/11 (plano realista): com o plano, cada grupo com teto — passou, está acima do ritmo do mês, ou dentro
+  if (r.peloPlano && r.orcamento?.length) {
+    const dias = r.diasNoMes ?? 30;
+    const fracaoDoMes = Math.min(1, Math.max(0, (dias - e.diasRestantes) / dias));
+    l.push(['📋 *Pelo plano, por grupo*', ...r.orcamento.map((g) => {
+      const base = `${g.emoji} ${g.item}: ${brl(g.gasto)} de ${brl(g.teto)}`;
+      if (g.gasto > g.teto) return `🔴 ${base}, passou do teto`;
+      // folga de 10 pontos: compra grande no começo do mês não vira alarme
+      return g.teto > 0 && g.gasto / g.teto > fracaoDoMes + 0.1 ? `🟡 ${base}, acima do ritmo` : `🟢 ${base}`;
+    })]);
   }
   l.push(`👉 ${link}`);
   return emBlocos(l);

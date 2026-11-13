@@ -24,6 +24,7 @@ import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
 import type { DividaExternaInput, DividaExternaTela } from './dividasExternas';
+import { contaDoPlano, GRUPOS_COM_TETO, planoDoMes, type ContaDoPlano, type GrupoComTeto, type Plano, type PlanoDoMes } from './plano';
 import {
   addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaExtraMediana, receitaRecorrente,
   type CompromissoManual, type EntradaReceita, type ProjecaoBase, type ReceitaPrevista, type SaldoConta,
@@ -924,11 +925,14 @@ export async function getOrcamentoMes(hoje: string = currentDateSP()): Promise<{
  */
 export async function getMetaMes(hoje: string = currentDateSP()) {
   const mes = hoje.slice(0, 7), diaHoje = Number(hoje.slice(8, 10));
-  const [meses, g, orcamento, fixosMedia] = await Promise.all([
-    getGastosMesesFechados(hoje, 6), getGastosMes(hoje), getOrcamentoMes(hoje), getFixosMediaMes(hoje, 3),
+  const [meses, g, orcamentoAntigo, fixosMedia, planoMes] = await Promise.all([
+    getGastosMesesFechados(hoje, 6), getGastosMes(hoje), getOrcamentoMes(hoje), getFixosMediaMes(hoje, 3), getPlanoDoMes(hoje),
   ]);
+  // 13/11 (plano realista): com plano no mês, a meta é o dia a dia do plano + os travados (consórcio, seguro, imposto,
+  // que este recorte também conta), e os "tetos" dos alertas são as metas dos grupos. Sem plano, a regra de antes
+  const orcamento = planoMes ? planoMes.grupos.map((x) => ({ item: x.grupo, emoji: x.emoji, teto: x.meta, gasto: x.gasto })) : orcamentoAntigo;
   const estado = estadoMeta({
-    meta: metaDaMedia(meses), gasto: g.gasto,
+    meta: planoMes ? Math.round((planoMes.diaADia + fixosMedia) * 100) / 100 : metaDaMedia(meses), gasto: g.gasto,
     previstoFim: previstoFimGastos({
       gasto: g.gasto, livre: g.livre, livreHoje: g.livreHoje, parcelasRestantes: g.parcelasRestantes, fixosFaltam: fixosMedia - g.fixosMes,
       diaHoje, diasNoMes: diasNoMes(mes),
@@ -941,7 +945,7 @@ export async function getMetaMes(hoje: string = currentDateSP()) {
     soma += g.porDia.filter((p) => p.dia === d).reduce((t, p) => t + p.valor, 0);
     serie.push({ dia: d, acumulado: Math.round(soma * 100) / 100 });
   }
-  return { mes, mesLabel: mesLabel(mes), estado, orcamento, serie, diasNoMes: diasNoMes(mes) };
+  return { mes, mesLabel: mesLabel(mes), estado, orcamento, serie, diasNoMes: diasNoMes(mes), peloPlano: !!planoMes };
 }
 
 /** O que de fato aconteceu num mês fechado, pelos mesmos componentes da previsão (teste contra o passado). */
@@ -1594,13 +1598,19 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
   // auditoria 11/11: plano que uma renegociação encerrou sai da trilha (a Pluggy ainda lista as parcelas dele)
   const renegs = base.renegociacoes ?? [];
   const lancs = todos.filter((l) => !renegs.some((r) => r.encerrado && doPlano(r.encerrado, l)));
+  const dividasAtivas = agruparDividas(lancs, hoje, marcas);
+  // 13/11: com plano gravado, o próximo passo da fase 1 é o do plano (a meta do débito dava para cumprir no cartão)
+  const conta = await getContaDoPlano(hoje, base, dividasAtivas).catch((e) => { console.error('conta do plano falhou', e); return null; });
+  const textoDoPlano = !conta ? null
+    : conta.conta.paraDeFaltar ? `Pelo plano, deixa de faltar dinheiro em ${mesLabel(conta.conta.paraDeFaltar)}, só com o que entra todo mês.`
+    : `Pelo plano ainda faltam ${marcaDinheiro(conta.conta.faltaNoMelhorMes ?? 0)} por mês no melhor mês: rever os tetos.`;
   // juros só da janela de atraso (W2: a busca agora traz também plano parcelado antigo, que não é atraso de agora)
   const juros = lancs.filter((l) => l.data >= desde && l.data <= hoje && ehAtraso(l.descricao, l.categoria)).map((l) => l.data.slice(0, 7));
   const porMes = new Map(aplRows.map((x) => [x.mes as string, Math.round(Number(x.liq) * 100) / 100]));
   return {
     hoje,
     // o plano que nasceu de uma renegociação leva junto quanto foi refinanciado e quanto as parcelas somam
-    dividas: agruparDividas(lancs, hoje, marcas).map((d) => {
+    dividas: dividasAtivas.map((d) => {
       const r = [...renegs].reverse().find((x) => x.novo && x.custo !== null && d.plano === x.novo.parcelas && Math.abs(d.valorParcela - x.novo.valor) < 0.005
         && lancs.some((l) => l.banco === d.banco && doPlano(x.novo!, l)));
       return r ? { ...d, refin: { data: r.data, refinanciado: r.refinanciado, total: r.novo!.total, custo: r.custo! } } : d;
@@ -1611,7 +1621,7 @@ export async function getTrilhaDados(hoje: string = currentDateSP(), baseCasal?:
     ],
     passados: passados.map((p) => ({ mes: p.mes, sobra: p.real.saldo, receita: p.real.receita })),
     sobraPrevista: proj.slice(1).map((m) => ({ mes: m.mes, sobra: m.saldo })),
-    textoMeta: textoMetaAlvo(debitoParaSairAte(base, hoje, alvo), debitoAtual, mesLabel(alvo), marcaDinheiro),
+    textoMeta: textoDoPlano ?? textoMetaAlvo(debitoParaSairAte(base, hoje, alvo), debitoAtual, mesLabel(alvo), marcaDinheiro),
     gastoTravado: { fixos: proj[1]?.despesaManual ?? 0, casa: proj[1]?.despesaCasa ?? 0, debitoTravado: base.despesaFixaDebitoMedia ?? 0 },
     aplicado: base.patrimonioAtual,
     metas,
@@ -1847,6 +1857,110 @@ export async function marcarDivida(
   } finally {
     cli.release();
   }
+}
+
+// ==================== O PLANO (13/11, plano realista) ====================
+
+const MESES_MEDIA_PLANO = 3;
+
+/** O plano gravado, ou null. */
+export async function getPlano(): Promise<Plano | null> {
+  const [r] = await q<any>(`SELECT to_char(inicio, 'YYYY-MM') AS inicio, degraus, tetos FROM financas_plano WHERE id = 1`);
+  if (!r) return null;
+  return { inicio: r.inicio, degraus: Number(r.degraus), tetos: r.tetos as Plano['tetos'] };
+}
+
+/**
+ * Gasto do dia a dia por grupo num intervalo [inicio, fimExcl): débito + crédito, sem dívida antiga; os grupos
+ * travados (Casa, Dívida e seguro) ficam de fora. É o recorte em que o plano põe os tetos.
+ */
+async function getDiaADiaPorGrupo(inicio: string, fimExcl: string): Promise<Record<string, number>> {
+  const porCat = await getGastoPorCategoriaEntre(inicio, fimExcl);
+  const out: Record<string, number> = {};
+  for (const [cat, v] of Array.from(porCat)) {
+    const g = grupoDaCategoria(cat);
+    if (g?.travado) continue;
+    const nome = g?.nome ?? 'Resto';
+    out[nome] = Math.round(((out[nome] ?? 0) + v) * 100) / 100;
+  }
+  return out;
+}
+
+/** Referência para escolher os tetos: a média e o menor mês de cada grupo nos 3 meses fechados antes de `hoje`. */
+export async function getReferenciaDoPlano(hoje: string = currentDateSP()): Promise<{ media: Record<string, number>; menor: Record<string, number>; meses: string[] }> {
+  const mes = hoje.slice(0, 7);
+  const meses = Array.from({ length: MESES_MEDIA_PLANO }, (_, i) => addMonths(mes, -(MESES_MEDIA_PLANO - i)));
+  const porMes = await Promise.all(meses.map((m) => getDiaADiaPorGrupo(`${m}-01`, `${addMonths(m, 1)}-01`)));
+  const grupos = Array.from(new Set(porMes.flatMap((x) => Object.keys(x))));
+  const media: Record<string, number> = {}, menor: Record<string, number> = {};
+  for (const g of grupos) {
+    const vs = porMes.map((x) => x[g] ?? 0);
+    media[g] = Math.round((vs.reduce((a, b) => a + b, 0) / vs.length) * 100) / 100;
+    menor[g] = Math.min(...vs);
+  }
+  return { media, menor, meses };
+}
+
+/**
+ * Grava o plano. Na primeira vez (ou com `recomecar`), o início é o próximo mês — o mês em andamento já tem gasto
+ * feito sem meta — e a base de cada grupo é a média dos 3 meses fechados: o ponto de partida dos degraus fica
+ * congelado. Depois, mudar tetos ou degraus mantém o início e as bases.
+ */
+export async function salvarPlano(d: { tetos: Record<GrupoComTeto, number>; degraus: number }, opcoes: { recomecar?: boolean; hoje?: string } = {}): Promise<Plano> {
+  const hoje = opcoes.hoje ?? currentDateSP();
+  const atual = opcoes.recomecar ? null : await getPlano();
+  const ref = atual ? null : await getReferenciaDoPlano(hoje);
+  const tetos = Object.fromEntries(GRUPOS_COM_TETO.map((g) => [g, { teto: d.tetos[g], base: atual ? atual.tetos[g].base : ref!.media[g] ?? 0 }])) as Plano['tetos'];
+  const inicio = atual ? atual.inicio : addMonths(hoje.slice(0, 7), 1);
+  await qw(
+    `INSERT INTO financas_plano (id, inicio, degraus, tetos) VALUES (1, ($1 || '-01')::date, $2, $3)
+     ON CONFLICT (id) DO UPDATE SET inicio = EXCLUDED.inicio, degraus = EXCLUDED.degraus, tetos = EXCLUDED.tetos, atualizado_em = now()`,
+    [inicio, d.degraus, JSON.stringify(tetos)],
+  );
+  return { inicio, degraus: d.degraus, tetos };
+}
+
+export async function apagarPlano(): Promise<boolean> {
+  return (await qw(`DELETE FROM financas_plano WHERE id = 1 RETURNING id`)).length > 0;
+}
+
+/** O plano no mês de `hoje` com o gasto de cada grupo até hoje; null sem plano ou antes do início dele. */
+export async function getPlanoDoMes(hoje: string = currentDateSP()): Promise<(Omit<PlanoDoMes, 'grupos'> & { grupos: { grupo: GrupoComTeto; emoji: string; meta: number; teto: number; gasto: number }[] }) | null> {
+  const plano = await getPlano();
+  const mes = hoje.slice(0, 7);
+  if (!plano || plano.inicio > mes) return null;
+  const amanha = addDays(hoje, 1);
+  const [ref, gasto] = await Promise.all([getReferenciaDoPlano(hoje), getDiaADiaPorGrupo(`${mes}-01`, amanha)]);
+  const doMes = planoDoMes(plano, mes, ref.media)!;
+  return {
+    ...doMes,
+    grupos: doMes.grupos.map((x) => ({ ...x, emoji: GRUPOS_GASTO_EMOJI[x.grupo] ?? '', gasto: gasto[x.grupo] ?? 0 })),
+  };
+}
+const GRUPOS_GASTO_EMOJI: Record<string, string> = { Mercado: '🛒', Compras: '🛍️', 'Lazer e digital': '🎮', 'Comer fora': '🍔' };
+
+/**
+ * A conta do plano: piso da renda − casa − travados − parcelas das dívidas em dia − dia a dia do plano, mês a mês.
+ * null sem plano. `base` e `dividas`: quem já tem (a Trilha) reaproveita.
+ */
+export async function getContaDoPlano(
+  hoje: string = currentDateSP(), baseCasal?: ProjecaoBase, dividas?: { valorParcela: number; fim: string | null; restantes: number | null }[],
+): Promise<{ plano: Plano; conta: ContaDoPlano; entrada: { piso: number; extras: number; casa: number; travados: number; semTeto: number }; referencia: Awaited<ReturnType<typeof getReferenciaDoPlano>> } | null> {
+  const plano = await getPlano();
+  if (!plano) return null;
+  const [base, ref] = await Promise.all([baseCasal ?? getProjecaoBase('casal', hoje), getReferenciaDoPlano(hoje)]);
+  const ds = dividas ?? (await getTrilhaDados(hoje, base)).dividas;
+  const cheio = computeProjecao(base, 2, hoje)[1];
+  const semTeto = Math.round(Object.entries(ref.media).filter(([g]) => !(GRUPOS_COM_TETO as readonly string[]).includes(g)).reduce((s, [, v]) => s + v, 0) * 100) / 100;
+  const entrada = {
+    piso: Math.round(base.fontesReceita.reduce((s, f) => s + f.valor, 0) * 100) / 100,
+    extras: base.receitaExtraMediana ?? 0,
+    casa: Math.round(((cheio?.despesaManual ?? 0) + (cheio?.despesaCasa ?? 0)) * 100) / 100,
+    travados: base.despesaFixaDebitoMedia ?? 0,
+    semTeto,
+  };
+  const conta = contaDoPlano({ hoje, ...entrada, plano, dividas: ds.map((d) => ({ valorParcela: d.valorParcela, fim: d.fim })) });
+  return { plano, conta, entrada, referencia: ref };
 }
 
 // ==================== DÍVIDAS FORA DO BANCO (13/11, plano realista) ====================

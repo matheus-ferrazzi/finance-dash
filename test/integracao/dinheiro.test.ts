@@ -22,6 +22,7 @@ describe.skipIf(!url)('gasto em dinheiro vivo (integração)', () => {
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/019_dividas_externas.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/020_plano.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/010_bot_acoes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/011_gastos_dinheiro.sql', 'utf8'));
     dinheiro = await import('../../src/lib/dinheiro');

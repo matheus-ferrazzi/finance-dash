@@ -22,6 +22,7 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/019_dividas_externas.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/020_plano.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/013_previsto_foto.sql', 'utf8'));
     queries = await import('../../src/lib/queries');
   });
@@ -173,6 +174,62 @@ describe.skipIf(!url)('getProjecaoBase com hoje no passado (integração)', () =
     expect(await queries.quitarDividaExterna(999999, true)).toBe(false);
     expect((await queries.getDividasExternas()).abertas.map((x) => x.credor)).toEqual(['Banco X']);
     await pool.query('DELETE FROM financas_dividas_externas');
+  });
+
+  it('13/11: o plano — criar (início no mês seguinte, bases pela média de 3 meses), o mês do plano, a meta do mês e a conta', async () => {
+    const l = (id: string, data: string, valor: number, cat: string, forma: string) =>
+      `('${id}', '${data}', ${valor}, 'COMPRA ${id}', '${cat}', '${forma}', 'X', 'Ariane', 'despesa', 'Saída', '${data}')`;
+    await pool.query(`INSERT INTO financas_lancamentos (id_transacao, data_lancamento, valor, descricao, categoria, forma_pagamento, banco, responsavel, classe, tipo_movimento, criado_em) VALUES ${[
+      l('pl-m1', '2057-01-10', 1200, 'Groceries', 'Débito'), l('pl-m2', '2057-02-10', 1500, 'Groceries', 'Débito'), l('pl-m3', '2057-03-10', 1200, 'Groceries', 'Débito'),
+      l('pl-c1', '2057-01-12', 600, 'Shopping', 'Crédito'), l('pl-c2', '2057-02-12', 600, 'Shopping', 'Crédito'), l('pl-c3', '2057-03-12', 600, 'Shopping', 'Crédito'),
+      l('pl-s1', '2057-01-15', 300, 'Healthcare', 'Débito'), l('pl-s2', '2057-02-15', 300, 'Healthcare', 'Débito'), l('pl-s3', '2057-03-15', 300, 'Healthcare', 'Débito'),
+      // casa e dívida antiga não são dia a dia: ficam fora das médias
+      l('pl-h1', '2057-02-05', 2000, 'Housing', 'Débito'), l('pl-d1', '2057-02-06', 500, 'Loans and financing', 'Crédito'),
+      l('pl-m5', '2057-05-05', 250, 'Groceries', 'Crédito'),
+    ].join(',')}`);
+    expect(await queries.getPlano()).toBeNull();
+    expect(await queries.getPlanoDoMes('2057-04-10')).toBeNull();
+    const ref = await queries.getReferenciaDoPlano('2057-04-10');
+    expect(ref.media).toMatchObject({ Mercado: 1300, Compras: 600, Saúde: 300 });
+    expect(ref.menor.Mercado).toBe(1200);
+    expect(ref.media.Casa).toBeUndefined();
+
+    const tetos = { Mercado: 1000, Compras: 600, 'Lazer e digital': 400, 'Comer fora': 500 };
+    const p = await queries.salvarPlano({ tetos, degraus: 3 }, { hoje: '2057-04-10' });
+    expect(p).toEqual({ inicio: '2057-05', degraus: 3, tetos: {
+      Mercado: { teto: 1000, base: 1300 }, Compras: { teto: 600, base: 600 }, 'Lazer e digital': { teto: 400, base: 0 }, 'Comer fora': { teto: 500, base: 0 },
+    } });
+    expect(await queries.getPlano()).toEqual(p);
+    // em abril o plano ainda não começou: a meta do mês segue a regra antiga
+    expect(await queries.getPlanoDoMes('2057-04-10')).toBeNull();
+    expect((await queries.getMetaMes('2057-04-10')).peloPlano).toBe(false);
+
+    // maio, 1º degrau do mercado (1300 → 1200); saúde pela média de fev–abr (300, 300, 0)
+    const maio = (await queries.getPlanoDoMes('2057-05-10'))!;
+    expect(maio.grupos.map((g) => [g.grupo, g.meta, g.gasto])).toEqual([['Mercado', 1200, 250], ['Compras', 600, 0], ['Lazer e digital', 400, 0], ['Comer fora', 500, 0]]);
+    expect(maio.semTeto).toBe(200);
+    expect(maio.diaADia).toBe(2900);
+    const meta = await queries.getMetaMes('2057-05-10');
+    expect(meta.peloPlano).toBe(true);
+    expect(meta.estado?.meta).toBe(2900);
+    expect(meta.orcamento.map((o) => [o.item, o.teto, o.gasto])).toEqual([['Mercado', 1200, 250], ['Compras', 600, 0], ['Lazer e digital', 400, 0], ['Comer fora', 500, 0]]);
+
+    // mudar um teto mantém o início e a base (os degraus não recomeçam); recomeçar refaz os dois
+    const editado = await queries.salvarPlano({ tetos: { ...tetos, Mercado: 900 }, degraus: 2 }, { hoje: '2057-05-10' });
+    expect(editado).toMatchObject({ inicio: '2057-05', degraus: 2, tetos: { Mercado: { teto: 900, base: 1300 } } });
+    const refeito = await queries.salvarPlano({ tetos, degraus: 3 }, { hoje: '2057-05-10', recomecar: true });
+    expect(refeito.inicio).toBe('2057-06');
+    expect(refeito.tetos.Mercado.base).toBe(900); // fev 1500, mar 1200, abr 0
+
+    const conta = (await queries.getContaDoPlano('2057-05-10'))!;
+    expect(conta.plano.inicio).toBe('2057-06');
+    expect(conta.conta.meses[0].mes).toBe('2057-06');
+    expect(conta.entrada.semTeto).toBe(200);
+    expect(conta.conta.meses[0].diaADia).toBe(conta.conta.meses[0].sobra * -1 + conta.entrada.piso - conta.entrada.casa - conta.entrada.travados - conta.conta.meses[0].parcelas);
+
+    expect(await queries.apagarPlano()).toBe(true);
+    expect(await queries.apagarPlano()).toBe(false);
+    expect(await queries.getPlano()).toBeNull();
   });
 
   it('auditoria 11/11: média da casa conta como zero o mês-base sem a conta (gás de um mês em três)', async () => {

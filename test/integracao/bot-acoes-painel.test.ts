@@ -21,6 +21,7 @@ describe.skipIf(!url)('ações do bot no painel (integração)', () => {
     await pool.query(readFileSync('db/migrations/006_categorias_painel.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/007_trilha_ajustes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/019_dividas_externas.sql', 'utf8'));
+    await pool.query(readFileSync('db/migrations/020_plano.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/003_contas_do_mes.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/004_contas_pela_tela.sql', 'utf8'));
     await pool.query(readFileSync('db/migrations/010_bot_acoes.sql', 'utf8'));

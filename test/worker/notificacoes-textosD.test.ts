@@ -258,6 +258,21 @@ describe('meta de gastos', () => {
     expect(montarMeta({ mesLabel: 'out/26', estado: est(4100, 4500) }, 'L')).toContain(`🔴 Passaram da meta em ${brl(100)}`);
     expect(montarMeta({ mesLabel: 'out/26', estado: null }, 'L')).toBeNull();
   });
+  it('13/11: com o plano, a mensagem diz como está cada grupo — passou do teto, acima do ritmo ou dentro', () => {
+    const t = montarMeta({ mesLabel: 'out/26', estado: est(2000, 3800), peloPlano: true, diasNoMes: 30, orcamento: [
+      { item: 'Mercado', emoji: 'M', teto: 1000, gasto: 1100 },
+      { item: 'Compras', emoji: 'C', teto: 600, gasto: 450 }, // 75% do teto na metade do mês
+      { item: 'Comer fora', emoji: 'F', teto: 500, gasto: 200 },
+    ] }, 'L')!;
+    expect(t).toContain([
+      '📋 *Pelo plano, por grupo*',
+      `🔴 M Mercado: ${brl(1100)} de ${brl(1000)}, passou do teto`,
+      `🟡 C Compras: ${brl(450)} de ${brl(600)}, acima do ritmo`,
+      `🟢 F Comer fora: ${brl(200)} de ${brl(500)}`,
+    ].join('\n'));
+    // sem plano, os tetos antigos do Orçamento não entram nesta mensagem
+    expect(montarMeta({ mesLabel: 'out/26', estado: est(2000, 3800), orcamento: [{ item: 'Mercado', emoji: 'M', teto: 1000, gasto: 1100 }] }, 'L')).not.toContain('por grupo');
+  });
   it('alertas: texto de cada um, tudo numa mensagem; guarda a memória; nada novo = sem mensagem', () => {
     const d = { mes: '2026-10', mesLabel: 'out/26', estado: est(3300, 4300), orcamento: [{ item: 'Mercado', emoji: '🛒', teto: 1000, gasto: 820 }] };
     const r = montarAlertasMeta(d, null, 'L');

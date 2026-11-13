@@ -117,3 +117,54 @@ describe('L7/W4: encargo do parcelamento de fatura', () => {
     expect(corrigirCategoria('Groceries', 'MERCADO')).toBe('Groceries');
   });
 });
+
+// auditoria 11–13/11: o grupo "Compras" misturava compra online, comida, imposto e ingresso; sem a categoria certa,
+// o teto de cada grupo mede a coisa errada
+describe('classificação pelo destino (13/11)', () => {
+  it('compra online paga por PIX chega com o nome do intermediário e a categoria "Services": é compra', () => {
+    for (const d of [
+      'Transferência enviada|PAGUEVELOZ INSTITUICAO DE PAGAMENTO LTDA', 'Pagamento de Pix QR Code PAGAR.ME PAGAMENTOS',
+      'Transferência enviada pelo Pix|MODA MUNDIAL BRASIL PAGAMENTOS LTDA', 'Pagamento de Pix QR Code SHPP BRASIL INSTITUICAO DE PAG',
+      'Transferência enviada pelo Pix|MAGALUPAY INSTITUICAO DE PAGAMENTO S.A.', 'PIX ENVIADO   Pix Marketplace',
+      'Pagamento de Pix QR Code MERCADO PAGO', 'Transferência enviada pelo Pix|SF PAGAMENTOS LTDA',
+    ]) expect(corrigirCategoria('Services', d), d).toBe('Shopping');
+  });
+  it('intermediário só muda a categoria vaga de serviço: mercado pago numa farmácia continua farmácia', () => {
+    expect(corrigirCategoria('Pharmacy', 'Pagamento de Pix QR Code MERCADO PAGO')).toBe('Pharmacy');
+  });
+  it('TikTok (ByteDance) vem como "Internet": é compra', () => {
+    expect(corrigirCategoria('Internet', 'PIX ENVIADO   BYTEDANCE BRASIL TECNOLOG')).toBe('Shopping');
+    expect(corrigirCategoria('Internet', 'PROVEDOR FIBRA LTDA')).toBe('Internet');
+  });
+  it('delivery: Keeta (em qualquer forma de pagamento) e Zé Delivery', () => {
+    expect(corrigirCategoria('Services', 'Transferência enviada|KEETA DELIVERY BRAZIL LTDA')).toBe('Food delivery');
+    expect(corrigirCategoria('Eating out', 'Keetabr*Arcos Dourados')).toBe('Food delivery');
+    expect(corrigirCategoria('Shopping', 'Pg *Ze Delivery')).toBe('Food delivery');
+  });
+  it('pastelaria comprada no débito vinha como "Shopping": é comer fora', () => {
+    expect(corrigirCategoria('Shopping', 'Compra no débito|PASTEIS DE VENTO PIRIT')).toBe('Eating out');
+    expect(corrigirCategoria('Shopping', 'Compra no débito|PASTELARIA MALTA BRASI')).toBe('Eating out');
+  });
+  it('atacado é mercado, mesmo quando o banco manda "Shopping"', () => {
+    expect(corrigirCategoria('Shopping', 'Compra no débito|ATACADAO 938 AS')).toBe('Groceries');
+    expect(corrigirCategoria('Shopping', 'ASSAI ATACADISTA LJ27')).toBe('Groceries');
+    // medido na simulação com o dado real: sorveteria com "Atacadao" grudado no nome e a farmácia do Assaí não são mercado
+    expect(corrigirCategoria('Shopping', 'Compra no débito|EskimoAtacadao')).toBe('Shopping');
+    expect(corrigirCategoria('Pharmacy', 'Farma Assai')).toBe('Pharmacy');
+  });
+  it('guia paga por PIX ao Ministério da Fazenda é imposto, como o DARF', () => {
+    expect(corrigirCategoria('Services', 'PIX ENVIADO   MINISTERIO DA FAZENDA')).toBe('Taxes');
+  });
+  it('ingresso pago por PIX é ingresso', () => {
+    expect(corrigirCategoria('Services', 'Pagamento de Pix QR Code EMO REVIVAL')).toBe('Tickets');
+    expect(corrigirCategoria('Travel', 'Transferência enviada|TICKETMASTER BRASIL LTDA')).toBe('Tickets');
+    expect(corrigirCategoria('Services', 'Pagamento de Pix QR Code CBD BILHETE DIGITAL S/A')).toBe('Tickets');
+  });
+  it('"POSTO" no cartão de débito vinha como "Shopping": é combustível; a palavra dentro de outra não conta', () => {
+    expect(corrigirCategoria('Shopping', 'COMPRA CARTAO DEB MC   09/10 POSTO.2626')).toBe('Gas stations');
+    expect(corrigirCategoria('Shopping', 'LOJA DO COMPOSTO ORGANICO')).toBe('Shopping');
+  });
+  it('"ENCARGOS DE ATRASO" no cartão vinha como tarifa: é custo de atraso', () => {
+    expect(corrigirCategoria('Bank fees', 'ENCARGOS DE ATRASO')).toBe('Late payment and overdraft costs');
+  });
+});

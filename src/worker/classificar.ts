@@ -2,6 +2,9 @@
 // scripts/equivalencia.ts. Depois da virada (o n8n não ingere mais), as correções do projeto B entram
 // aqui, cada uma com teste e data.
 
+/** Intermediários de pagamento que aparecem no lugar da loja em compra online por PIX (13/11/2026). */
+const INTERMEDIARIOS = ['pagueveloz', 'pagar.me', 'pagar me', 'moda mundial', 'mercado pago', 'shpp brasil', 'magalupay', 'pix marketplace', 'sf pagamentos'];
+
 export function corrigirCategoria(cat: string | null | undefined, desc: string | null | undefined): string | null | undefined {
   const d = (desc || '').toLowerCase();
   if (d.includes('playstation') || d.includes('sonyplaystatn') || d.includes('ebn *play') || d.includes('ebn*play')) {
@@ -22,6 +25,23 @@ export function corrigirCategoria(cat: string | null | undefined, desc: string |
   if (d.includes('salao') || d.includes('salão') || d.includes('barbearia') || d.includes('cabele')) return 'Wellness';
   if (d.includes('uber') || d.includes('99app') || d.includes('cabify')) return 'Taxi and ride-hailing';
   if (d.includes('sympla') || d.includes('eventim')) return 'Tickets';
+  // 13/11/2026 (auditoria): classificação pelo destino — o grupo "Compras" misturava compra online, comida, imposto
+  // e ingresso, e o teto de cada grupo media a coisa errada. Medido nos lançamentos de jun–nov/26.
+  if (d.includes('ticketmaster') || d.includes('emo revival') || d.includes('bilhete digital')) return 'Tickets';
+  if (d.includes('keeta') || d.includes('ze delivery') || d.includes('zé delivery')) return 'Food delivery';
+  if (d.includes('pastelaria') || d.includes('pasteis') || d.includes('pastéis')) return 'Eating out';
+  // palavra inteira ("EskimoAtacadao" é sorveteria) e fora da farmácia do próprio atacado ("Farma Assai")
+  if (/\b(atacad[aã]o|assa[ií])\b/.test(d) && cat !== 'Pharmacy' && !d.includes('farma')) return 'Groceries';
+  // guia (MEI, Simples) paga por PIX: o DARF acima só pega o boleto
+  if (d.includes('ministerio da fazenda') || d.includes('ministério da fazenda')) return 'Taxes';
+  if (d.includes('encargos de atraso')) return 'Late payment and overdraft costs';
+  // o banco manda "Shopping" para o posto no cartão de débito ("POSTO.2626")
+  if (cat === 'Shopping' && /\bposto\b/.test(d)) return 'Gas stations';
+  // TikTok Shop: a Pluggy põe "Internet" (a internet de casa vem em Telecommunications)
+  if (cat === 'Internet' && d.includes('bytedance')) return 'Shopping';
+  // compra online paga por PIX: só aparece o intermediário de pagamento, com a categoria vaga "Services".
+  // Só troca essa categoria vaga — o mesmo intermediário numa farmácia ou num restaurante fica como o banco mandou
+  if (cat === 'Services' && INTERMEDIARIOS.some((p) => d.includes(p))) return 'Shopping';
   return cat;
 }
 

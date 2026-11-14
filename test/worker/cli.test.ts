@@ -24,10 +24,9 @@ describe('lerArgs', () => {
 });
 
 describe('AGENDA', () => {
-  it('cobre as seis tarefas; sem pedir atualização de item (17/10: item do Meu Pluggy não aceita PATCH)', () => {
-    expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens', 'tesouro']));
-    // 23/10: Tesouro também ao meio-dia (às 23h o download falhou duas noites seguidas)
-    expect(AGENDA).toContainEqual(['0 12,23 * * *', 'tesouro']);
+  it('cobre as cinco tarefas; sem pedir atualização de item (17/10: item do Meu Pluggy não aceita PATCH)', () => {
+    // 14/11: 'tesouro' saiu (o Inter voltou pela segunda conta da Pluggy)
+    expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens']));
   });
 });
 

@@ -5,7 +5,6 @@ import {
 import type { PluggyApi } from './pluggy';
 import { contarDiferencas, planejarReconciliacao, semGemeosDePagamento } from './reconciliar';
 import type { Repo } from './repositorio';
-import { lerPrecosTesouro, precoDoTitulo, tituloDoNome } from './tesouro';
 import type { Conta, Execucao, Modo } from './tipos';
 
 export interface Contexto {
@@ -14,8 +13,11 @@ export interface Contexto {
   modo: Modo;
   agora: () => Date;
   log: (m: string) => void;
-  /** 17/10: o CSV de preços do Tesouro Transparente (tarefa `tesouro`) */
-  tesouro?: () => Promise<string>;
+  /**
+   * 14/11: conexões de outra conta da Pluggy (Inter). Entram na descoberta de contas da tarefa `itens` mesmo sem conta
+   * ativa; a conta nova entra desligada, como qualquer outra.
+   */
+  itensExtras?: readonly { itemId: string; banco: string; responsavel: string }[];
 }
 export interface OpcoesTarefa {
   desde?: string;
@@ -27,10 +29,15 @@ export interface OpcoesTarefa {
    */
   soExistentes?: boolean;
 }
-export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens' | 'tesouro';
+export type NomeTarefa = 'transacoes' | 'faturas' | 'saldos' | 'investimentos' | 'itens';
 
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const chave = (c: Conta) => `${c.banco}/${c.responsavel}/${c.forma}`;
+/** representante de item extra sem conta ativa: só banco/responsável/item importam na descoberta */
+const REPRESENTANTE: Conta = {
+  account_id: '', item_id: null, banco: '', responsavel: '', forma: 'Débito',
+  coleta_transacoes: false, coleta_saldo: false, coleta_faturas: false, coleta_investimentos: false,
+};
 
 /** AAAA-MM-DD em São Paulo, n dias antes de agora */
 function diaSP(agora: Date, menosDias: number): string {
@@ -205,7 +212,11 @@ async function itens(ctx: Contexto) {
     // inclui as desligadas: conta registrada não é "descoberta" de novo a cada hora
     const conhecidas = await ctx.repo.idsRegistrados();
     const novas: string[] = [];
-    for (const [itemId, c] of porItem(contas)) {
+    const itens = porItem(contas);
+    for (const e of ctx.itensExtras ?? []) {
+      if (!itens.has(e.itemId)) itens.set(e.itemId, { ...REPRESENTANTE, item_id: e.itemId, banco: e.banco, responsavel: e.responsavel });
+    }
+    for (const [itemId, c] of itens) {
       try {
         const it = await ctx.pluggy.item(itemId);
         if (ctx.modo !== 'dry-run') await ctx.repo.upsertItem(itemId, c.banco, c.responsavel, it);
@@ -228,29 +239,8 @@ async function itens(ctx: Contexto) {
   });
 }
 
-/**
- * 17/10: títulos do Tesouro de conexão desligada (o Inter saiu do Meu Pluggy): valor bruto = quantidade × PU de
- * resgate do dia mais recente do Tesouro Transparente. Sem título nessa situação, nem baixa o arquivo (~14 MB).
- */
-async function tesouro(ctx: Contexto) {
-  return executar(ctx, 'tesouro', async (contagens, falhas) => {
-    const titulos = await ctx.repo.titulosSemConexao();
-    const feitos: string[] = [];
-    contagens.titulos = feitos;
-    if (!titulos.length) return;
-    if (!ctx.tesouro) throw new Error('sem fonte de preços do Tesouro');
-    const precos = lerPrecosTesouro(await ctx.tesouro());
-    for (const t of titulos) {
-      const rot = `${t.banco}/${t.responsavel} ${t.nome}`;
-      const tit = tituloDoNome(t.nome);
-      const p = tit && precoDoTitulo(precos, tit);
-      if (!p) { falhas.push(`${rot}: sem preço no Tesouro Transparente`); continue; }
-      const valor = Math.round(t.quantidade * p.pu * 100) / 100;
-      if (ctx.modo === 'real') await ctx.repo.atualizarValorTitulo(t.id_investimento, valor, ctx.agora().toISOString());
-      feitos.push(`${rot}: ${valor} (${p.data})`);
-    }
-  });
-}
+// 14/11: a tarefa `tesouro` (17/10, valor dos títulos do Inter pelo preço público enquanto a conexão estava fora)
+// saiu: o Inter voltou pela segunda conta da Pluggy, que devolve os mesmos títulos com o valor líquido de IR.
 
 export const TAREFAS: Record<NomeTarefa, (ctx: Contexto, opts: OpcoesTarefa) => Promise<Execucao>> = {
   transacoes,
@@ -258,5 +248,4 @@ export const TAREFAS: Record<NomeTarefa, (ctx: Contexto, opts: OpcoesTarefa) => 
   saldos,
   investimentos,
   itens,
-  tesouro,
 };

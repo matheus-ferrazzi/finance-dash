@@ -31,6 +31,8 @@ export interface PluggyApi {
 
 type Pagina<T> = { results: T[]; totalPages?: number };
 const TENTATIVAS = 3;
+/** 500 por página: 200 páginas = 100 mil lançamentos numa conta, muito além do real; acima disso é laço */
+const LIMITE_PAGINAS = 200;
 
 export class PluggyClient implements PluggyApi {
   private apiKey: string | null = null;
@@ -105,8 +107,25 @@ export class PluggyClient implements PluggyApi {
   async contasDoItem(itemId: string) {
     return (await this.req<Pagina<PluggyConta>>('GET', `/accounts?itemId=${itemId}`)).results;
   }
-  transacoes(accountId: string, desde: string) {
-    return this.todasPaginas<PluggyTransacao>(`/transactions?accountId=${accountId}&from=${desde}`, 500);
+  /**
+   * 14/11: /v2/transactions, paginado por cursor. O /transactions antigo responde 410 (ENDPOINT_DEPRECATED) nas contas
+   * da Pluggy criadas desde jun/2026 (a do Inter) e sai de vez em 31/12/2026. `next` é a query da próxima página
+   * ("?accountId=…&after=…", às vezes a URL inteira) ou null; daqui só se lê o `after`.
+   */
+  async transacoes(accountId: string, desde: string) {
+    const out: PluggyTransacao[] = [];
+    const vistos = new Set<string>();
+    let after: string | null = null;
+    for (let pagina = 1; ; pagina++) {
+      const q: string = `/v2/transactions?accountId=${accountId}&dateFrom=${desde}${after ? `&after=${encodeURIComponent(after)}` : ''}`;
+      const p: { results: PluggyTransacao[]; next: string | null } = await this.req('GET', q);
+      out.push(...p.results);
+      if (!p.next) return out;
+      after = new URL(p.next, this.base).searchParams.get('after');
+      if (!after) throw new Error(`cursor sem "after" em /v2/transactions (página ${pagina})`);
+      if (vistos.has(after) || pagina >= LIMITE_PAGINAS) throw new Error(`cursor repetido ou páginas demais em /v2/transactions (página ${pagina})`);
+      vistos.add(after);
+    }
   }
   faturas(accountId: string) {
     return this.todasPaginas<PluggyFatura>(`/bills?accountId=${accountId}`, 100);

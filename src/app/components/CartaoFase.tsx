@@ -3,15 +3,19 @@ import { brl, mesLabel } from '@/lib/format';
 import { linkPara } from '@/lib/links';
 import type { DadosTrilha, DividaAtiva, Fase, Trilha } from '@/lib/trilha';
 import type { DividaExternaTela } from '@/lib/dividasExternas';
-import { AjustarMeta, BotaoNaoDivida, BotoesDividaExterna, NovaDividaExterna } from './AjustesTrilha';
+import type { ConsultaCreditoTela } from '@/lib/queries';
+import { AjustarMeta, BotaoConsultaCredito, BotaoNaoDivida, BotoesDividaExterna, NovaDividaExterna } from './AjustesTrilha';
 import { TextoComValores } from './TextoComValores';
 
-type Props = { fase: Fase; trilha: Trilha; metasPadrao: { meses: boolean; patrimonio: boolean }; externas?: DividaExternaTela[] }
+/** 14/11: consulta de crédito: quem tem CPF configurado no painel e a última consulta de cada um */
+export type ConsultaTrilha = { cpfs: Record<'Matheus' | 'Ariane', boolean>; ultimas: ConsultaCreditoTela[] };
+type Props = { fase: Fase; trilha: Trilha; metasPadrao: { meses: boolean; patrimonio: boolean }; externas?: DividaExternaTela[]; consulta?: ConsultaTrilha }
   & Pick<DadosTrilha, 'atrasos' | 'gastoTravado' | 'aplicacaoMensal'>;
+const SEM_CONSULTA: ConsultaTrilha = { cpfs: { Matheus: false, Ariane: false }, ultimas: [] };
 const ROTULO = { cumprida: '✓ cumprida', atual: 'agora', depois: 'depois' } as const;
 
 /** Uma fase da trilha (F3) com o detalhe que a sustenta. */
-export function CartaoFase({ fase, trilha, atrasos, gastoTravado, aplicacaoMensal, metasPadrao, externas = [] }: Props) {
+export function CartaoFase({ fase, trilha, atrasos, gastoTravado, aplicacaoMensal, metasPadrao, externas = [], consulta = SEM_CONSULTA }: Props) {
   const r = trilha.reserva;
   const fracao = r.meta > 0 ? Math.min(1, r.aplicado / r.meta) : 1;
   return (
@@ -57,6 +61,25 @@ export function CartaoFase({ fase, trilha, atrasos, gastoTravado, aplicacaoMensa
             </div>
           ))}
           <NovaDividaExterna />
+          {/* 14/11: consulta de crédito sob demanda (API Brasil) */}
+          {(['Matheus', 'Ariane'] as const).filter((p) => consulta.cpfs[p]).map((p) => {
+            const c = consulta.ultimas.find((x) => x.responsavel === p);
+            return (
+              <div key={p} className="flex flex-wrap items-center justify-between gap-x-3 border-t border-border pt-1">
+                <span className="min-w-0 text-muted">
+                  <b className="text-text">{p}</b>
+                  {!c && ' · nunca consultado'}
+                  {c && ` · consulta de ${new Date(c.feitaEm).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`}
+                  {c?.score != null && ` · score ${c.score}${c.faixa ? ` (${c.faixa.toLowerCase()})` : ''}`}
+                  {c && ` · ${c.dividas} ${c.dividas === 1 ? 'dívida' : 'dívidas'}`}
+                  {c?.scr && c.scr.prejuizo > 0 && <> · prejuízo no SCR <span className="tnum money">{brl(c.scr.prejuizo)}</span></>}
+                  {c && c.naoLidas > 0 && <span className="text-warn">{` · ${c.naoLidas} ocorrência${c.naoLidas === 1 ? '' : 's'} que o app não soube ler`}</span>}
+                  {c?.avisos.map((a) => <span key={a} className="block text-warn">{a}</span>)}
+                </span>
+                <BotaoConsultaCredito responsavel={p} />
+              </div>
+            );
+          })}
         </div>
       )}
 

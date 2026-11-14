@@ -44,6 +44,30 @@ export function BotoesDividaExterna({ id, credor }: { id: number; credor: string
   );
 }
 
+/** 14/11: consulta de crédito na API Brasil (custa por consulta; o painel trava repetição em 20 h). */
+export function BotaoConsultaCredito({ responsavel }: { responsavel: 'Matheus' | 'Ariane' }) {
+  const [rodando, setRodando] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function consultar() {
+    const de = responsavel === 'Matheus' ? 'do Matheus' : 'da Ariane';
+    if (!confirm(`Consultar o CPF ${de} na API Brasil? São duas consultas pagas (cerca de R$ 9,20 no total), descontadas do saldo de lá.`)) return;
+    setRodando(true); setMsg(null);
+    const r = await fetch('/api/trilha/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ responsavel }) }).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {};
+    setRodando(false);
+    if (!r || !r.ok) { setMsg(j.erro ?? 'Sem conexão.'); return; }
+    window.location.reload();
+  }
+  return (
+    <>
+      <button type="button" onClick={consultar} disabled={rodando} className="min-h-[44px] px-2 text-[11px] text-accent underline disabled:opacity-50">
+        {rodando ? 'consultando…' : `consultar ${responsavel}`}
+      </button>
+      {msg && <span className="w-full text-[11px] text-despesa">{msg}</span>}
+    </>
+  );
+}
+
 /** 13/11: cadastrar uma dívida fora do banco (o que suja o nome e a Pluggy não vê). */
 export function NovaDividaExterna() {
   const [aberto, setAberto] = useState(false);

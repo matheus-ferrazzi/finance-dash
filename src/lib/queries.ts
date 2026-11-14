@@ -24,6 +24,7 @@ import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
 import type { DividaExternaInput, DividaExternaTela } from './dividasExternas';
+import type { ResultadoConsulta, ResumoScr } from './apiBrasil';
 import { contaDoPlano, GRUPOS_COM_TETO, planoDoMes, type ContaDoPlano, type GrupoComTeto, type Plano, type PlanoDoMes } from './plano';
 import {
   addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaExtraMediana, receitaRecorrente,
@@ -2001,6 +2002,88 @@ export async function quitarDividaExterna(id: number, quitada: boolean): Promise
 
 export async function apagarDividaExterna(id: number): Promise<boolean> {
   return (await qw(`DELETE FROM financas_dividas_externas WHERE id = $1 RETURNING id`, [id])).length > 0;
+}
+
+// ==================== CONSULTA DE CRÉDITO (14/11, API Brasil) ====================
+
+export interface ConsultaCreditoTela {
+  responsavel: 'Matheus' | 'Ariane';
+  /** ISO da consulta */
+  feitaEm: string;
+  custo: number;
+  score: number | null;
+  faixa: string | null;
+  scr: ResumoScr | null;
+  dividas: number;
+  naoLidas: number;
+  avisos: string[];
+}
+
+/** A última consulta real de cada pessoa. */
+export async function getUltimasConsultas(): Promise<ConsultaCreditoTela[]> {
+  const rows = await q<any>(
+    `SELECT DISTINCT ON (responsavel) responsavel, feita_em, custo::float8 AS custo, score, score_faixa, scr, dividas, nao_lidas, avisos
+       FROM financas_consultas_credito ORDER BY responsavel, feita_em DESC`,
+  );
+  return rows.map((x) => ({
+    responsavel: x.responsavel, feitaEm: new Date(x.feita_em).toISOString(), custo: Number(x.custo),
+    score: x.score === null ? null : Number(x.score), faixa: x.score_faixa ?? null, scr: x.scr ?? null,
+    dividas: Number(x.dividas), naoLidas: Number(x.nao_lidas), avisos: x.avisos ?? [],
+  }));
+}
+
+/** Horas desde a última consulta real da pessoa (null se nunca houve). */
+export async function horasDesdeConsulta(resp: 'Matheus' | 'Ariane'): Promise<number | null> {
+  const rows = await q<any>(`SELECT EXTRACT(EPOCH FROM now() - max(feita_em)) / 3600 AS h FROM financas_consultas_credito WHERE responsavel = $1`, [resp]);
+  return rows[0]?.h === null || rows[0]?.h === undefined ? null : Number(rows[0].h);
+}
+
+/**
+ * Grava uma consulta real e acerta as dívidas de origem 'consulta' da pessoa, numa transação:
+ * - a que veio entra ou é atualizada (mesma chave = mesma dívida; volta a aberta se tinha sido dada por limpa);
+ * - a que tinha vindo antes e não veio agora é dada por limpa hoje — só das fontes que responderam (SCR fora do ar
+ *   não limpa as linhas do SCR). Cadastro à mão nunca é tocado.
+ */
+export async function registrarConsulta(resp: 'Matheus' | 'Ariane', r: ResultadoConsulta): Promise<{ id: number; novas: number; limpas: number }> {
+  if (r.homolog) throw new Error('consulta de homologação não se grava');
+  const cli = await writerPool.connect();
+  try {
+    await cli.query('BEGIN');
+    const { rows } = await cli.query(
+      `INSERT INTO financas_consultas_credito (responsavel, custo, score, score_faixa, scr, pendencias, dividas, nao_lidas, avisos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [resp, r.custo, r.score, r.faixa, r.scr ? JSON.stringify(r.scr) : null, JSON.stringify(r.pendencias), r.dividas.length, r.naoLidas, r.avisos],
+    );
+    let novas = 0;
+    for (const d of r.dividas) {
+      const u = await cli.query(
+        `INSERT INTO financas_dividas_externas (credor, responsavel, valor, negativada, origem, observacao, chave_consulta)
+         VALUES ($1, $2, $3, $4, 'consulta', $5, $6)
+         ON CONFLICT (responsavel, chave_consulta) DO UPDATE SET credor = EXCLUDED.credor, valor = EXCLUDED.valor,
+           negativada = EXCLUDED.negativada, observacao = EXCLUDED.observacao, quitada_em = NULL,
+           referencia = (now() AT TIME ZONE 'America/Sao_Paulo')::date, atualizado_em = now()
+         RETURNING (xmax = 0) AS nova`,
+        [d.credor, resp, d.valor, d.negativada, d.observacao, d.chave],
+      );
+      if (u.rows[0]?.nova) novas++;
+    }
+    const limpas = await cli.query(
+      `UPDATE financas_dividas_externas
+          SET quitada_em = (now() AT TIME ZONE 'America/Sao_Paulo')::date, atualizado_em = now(),
+              observacao = left(concat_ws(' · ', observacao, 'não apareceu na consulta de ' || to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'DD/MM')), 200)
+        WHERE responsavel = $1 AND origem = 'consulta' AND quitada_em IS NULL
+          AND NOT (chave_consulta = ANY($2::text[]))
+          AND ($3 OR chave_consulta NOT LIKE 'scr|%')`,
+      [resp, r.dividas.map((d) => d.chave), r.scr !== null],
+    );
+    await cli.query('COMMIT');
+    return { id: Number(rows[0].id), novas, limpas: limpas.rowCount ?? 0 };
+  } catch (e) {
+    await cli.query('ROLLBACK');
+    throw e;
+  } finally {
+    cli.release();
+  }
 }
 
 export async function apagarMarcacao(id: number): Promise<boolean> {

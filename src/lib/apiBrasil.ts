@@ -9,12 +9,16 @@ export const URL_API_BRASIL = 'https://gateway.apibrasil.io/api/v2/consulta/cpf/
 
 /** Blocos do dossiê que são dívida; o resto (cadastro, telefones, ações cíveis, empresas) fica de fora. */
 const BLOCOS_DIVIDA = ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico', 'ch_sem_fundos_bacen', 'ch_sem_fundos_varejo'] as const;
-/** Os que viram linha em "dívidas fora do banco" (cheque e síntese só entram no resumo). */
-const BLOCOS_LINHA: Record<string, string> = { pend_financeiras: 'pendência', pend_refin: 'refin', protestos: 'protesto' };
+/**
+ * Os que viram linha em "dívidas fora do banco" (cheque só entra no resumo). 14/11, primeira consulta real: o protesto
+ * veio só no `protesto_sintetico` (o `protestos` detalhado vazio); o sintético vale quando o detalhado não trouxe nada.
+ */
+const BLOCOS_LINHA: Record<string, string> = { pend_financeiras: 'pendência', pend_refin: 'refin', protestos: 'protesto', protesto_sintetico: 'protesto' };
 
 // A documentação não publica os campos de cada ocorrência (o exemplo vem vazio): procura pelos nomes prováveis e,
 // sem credor ou valor legível, conta como "não lida" (o bloco cru fica guardado na consulta para ajustar depois).
-const CHAVES_CREDOR = ['credor', 'nome_credor', 'informante', 'empresa', 'razao_social', 'cedente', 'apresentante', 'nome_cartorio', 'cartorio', 'instituicao', 'origem'];
+// Protesto costuma vir sem credor (14/11: credor e cedente vazios): aí o nome é o cartório.
+const CHAVES_CREDOR = ['credor', 'nome_credor', 'informante', 'empresa', 'razao_social', 'cedente', 'apresentante', 'instituicao', 'origem'];
 const CHAVES_VALOR = ['valor', 'valor_pendencia', 'valor_divida', 'valor_protesto', 'valor_ocorrencia', 'valor_total'];
 const CHAVES_CONTRATO = ['contrato', 'numero_contrato', 'num_contrato', 'documento_origem', 'titulo'];
 const CHAVES_DATA = ['data_vencimento', 'data_ocorrencia', 'data_protesto', 'data_inclusao', 'vencimento', 'data'];
@@ -32,6 +36,8 @@ export interface DividaConsulta {
 export interface ResumoScr {
   aVencer: number; vencido: number; prejuizo: number; limite: number;
   instituicoes: number | null; operacoes: number | null; database: string | null;
+  /** o consolidado veio zerado e "a vencer" é a soma das operações */
+  porOperacao?: boolean;
 }
 
 export interface ResultadoConsulta {
@@ -48,6 +54,10 @@ export interface ResultadoConsulta {
   naoLidas: number;
   /** o que ficou de fora (ex.: o SCR falhou depois do dossiê já cobrado) */
   avisos: string[];
+  /** quais fontes responderam: a dívida que sumiu só é dada por limpa pela fonte que respondeu */
+  fontes: { dossie: boolean; scr: boolean };
+  /** o relatório do SCR como veio, sem nome nem documento (null se não houve SCR) */
+  scrBruto: Record<string, unknown> | null;
 }
 
 export class ErroConsulta extends Error {
@@ -82,8 +92,13 @@ const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 export function ocorrenciaParaDivida(o: unknown, bloco: string): DividaConsulta | null {
   if (!o || typeof o !== 'object') return null;
   const x = o as Record<string, unknown>;
-  const credor = texto(x, CHAVES_CREDOR);
   const valor = valorDe(x);
+  let credor = texto(x, CHAVES_CREDOR);
+  if (!credor && bloco.startsWith('protesto')) {
+    const cart = texto(x, ['cartorio', 'nome_cartorio']);
+    const onde = [texto(x, ['comarca', 'cidade', 'municipio']), texto(x, ['uf'])].filter(Boolean).join('/');
+    if (cart || onde) credor = `Protesto em cartório${cart ? ` ${/^\d+$/.test(cart) ? `${Number(cart)}º` : cart}` : ''}${onde ? ` de ${onde}` : ''}`;
+  }
   if (!credor || valor <= 0) return null;
   const contrato = texto(x, CHAVES_CONTRATO);
   const data = texto(x, CHAVES_DATA);
@@ -109,6 +124,8 @@ export function lerDossie(json: any): { pendencias: Record<string, unknown>; div
     if (!(b in c)) continue;
     pendencias[b] = c[b];
     if (!(b in BLOCOS_LINHA)) continue;
+    // o sintético repete o detalhado quando este vem preenchido: só entra se o detalhado não trouxe protesto
+    if (b === 'protesto_sintetico' && dividas.some((d) => d.chave.startsWith('protestos|'))) continue;
     if (!ok(c[b])) throw new ErroConsulta(`a fonte de ${BLOCOS_LINHA[b]}s não respondeu (${c[b]?.status_retorno?.descricao ?? 'sem status'})`, 502);
     for (const o of (Array.isArray(c[b].ocorrencias) ? c[b].ocorrencias : [])) {
       const d = ocorrenciaParaDivida(o, b);
@@ -126,20 +143,29 @@ export function lerDossie(json: any): { pendencias: Record<string, unknown>; div
 }
 
 /** Endividamento (SCR) → resumo e score. */
-export function lerEndividamento(json: any): { scr: ResumoScr; score: number | null; faixa: string | null } {
+export function lerEndividamento(json: any): { scr: ResumoScr; score: number | null; faixa: string | null; bruto: Record<string, unknown> } {
   const r = json?.data?.credcadastral?.relatorio_scr;
   if (!r || !ok(r)) throw new ErroConsulta(`o SCR não respondeu (${r?.status_retorno?.descricao ?? 'sem relatório'})`, 502);
   const cons = r.consolidado ?? {};
   const qtd = (v: unknown) => (String(v ?? '').trim() ? numBR(v) : null);
   const pont = numBR(r.score?.pontuacao);
+  const scr: ResumoScr = {
+    aVencer: r2(numBR(cons.credito_avencer?.valor_total)), vencido: r2(numBR(cons.credito_vencido?.valor_total)),
+    prejuizo: r2(numBR(cons.prejuizo?.valor_total)), limite: r2(numBR(cons.limite_credito?.valor_total)),
+    instituicoes: qtd(r.quantidade_instituicoes), operacoes: qtd(r.quantidade_operacoes), database: r.database_consultada || null,
+  };
+  // 14/11, primeira consulta real: consolidado todo zerado com 11 operações em 4 instituições. Se as operações têm
+  // total e o consolidado não, o total delas entra como "a vencer" (sem separar vencido e prejuízo, que o
+  // consolidado é quem diz) e `porOperacao` marca que veio assim.
+  const somaOps = r2((Array.isArray(r.operacoes) ? r.operacoes : []).reduce((s: number, o: any) => s + numBR(o?.total), 0));
+  if (scr.aVencer + scr.vencido + scr.prejuizo === 0 && somaOps > 0) { scr.aVencer = somaOps; scr.porOperacao = true; }
+  // o relatório como veio, sem identificação (nome e documento), para conferir o formato real
+  const { nome_razao_social: _n, documento: _d, tipo_documento: _t, ...bruto } = r;
   return {
-    scr: {
-      aVencer: r2(numBR(cons.credito_avencer?.valor_total)), vencido: r2(numBR(cons.credito_vencido?.valor_total)),
-      prejuizo: r2(numBR(cons.prejuizo?.valor_total)), limite: r2(numBR(cons.limite_credito?.valor_total)),
-      instituicoes: qtd(r.quantidade_instituicoes), operacoes: qtd(r.quantidade_operacoes), database: r.database_consultada || null,
-    },
+    scr,
     score: pont > 0 ? Math.round(pont) : null,
     faixa: typeof r.score?.faixa === 'string' && r.score.faixa.trim() ? r.score.faixa.trim() : null,
+    bruto,
   };
 }
 
@@ -176,11 +202,14 @@ async function chamar(tipo: string, cpf: string, token: string, homolog: boolean
   return j;
 }
 
-/** As duas consultas de um CPF. Dossiê primeiro: sem ele não há o que gravar, e o SCR não é cobrado à toa. */
-export async function consultarCredito(p: { cpf: string; token: string; homolog: boolean; fetchFn?: typeof fetch }): Promise<ResultadoConsulta> {
+/**
+ * As duas consultas de um CPF. Dossiê primeiro: sem ele não há o que gravar, e o SCR não é cobrado à toa.
+ * `soScr`: só o endividamento (R$ 4,80), para refazer o SCR e o score sem pagar o dossiê de novo.
+ */
+export async function consultarCredito(p: { cpf: string; token: string; homolog: boolean; soScr?: boolean; fetchFn?: typeof fetch }): Promise<ResultadoConsulta> {
   const f = p.fetchFn ?? fetch;
-  const dossie = await chamar('dossie-credito-pf', p.cpf, p.token, p.homolog, f);
-  const d = lerDossie(dossie);
+  const dossie = p.soScr ? null : await chamar('dossie-credito-pf', p.cpf, p.token, p.homolog, f);
+  const d = dossie ? lerDossie(dossie) : { pendencias: {}, dividas: [], naoLidas: 0 };
   // o dossiê já foi cobrado: se só o SCR falhar, o resultado sai sem ele (com aviso), em vez de jogar fora o que foi pago
   let endiv: any = null;
   let e: ReturnType<typeof lerEndividamento> | null = null;
@@ -189,11 +218,15 @@ export async function consultarCredito(p: { cpf: string; token: string; homolog:
     endiv = await chamar('endividamento-pf', p.cpf, p.token, p.homolog, f);
     e = lerEndividamento(endiv);
   } catch (err) {
+    if (p.soScr) throw err; // sem dossiê, não há o que salvar
     avisos.push(`SCR e score ficaram de fora: ${err instanceof Error ? err.message : String(err)}`);
   }
+  if (e?.scr.porOperacao) avisos.push('O SCR veio sem o consolidado: "a vencer" é a soma das operações, sem separar vencido e prejuízo.');
   return {
     homolog: p.homolog,
-    custo: r2(numBR(dossie.valor_consulta) + numBR(endiv?.valor_consulta)),
+    fontes: { dossie: dossie !== null, scr: e !== null },
+    scrBruto: e?.bruto ?? null,
+    custo: r2(numBR(dossie?.valor_consulta) + numBR(endiv?.valor_consulta)),
     score: e?.score ?? null, faixa: e?.faixa ?? null, scr: e?.scr ?? null,
     pendencias: d.pendencias,
     dividas: [...d.dividas, ...(e ? dividasDoScr(e.scr) : [])],

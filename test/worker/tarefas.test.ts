@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PluggyRoteado } from '../../src/worker/pluggy';
 import { TAREFAS, type Contexto } from '../../src/worker/tarefas';
 import type { Modo } from '../../src/worker/tipos';
 import { PluggyFake, RepoFake, contaFake, linhaBancoFake, txFake } from './fakes';
@@ -171,46 +172,51 @@ describe('itens', () => {
   });
 });
 
-// 17/10: títulos do Tesouro de conexão desligada, pelo preço público (valor bruto)
-describe('tesouro', () => {
-  const CSV = [
-    'Tipo Titulo;Data Vencimento;Data Base;Taxa Compra Manha;Taxa Venda Manha;PU Compra Manha;PU Venda Manha;PU Base Manha',
-    'Tesouro Selic;01/03/2027;15/10/2026;0,01;0,02;20097,80;20086,80;20086,80',
-    'Tesouro IPCA+;15/05/2035;15/10/2026;6,84;6,96;2713,48;2686,72;2686,72',
-  ].join(String.fromCharCode(10));
-  function cenario(modo: Modo) {
-    const c = ctx(modo);
-    let baixou = 0;
-    c.tesouro = async () => { baixou++; return CSV; };
-    c.repo.titulos = [
-      { id_investimento: 't1', nome: 'LFT - Tesouro Selic 2027', quantidade: 0.03, banco: 'Inter', responsavel: 'Matheus' },
-      { id_investimento: 't2', nome: 'NTN-B Princ - Tesouro IPCA 2035', quantidade: 0.02, banco: 'Inter', responsavel: 'Matheus' },
-      { id_investimento: 't3', nome: 'LTN - Tesouro Prefixado 2031', quantidade: 1, banco: 'Inter', responsavel: 'Matheus' },
-    ];
-    return { c, baixou: () => baixou };
+// 14/11: o Inter voltou numa segunda conta da Pluggy; o item dele não tem conta ativa até ser ligado
+describe('itens extras (segunda conta da Pluggy)', () => {
+  it('descobre as contas do item extra com o banco e a pessoa configurados, mesmo sem conta ativa nele', async () => {
+    const c = ctx('real');
+    c.itensExtras = [{ itemId: 'item-x', banco: 'Inter', responsavel: 'Matheus' }];
+    c.pluggy.contasPorItem.set('item-x', [{ id: 'x-cc', itemId: 'item-x', type: 'BANK' }, { id: 'x-pp', itemId: 'item-x', type: 'BANK' }]);
+    const ex = await TAREFAS.itens(c, {});
+    expect(c.repo.chamadas).toContain('upsertItem item-x');
+    expect(c.repo.chamadas).toContain('registrarSync Inter Matheus');
+    expect(c.repo.chamadas.filter((x) => x.startsWith('inserirConta'))).toEqual(['inserirConta x-cc Débito', 'inserirConta x-pp Débito']);
+    expect(ex.contagens.contasNovas).toEqual(['Inter/Matheus/Débito', 'Inter/Matheus/Débito']);
+  });
+
+  it('item extra que já tem conta ativa não é visitado duas vezes', async () => {
+    const c = ctx('real');
+    c.repo.contas = [contaFake({ account_id: 'x-cc', item_id: 'item-x', banco: 'Inter', forma: 'Débito' })];
+    c.itensExtras = [{ itemId: 'item-x', banco: 'Inter', responsavel: 'Matheus' }];
+    await TAREFAS.itens(c, {});
+    expect(c.repo.chamadas.filter((x) => x === 'upsertItem item-x')).toHaveLength(1);
+  });
+});
+
+describe('PluggyRoteado', () => {
+  class Marcada extends PluggyFake {
+    constructor(public readonly nome: string, public log: string[]) { super(); }
+    override async conta(id: string) { this.log.push(`${this.nome}.conta ${id}`); return super.conta(id); }
+    override async transacoes(id: string) { this.log.push(`${this.nome}.transacoes ${id}`); return []; }
+    override async investimentos(item: string) { this.log.push(`${this.nome}.investimentos ${item}`); return []; }
   }
-  it('real: quantidade × PU de resgate do dia mais recente; título sem preço vira falha com o nome', async () => {
-    const { c } = cenario('real');
-    const ex = await TAREFAS.tesouro(c, {});
-    expect(c.repo.chamadas).toEqual(['atualizarValorTitulo t1 602.6', 'atualizarValorTitulo t2 53.73']);
-    expect(ex.contagens.titulos).toEqual(['Inter/Matheus LFT - Tesouro Selic 2027: 602.6 (2026-10-15)', 'Inter/Matheus NTN-B Princ - Tesouro IPCA 2035: 53.73 (2026-10-15)']);
-    expect(ex.contagens.falhas).toEqual(['Inter/Matheus LTN - Tesouro Prefixado 2031: sem preço no Tesouro Transparente']);
-    expect(ex.ok).toBe(false);
-  });
-  it('sombra e dry-run calculam sem gravar', async () => {
-    for (const modo of ['sombra', 'dry-run'] as const) {
-      const { c } = cenario(modo);
-      const ex = await TAREFAS.tesouro(c, {});
-      expect(c.repo.chamadas).toEqual([]);
-      expect((ex.contagens.titulos as string[]).length).toBe(2);
-    }
-  });
-  it('sem título de conexão desligada: não baixa o arquivo (14 MB)', async () => {
-    const { c, baixou } = cenario('real');
-    c.repo.titulos = [];
-    const ex = await TAREFAS.tesouro(c, {});
-    expect(baixou()).toBe(0);
-    expect(ex.ok).toBe(true);
+  it('conta e item do Inter vão para a segunda chave; o resto, para a principal; o item da conta é lido uma vez', async () => {
+    const log: string[] = [];
+    let leituras = 0;
+    const r = new PluggyRoteado(new Marcada('principal', log), [{ itemId: 'item-x', banco: 'Inter', responsavel: 'Matheus', api: new Marcada('inter', log) }],
+      async (acc) => { leituras++; return acc === 'x-cc' ? 'item-x' : acc === 'nu' ? 'item-1' : null; });
+    await r.transacoes('x-cc', '2026-11-01');
+    await r.conta('x-cc');
+    await r.conta('nu');
+    await r.conta('sem-item');
+    await r.investimentos('item-x');
+    await r.investimentos('item-1');
+    expect(log).toEqual([
+      'inter.transacoes x-cc', 'inter.conta x-cc', 'principal.conta nu', 'principal.conta sem-item',
+      'inter.investimentos item-x', 'principal.investimentos item-1',
+    ]);
+    expect(leituras).toBe(3);
   });
 });
 

@@ -122,3 +122,45 @@ export class PluggyClient implements PluggyApi {
     return soDigitos(r.document);
   }
 }
+
+/** 14/11: conexão que vive noutra conta da Pluggy (o Inter, numa segunda chave: no plano grátis cabe um banco por conta). */
+export interface ItemExtra {
+  itemId: string;
+  banco: string;
+  responsavel: string;
+  api: PluggyApi;
+}
+
+/**
+ * 14/11: manda cada chamada para a chave dona da conexão. Por item, direto; por conta, pelo item gravado em
+ * pluggy_contas (`itemDaConta`). Conta sem item conhecido vai para a chave principal, como antes.
+ */
+export class PluggyRoteado implements PluggyApi {
+  private readonly cache = new Map<string, PluggyApi>();
+
+  constructor(
+    private readonly principal: PluggyApi,
+    private readonly extras: readonly ItemExtra[],
+    private readonly itemDaConta: (accountId: string) => Promise<string | null>,
+  ) {}
+
+  private doItem(itemId: string): PluggyApi {
+    return this.extras.find((e) => e.itemId === itemId)?.api ?? this.principal;
+  }
+  private async daConta(accountId: string): Promise<PluggyApi> {
+    const c = this.cache.get(accountId);
+    if (c) return c;
+    const item = await this.itemDaConta(accountId);
+    const api = item ? this.doItem(item) : this.principal;
+    this.cache.set(accountId, api);
+    return api;
+  }
+
+  async conta(accountId: string) { return (await this.daConta(accountId)).conta(accountId); }
+  async transacoes(accountId: string, desde: string) { return (await this.daConta(accountId)).transacoes(accountId, desde); }
+  async faturas(accountId: string) { return (await this.daConta(accountId)).faturas(accountId); }
+  contasDoItem(itemId: string) { return this.doItem(itemId).contasDoItem(itemId); }
+  investimentos(itemId: string) { return this.doItem(itemId).investimentos(itemId); }
+  item(itemId: string) { return this.doItem(itemId).item(itemId); }
+  documentoTitular(itemId: string) { return this.doItem(itemId).documentoTitular(itemId); }
+}

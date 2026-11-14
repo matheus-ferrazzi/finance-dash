@@ -40,10 +40,10 @@ describe('PluggyClient', () => {
       { status: 200, body: { results: [{ id: 'b' }], page: 2, totalPages: 2 } },
     ]);
     const c = new PluggyClient(creds, f.fn, semEspera);
-    const r = await c.transacoes('acc-1', '2026-08-01');
+    const r = await c.faturas('acc-1');
     expect(r.map((x) => x.id)).toEqual(['a', 'b']);
-    expect(f.chamadas[1]).toBe('GET /transactions?accountId=acc-1&from=2026-08-01&pageSize=500&page=1');
-    expect(f.chamadas[2]).toBe('GET /transactions?accountId=acc-1&from=2026-08-01&pageSize=500&page=2');
+    expect(f.chamadas[1]).toBe('GET /bills?accountId=acc-1&pageSize=100&page=1');
+    expect(f.chamadas[2]).toBe('GET /bills?accountId=acc-1&pageSize=100&page=2');
   });
 
   it('página do meio vazia é erro, não lista incompleta', async () => {
@@ -52,7 +52,41 @@ describe('PluggyClient', () => {
       { status: 200, body: { results: [], totalPages: 3 } },
     ]);
     const c = new PluggyClient(creds, f.fn, semEspera);
-    await expect(c.transacoes('acc-1', '2026-08-01')).rejects.toThrow(/vazia/);
+    await expect(c.faturas('acc-1')).rejects.toThrow(/vazia/);
+  });
+});
+
+// 14/11: /transactions antigo responde 410 na conta nova da Pluggy e sai de vez em 31/12/2026 → /v2/transactions (cursor)
+describe('transacoes por cursor (/v2/transactions)', () => {
+  it('segue o "after" do next (query relativa ou URL inteira) até next = null', async () => {
+    const f = fetchFalso([
+      { status: 200, body: { results: [{ id: 'a' }], next: '?accountId=acc-1&after=c1' } },
+      { status: 200, body: { results: [{ id: 'b' }], next: 'https://api.pluggy.ai/v2/transactions?accountId=acc-1&after=c%2B2' } },
+      { status: 200, body: { results: [{ id: 'c' }], next: null } },
+    ]);
+    const c = new PluggyClient(creds, f.fn, semEspera);
+    const r = await c.transacoes('acc-1', '2026-08-01');
+    expect(r.map((x) => x.id)).toEqual(['a', 'b', 'c']);
+    expect(f.chamadas.slice(1)).toEqual([
+      'GET /v2/transactions?accountId=acc-1&dateFrom=2026-08-01',
+      'GET /v2/transactions?accountId=acc-1&dateFrom=2026-08-01&after=c1',
+      'GET /v2/transactions?accountId=acc-1&dateFrom=2026-08-01&after=c%2B2',
+    ]);
+  });
+
+  it('cursor repetido é erro, não laço infinito', async () => {
+    const f = fetchFalso([
+      { status: 200, body: { results: [{ id: 'a' }], next: '?after=x' } },
+      { status: 200, body: { results: [{ id: 'b' }], next: '?after=x' } },
+    ]);
+    const c = new PluggyClient(creds, f.fn, semEspera);
+    await expect(c.transacoes('acc-1', '2026-08-01')).rejects.toThrow(/cursor repetido/);
+  });
+
+  it('next sem "after" é erro, não lista incompleta', async () => {
+    const f = fetchFalso([{ status: 200, body: { results: [{ id: 'a' }], next: '?accountId=acc-1' } }]);
+    const c = new PluggyClient(creds, f.fn, semEspera);
+    await expect(c.transacoes('acc-1', '2026-08-01')).rejects.toThrow(/sem "after"/);
   });
 
   it('repete em 503 e em erro de rede, até 3 tentativas', async () => {

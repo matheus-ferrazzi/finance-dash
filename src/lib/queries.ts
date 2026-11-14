@@ -24,7 +24,7 @@ import { periodoDaSemana } from './periodos';
 import type { DadosAvisos } from './avisos';
 import type { MarcaInput, PedidoRegra } from './validation';
 import type { DividaExternaInput, DividaExternaTela } from './dividasExternas';
-import type { ResultadoConsulta, ResumoScr } from './apiBrasil';
+import { lerDossie, type DividaConsulta, type ResultadoConsulta, type ResumoScr } from './apiBrasil';
 import { contaDoPlano, GRUPOS_COM_TETO, planoDoMes, type ContaDoPlano, type GrupoComTeto, type Plano, type PlanoDoMes } from './plano';
 import {
   addMonths, aplicarParteDoCasal, chaveParte, computeProjecao, computeRitmo, diasNoMes, fechaNoRitmo, mesesBaseReceita, type ContaDoMes, receitaAindaAEntrar, receitaExtraMediana, receitaRecorrente,
@@ -2019,11 +2019,20 @@ export interface ConsultaCreditoTela {
   avisos: string[];
 }
 
-/** A última consulta real de cada pessoa. */
+/**
+ * A última consulta real de cada pessoa. Score e SCR vêm da última que trouxe SCR; "dívidas", do que está em aberto
+ * com origem 'consulta' (uma consulta só do SCR não zera a contagem das pendências).
+ */
 export async function getUltimasConsultas(): Promise<ConsultaCreditoTela[]> {
   const rows = await q<any>(
-    `SELECT DISTINCT ON (responsavel) responsavel, feita_em, custo::float8 AS custo, score, score_faixa, scr, dividas, nao_lidas, avisos
-       FROM financas_consultas_credito ORDER BY responsavel, feita_em DESC`,
+    `SELECT DISTINCT ON (c.responsavel) c.responsavel, c.feita_em, c.custo::float8 AS custo, c.nao_lidas, c.avisos,
+            s.score, s.score_faixa, s.scr,
+            (SELECT count(*) FROM financas_dividas_externas d
+              WHERE d.responsavel = c.responsavel AND d.origem = 'consulta' AND d.quitada_em IS NULL) AS dividas
+       FROM financas_consultas_credito c
+       LEFT JOIN LATERAL (SELECT score, score_faixa, scr FROM financas_consultas_credito x
+                           WHERE x.responsavel = c.responsavel AND x.scr IS NOT NULL ORDER BY x.feita_em DESC LIMIT 1) s ON true
+      ORDER BY c.responsavel, c.feita_em DESC`,
   );
   return rows.map((x) => ({
     responsavel: x.responsavel, feitaEm: new Date(x.feita_em).toISOString(), custo: Number(x.custo),
@@ -2046,44 +2055,75 @@ export async function horasDesdeConsulta(resp: 'Matheus' | 'Ariane'): Promise<nu
  */
 export async function registrarConsulta(resp: 'Matheus' | 'Ariane', r: ResultadoConsulta): Promise<{ id: number; novas: number; limpas: number }> {
   if (r.homolog) throw new Error('consulta de homologação não se grava');
+  return comTransacao(async (cli) => {
+    const { rows } = await cli.query(
+      `INSERT INTO financas_consultas_credito (responsavel, custo, score, score_faixa, scr, scr_bruto, pendencias, dividas, nao_lidas, avisos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [resp, r.custo, r.score, r.faixa, r.scr ? JSON.stringify(r.scr) : null, r.scrBruto ? JSON.stringify(r.scrBruto) : null,
+        JSON.stringify(r.pendencias), r.dividas.length, r.naoLidas, r.avisos],
+    );
+    return { id: Number(rows[0].id), ...(await aplicarDividasDaConsulta(cli, resp, r.dividas, r.fontes)) };
+  });
+}
+
+/**
+ * Relê o dossiê guardado de uma consulta já paga com o leitor atual (sem nova cobrança) e acerta as dívidas das
+ * fontes do dossiê; as do SCR ficam como estão (o SCR não se relê: só o resumo tinha sido guardado até a 024).
+ */
+export async function relerConsulta(id: number): Promise<{ responsavel: string; dividas: number; novas: number; limpas: number; naoLidas: number } | null> {
+  const [row] = await q<any>(`SELECT responsavel, pendencias FROM financas_consultas_credito WHERE id = $1`, [id]);
+  if (!row) return null;
+  if (!row.pendencias || Object.keys(row.pendencias).length === 0) throw new Error('esta consulta não teve dossiê');
+  const d = lerDossie({ data: { credcadastral: row.pendencias } });
+  return comTransacao(async (cli) => {
+    const g = await aplicarDividasDaConsulta(cli, row.responsavel, d.dividas, { dossie: true, scr: false });
+    await cli.query(`UPDATE financas_consultas_credito SET dividas = $2, nao_lidas = $3, relida_em = now() WHERE id = $1`, [id, d.dividas.length, d.naoLidas]);
+    return { responsavel: row.responsavel, dividas: d.dividas.length, naoLidas: d.naoLidas, ...g };
+  });
+}
+
+async function comTransacao<T>(fn: (cli: import('pg').PoolClient) => Promise<T>): Promise<T> {
   const cli = await writerPool.connect();
   try {
     await cli.query('BEGIN');
-    const { rows } = await cli.query(
-      `INSERT INTO financas_consultas_credito (responsavel, custo, score, score_faixa, scr, pendencias, dividas, nao_lidas, avisos)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-      [resp, r.custo, r.score, r.faixa, r.scr ? JSON.stringify(r.scr) : null, JSON.stringify(r.pendencias), r.dividas.length, r.naoLidas, r.avisos],
-    );
-    let novas = 0;
-    for (const d of r.dividas) {
-      const u = await cli.query(
-        `INSERT INTO financas_dividas_externas (credor, responsavel, valor, negativada, origem, observacao, chave_consulta)
-         VALUES ($1, $2, $3, $4, 'consulta', $5, $6)
-         ON CONFLICT (responsavel, chave_consulta) DO UPDATE SET credor = EXCLUDED.credor, valor = EXCLUDED.valor,
-           negativada = EXCLUDED.negativada, observacao = EXCLUDED.observacao, quitada_em = NULL,
-           referencia = (now() AT TIME ZONE 'America/Sao_Paulo')::date, atualizado_em = now()
-         RETURNING (xmax = 0) AS nova`,
-        [d.credor, resp, d.valor, d.negativada, d.observacao, d.chave],
-      );
-      if (u.rows[0]?.nova) novas++;
-    }
-    const limpas = await cli.query(
-      `UPDATE financas_dividas_externas
-          SET quitada_em = (now() AT TIME ZONE 'America/Sao_Paulo')::date, atualizado_em = now(),
-              observacao = left(concat_ws(' · ', observacao, 'não apareceu na consulta de ' || to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'DD/MM')), 200)
-        WHERE responsavel = $1 AND origem = 'consulta' AND quitada_em IS NULL
-          AND NOT (chave_consulta = ANY($2::text[]))
-          AND ($3 OR chave_consulta NOT LIKE 'scr|%')`,
-      [resp, r.dividas.map((d) => d.chave), r.scr !== null],
-    );
+    const out = await fn(cli);
     await cli.query('COMMIT');
-    return { id: Number(rows[0].id), novas, limpas: limpas.rowCount ?? 0 };
+    return out;
   } catch (e) {
     await cli.query('ROLLBACK');
     throw e;
   } finally {
     cli.release();
   }
+}
+
+/** Entra/atualiza as dívidas que vieram; dá por limpa a que tinha vindo e sumiu — só das fontes que responderam. */
+async function aplicarDividasDaConsulta(
+  cli: import('pg').PoolClient, resp: string, dividas: readonly DividaConsulta[], fontes: { dossie: boolean; scr: boolean },
+): Promise<{ novas: number; limpas: number }> {
+  let novas = 0;
+  for (const d of dividas) {
+    const u = await cli.query(
+      `INSERT INTO financas_dividas_externas (credor, responsavel, valor, negativada, origem, observacao, chave_consulta)
+       VALUES ($1, $2, $3, $4, 'consulta', $5, $6)
+       ON CONFLICT (responsavel, chave_consulta) DO UPDATE SET credor = EXCLUDED.credor, valor = EXCLUDED.valor,
+         negativada = EXCLUDED.negativada, observacao = EXCLUDED.observacao, quitada_em = NULL,
+         referencia = (now() AT TIME ZONE 'America/Sao_Paulo')::date, atualizado_em = now()
+       RETURNING (xmax = 0) AS nova`,
+      [d.credor, resp, d.valor, d.negativada, d.observacao, d.chave],
+    );
+    if (u.rows[0]?.nova) novas++;
+  }
+  const limpas = await cli.query(
+    `UPDATE financas_dividas_externas
+        SET quitada_em = (now() AT TIME ZONE 'America/Sao_Paulo')::date, atualizado_em = now(),
+            observacao = left(concat_ws(' · ', observacao, 'não apareceu na consulta de ' || to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'DD/MM')), 200)
+      WHERE responsavel = $1 AND origem = 'consulta' AND quitada_em IS NULL
+        AND NOT (chave_consulta = ANY($2::text[]))
+        AND (($3 AND chave_consulta NOT LIKE 'scr|%') OR ($4 AND chave_consulta LIKE 'scr|%'))`,
+    [resp, dividas.map((d) => d.chave), fontes.dossie, fontes.scr],
+  );
+  return { novas, limpas: limpas.rowCount ?? 0 };
 }
 
 export async function apagarMarcacao(id: number): Promise<boolean> {

@@ -78,7 +78,7 @@ describe('lerDossie', () => {
     expect(r.dividas).toHaveLength(1);
     expect(r.dividas[0].valor).toBe(250);
   });
-  // 14/11, primeira consulta real: protesto só no sintético, sem credor nem cedente
+  // protesto só no sintético, sem credor nem cedente
   const sintetico = (valor: string) => ({ protesto_sintetico: { status_retorno: OK, quantidade_ocorrencia: '1', valor_total: valor, ocorrencias: [
     { uf: 'SP', valor, credor: '', cedente: '', comarca: 'CIDADE X', cartorio: '007', data_ocorrencia: '01/02/2025', endereco: '', telefone: '' },
   ] } });
@@ -185,7 +185,7 @@ describe('consultarCredito', () => {
   });
 });
 
-// 14/11: a consulta do botão passou a ser a Serasa (o dossiê não viu um PEFIN que a Serasa mostrou). Valores inventados.
+// 14/11: a consulta do botão passou a ser a Serasa (o dossiê pode não trazer o que a Serasa traz). Valores inventados.
 describe('Serasa (restricoes-serasa)', () => {
   const serasa = (p: Record<string, unknown> = {}) => ({
     error: false, homolog: false, valor_consulta: 16.88,

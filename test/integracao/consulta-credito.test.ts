@@ -103,6 +103,19 @@ describe.skipIf(!url)('consulta de crédito (integração)', () => {
     expect(u).toMatchObject({ score: 480, scr: { prejuizo: 300 }, dividas: 3 });
   });
 
+  // 15/11: reler uma consulta da Serasa dava por limpas as dívidas que ela mesma trouxe (o leitor do dossiê não acha nada)
+  it('relerConsulta recusa consulta sem dossiê (a da Serasa) e não mexe nas dívidas', async () => {
+    const antes = await abertas();
+    const { rows } = await pool.query(
+      `INSERT INTO financas_consultas_credito (responsavel, custo, pendencias, dividas) VALUES ('Matheus', 16.88, $1, 2) RETURNING id`,
+      [JSON.stringify({ serasa: { ocorrencias: [], resumo: {} } })],
+    );
+    await expect(queries.relerConsulta(Number(rows[0].id))).rejects.toThrow('não teve dossiê');
+    expect(await abertas()).toEqual(antes);
+    const [c] = (await pool.query(`SELECT dividas, relida_em IS NULL AS intacta FROM financas_consultas_credito WHERE id = $1`, [rows[0].id])).rows;
+    expect(c).toEqual({ dividas: 2, intacta: true });
+  });
+
   it('homologação nunca grava', async () => {
     await expect(queries.registrarConsulta('Matheus', res({ homolog: true }))).rejects.toThrow(/homologação/);
   });

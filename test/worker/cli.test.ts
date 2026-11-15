@@ -28,6 +28,19 @@ describe('AGENDA', () => {
     // 14/11: 'tesouro' saiu (o Inter voltou pela segunda conta da Pluggy)
     expect(new Set(AGENDA.map(([, t]) => t))).toEqual(new Set(['transacoes', 'faturas', 'investimentos', 'saldos', 'itens']));
   });
+  it('lê o estado das conexões pouco antes do aviso técnico das 12h30', async () => {
+    // 15/11: o Inter atualiza na Pluggy às 00h36; com `itens` só das 14h às 22h, o técnico das 12h30 lia o estado
+    // das 22h09 da véspera e dizia "sem atualizar há 36 h" com a conexão em dia
+    const { AGENDA_NOTIF } = await import('../../src/worker/cli');
+    const [, minTec, horaTec] = /^(\d+) (\d+) /.exec(AGENDA_NOTIF.find(([, b]) => b === 'tecnico')![0])!.map(Number);
+    const [min, horas] = AGENDA.find(([, t]) => t === 'itens')![0].split(' ');
+    const lista = horas.split(',').flatMap((h) => {
+      const [a, b] = h.split('-').map(Number);
+      return Array.from({ length: (b ?? a) - a + 1 }, (_, i) => a + i);
+    });
+    const antes = lista.map((h) => (horaTec - h) * 60 + (minTec - Number(min))).filter((d) => d > 0);
+    expect(Math.min(...antes)).toBeLessThanOrEqual(30);
+  });
 });
 
 describe('notificações (C2)', () => {

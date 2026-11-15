@@ -50,7 +50,7 @@ export function BotaoConsultaCredito({ responsavel }: { responsavel: 'Matheus' |
   const [msg, setMsg] = useState<string | null>(null);
   async function consultar() {
     const de = responsavel === 'Matheus' ? 'do Matheus' : 'da Ariane';
-    if (!confirm(`Consultar o CPF ${de} na API Brasil? São duas consultas pagas (cerca de R$ 9,20 no total), descontadas do saldo de lá.`)) return;
+    if (!confirm(`Consultar o CPF ${de} na Serasa, pela API Brasil? A consulta custa R$ 16,88, descontados do saldo de lá, mesmo que não haja nada.`)) return;
     setRodando(true); setMsg(null);
     const r = await fetch('/api/trilha/consulta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ responsavel }) }).catch(() => null);
     const j = r ? await r.json().catch(() => ({})) : {};

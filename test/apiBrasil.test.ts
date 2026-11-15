@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { consultarCredito, lerDossie, lerEndividamento, numBR, ocorrenciaParaDivida } from '../src/lib/apiBrasil';
+import { consultarCredito, consultarSerasa, lerDossie, lerEndividamento, lerSerasa, numBR, ocorrenciaParaDivida } from '../src/lib/apiBrasil';
 
 // 14/11: consulta de crédito na API Brasil. Valores e nomes inventados; CPF de exemplo da documentação.
 const OK = { codigo: '1', descricao: 'CONSULTA CONCLUIDA COM SUCESSO' };
@@ -171,16 +171,73 @@ describe('consultarCredito', () => {
     expect(r.custo).toBe(4.4);
     expect(r.dividas).toHaveLength(1);
     expect(r.avisos[0]).toMatch(/SCR e score ficaram de fora/);
-    expect(r.fontes).toEqual({ dossie: true, scr: false });
+    expect(r.fontes).toEqual(['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico']);
   });
 
   it('soScr: só o endividamento; sem dossiê nas fontes; SCR que falha é erro', async () => {
     const f = fetchFalso([{ status: 200, body: endividamento({ prejuizo: '10,00' }) }]);
     const r = await consultarCredito({ ...base, soScr: true, fetchFn: f.fn });
     expect(f.corpos.map((c) => c.tipo)).toEqual(['endividamento-pf']);
-    expect(r).toMatchObject({ custo: 4.8, fontes: { dossie: false, scr: true }, pendencias: {} });
+    expect(r).toMatchObject({ custo: 4.8, fontes: ['scr'], pendencias: {} });
     expect(r.dividas.map((d) => d.chave)).toEqual(['scr|prejuizo']);
     const g = fetchFalso([{ status: 503, body: { error: true } }]);
     await expect(consultarCredito({ ...base, soScr: true, fetchFn: g.fn })).rejects.toThrow();
+  });
+});
+
+// 14/11: a consulta do botão passou a ser a Serasa (o dossiê não viu um PEFIN que a Serasa mostrou). Valores inventados.
+describe('Serasa (restricoes-serasa)', () => {
+  const serasa = (p: Record<string, unknown> = {}) => ({
+    error: false, homolog: false, valor_consulta: 16.88,
+    data: {
+      titular: { nome: 'FULANO DE TAL', data_nascimento: '1990-01-01' }, documento: '12345678909', tipo_documento: 'cpf',
+      possui_restricao: true, bases_com_restricao: ['serasa', 'protestos'], bases_sem_resposta: [],
+      resumo: { total_ocorrencias: 2, valor_total: 1300 },
+      ocorrencias: [
+        { avalista: false, base: 'serasa', credor: 'FUNDO EXEMPLO', contrato: null, data_inclusao: '2024-01-15', data_ocorrencia: '2024-01-15', modalidade: 'CRED CARTAO', tipo: 'PEFIN', valor: 1000 },
+        { avalista: null, base: 'protestos', credor: 'Cartório 09 - CIDADE X/SP', contrato: null, data_inclusao: null, data_ocorrencia: '2025-05-02', modalidade: null, tipo: null, valor: 300 },
+      ],
+      scores: [{ base: 'serasa', valor: 480 }], classificacao_risco: null,
+      ...p,
+    },
+  });
+
+  it('negativação e protesto viram dívidas negativadas; score da Serasa; nada do titular', () => {
+    const r = lerSerasa(serasa());
+    expect(r.dividas).toEqual([
+      { credor: 'FUNDO EXEMPLO', valor: 1000, negativada: true, chave: 'serasa|fundo exemplo||2024-01-15', observacao: 'Serasa: pefin, cred cartao · desde 15/01/2024' },
+      { credor: 'Cartório 09 - CIDADE X/SP', valor: 300, negativada: true, chave: 'protestos|cartorio 09 - cidade x/sp||2025-05-02', observacao: 'protesto (Serasa) · desde 02/05/2025' },
+    ]);
+    expect(r.score).toBe(480);
+    expect(r.fontes).toEqual(['serasa', 'pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico']);
+    expect(JSON.stringify(r.pendencias)).not.toMatch(/FULANO|1990-01-01|12345678909/);
+    expect(r.naoLidas).toBe(0);
+  });
+
+  it('base sem resposta sai das fontes (o que veio dela antes não é dado por limpo) e gera aviso', () => {
+    const r = lerSerasa(serasa({ bases_sem_resposta: ['protestos'] }));
+    expect(r.fontes).toEqual(['serasa', 'pend_financeiras', 'pend_refin']);
+    expect(r.avisos[0]).toMatch(/protestos/);
+    expect(() => lerSerasa(serasa({ bases_sem_resposta: ['serasa', 'protestos'] }))).toThrow(/nem a Serasa/);
+  });
+
+  it('ocorrência sem credor ou valor conta como não lida; total declarado maior também', () => {
+    const r = lerSerasa(serasa({ ocorrencias: [{ base: 'serasa', credor: '', valor: 10 }], resumo: { total_ocorrencias: 3 } }));
+    expect(r.dividas).toEqual([]);
+    expect(r.naoLidas).toBe(3);
+  });
+
+  it('consultarSerasa: endereço próprio, CPF em "documento", custo da resposta', async () => {
+    let url = '';
+    let corpo: any = null;
+    const fn = (async (u: unknown, init?: RequestInit) => {
+      url = String(u); corpo = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify(serasa()), { status: 200 });
+    }) as typeof fetch;
+    const r = await consultarSerasa({ cpf: '12345678909', token: 't', homolog: false, fetchFn: fn });
+    expect(url).toBe('https://gateway.apibrasil.io/api/v2/consulta/restricoes-serasa/credits');
+    expect(corpo).toEqual({ tipo: 'restricoes-serasa', documento: '12345678909', homolog: false });
+    expect(r.custo).toBe(16.88);
+    expect(r.dividas).toHaveLength(2);
   });
 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { consultarCredito, ErroConsulta } from '@/lib/apiBrasil';
+import { consultarCredito, consultarSerasa, ErroConsulta } from '@/lib/apiBrasil';
 import { horasDesdeConsulta, registrarConsulta, relerConsulta } from '@/lib/queries';
 
 /** Uma consulta real por pessoa a cada 20 h: clique duplo ou recarga não pagam duas vezes. */
@@ -31,8 +31,10 @@ export async function POST(req: NextRequest) {
   if (!token) return NextResponse.json({ erro: 'Token da API Brasil não configurado no painel.' }, { status: 503 });
   if (!cpf) return NextResponse.json({ erro: `CPF ${resp === 'Matheus' ? 'do Matheus' : 'da Ariane'} não configurado.` }, { status: 503 });
 
-  // soScr: só o endividamento (R$ 4,80); repetir: passa a trava de 20 h (usado à mão, nunca pela tela)
+  // padrão (o botão): Serasa, R$ 16,88. À mão, nunca pela tela: produto 'dossie' (dossiê + SCR, R$ 9,20),
+  // soScr (só o SCR, R$ 4,80) e repetir (passa a trava de 20 h)
   const soScr = body?.soScr === true;
+  const dossie = body?.produto === 'dossie' || soScr;
   if (!homolog && body?.repetir !== true) {
     const h = await horasDesdeConsulta(resp);
     if (h !== null && h < HORAS_ENTRE_CONSULTAS) {
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const r = await consultarCredito({ cpf, token, homolog, soScr });
+    const r = dossie ? await consultarCredito({ cpf, token, homolog, soScr }) : await consultarSerasa({ cpf, token, homolog });
     if (homolog) {
       // amostra fictícia: devolve para conferir o formato, sem gravar
       return NextResponse.json({ homolog: true, score: r.score, faixa: r.faixa, scr: r.scr, dividas: r.dividas.length, naoLidas: r.naoLidas, avisos: r.avisos });

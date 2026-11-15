@@ -2020,18 +2020,20 @@ export interface ConsultaCreditoTela {
 }
 
 /**
- * A última consulta real de cada pessoa. Score e SCR vêm da última que trouxe SCR; "dívidas", do que está em aberto
- * com origem 'consulta' (uma consulta só do SCR não zera a contagem das pendências).
+ * A última consulta real de cada pessoa. Score vem da última que trouxe score (desde 14/11, a da Serasa); SCR, da
+ * última que trouxe SCR; "dívidas", do que está em aberto com origem 'consulta'.
  */
 export async function getUltimasConsultas(): Promise<ConsultaCreditoTela[]> {
   const rows = await q<any>(
     `SELECT DISTINCT ON (c.responsavel) c.responsavel, c.feita_em, c.custo::float8 AS custo, c.nao_lidas, c.avisos,
-            s.score, s.score_faixa, s.scr,
+            s.score, s.score_faixa, b.scr,
             (SELECT count(*) FROM financas_dividas_externas d
               WHERE d.responsavel = c.responsavel AND d.origem = 'consulta' AND d.quitada_em IS NULL) AS dividas
        FROM financas_consultas_credito c
-       LEFT JOIN LATERAL (SELECT score, score_faixa, scr FROM financas_consultas_credito x
-                           WHERE x.responsavel = c.responsavel AND x.scr IS NOT NULL ORDER BY x.feita_em DESC LIMIT 1) s ON true
+       LEFT JOIN LATERAL (SELECT score, score_faixa FROM financas_consultas_credito x
+                           WHERE x.responsavel = c.responsavel AND x.score IS NOT NULL ORDER BY x.feita_em DESC LIMIT 1) s ON true
+       LEFT JOIN LATERAL (SELECT scr FROM financas_consultas_credito x
+                           WHERE x.responsavel = c.responsavel AND x.scr IS NOT NULL ORDER BY x.feita_em DESC LIMIT 1) b ON true
       ORDER BY c.responsavel, c.feita_em DESC`,
   );
   return rows.map((x) => ({
@@ -2076,7 +2078,7 @@ export async function relerConsulta(id: number): Promise<{ responsavel: string; 
   if (!row.pendencias || Object.keys(row.pendencias).length === 0) throw new Error('esta consulta não teve dossiê');
   const d = lerDossie({ data: { credcadastral: row.pendencias } });
   return comTransacao(async (cli) => {
-    const g = await aplicarDividasDaConsulta(cli, row.responsavel, d.dividas, { dossie: true, scr: false });
+    const g = await aplicarDividasDaConsulta(cli, row.responsavel, d.dividas, ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico']);
     await cli.query(`UPDATE financas_consultas_credito SET dividas = $2, nao_lidas = $3, relida_em = now() WHERE id = $1`, [id, d.dividas.length, d.naoLidas]);
     return { responsavel: row.responsavel, dividas: d.dividas.length, naoLidas: d.naoLidas, ...g };
   });
@@ -2099,7 +2101,7 @@ async function comTransacao<T>(fn: (cli: import('pg').PoolClient) => Promise<T>)
 
 /** Entra/atualiza as dívidas que vieram; dá por limpa a que tinha vindo e sumiu — só das fontes que responderam. */
 async function aplicarDividasDaConsulta(
-  cli: import('pg').PoolClient, resp: string, dividas: readonly DividaConsulta[], fontes: { dossie: boolean; scr: boolean },
+  cli: import('pg').PoolClient, resp: string, dividas: readonly DividaConsulta[], fontes: readonly string[],
 ): Promise<{ novas: number; limpas: number }> {
   let novas = 0;
   for (const d of dividas) {
@@ -2120,8 +2122,8 @@ async function aplicarDividasDaConsulta(
             observacao = left(concat_ws(' · ', observacao, 'não apareceu na consulta de ' || to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'DD/MM')), 200)
       WHERE responsavel = $1 AND origem = 'consulta' AND quitada_em IS NULL
         AND NOT (chave_consulta = ANY($2::text[]))
-        AND (($3 AND chave_consulta NOT LIKE 'scr|%') OR ($4 AND chave_consulta LIKE 'scr|%'))`,
-    [resp, dividas.map((d) => d.chave), fontes.dossie, fontes.scr],
+        AND split_part(chave_consulta, '|', 1) = ANY($3::text[])`,
+    [resp, dividas.map((d) => d.chave), [...fontes]],
   );
   return { novas, limpas: limpas.rowCount ?? 0 };
 }

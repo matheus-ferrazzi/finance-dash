@@ -2072,13 +2072,16 @@ export async function registrarConsulta(resp: 'Matheus' | 'Ariane', r: Resultado
  * Relê o dossiê guardado de uma consulta já paga com o leitor atual (sem nova cobrança) e acerta as dívidas das
  * fontes do dossiê; as do SCR ficam como estão (o SCR não se relê: só o resumo tinha sido guardado até a 024).
  */
+const BLOCOS_DO_DOSSIE = ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico'];
 export async function relerConsulta(id: number): Promise<{ responsavel: string; dividas: number; novas: number; limpas: number; naoLidas: number } | null> {
   const [row] = await q<any>(`SELECT responsavel, pendencias FROM financas_consultas_credito WHERE id = $1`, [id]);
   if (!row) return null;
-  if (!row.pendencias || Object.keys(row.pendencias).length === 0) throw new Error('esta consulta não teve dossiê');
+  // 15/11: só relê consulta que teve dossiê. Numa consulta da Serasa o leitor do dossiê não acha bloco nenhum, e a
+  // lista vazia daria por limpas as dívidas que a própria Serasa trouxe.
+  if (!BLOCOS_DO_DOSSIE.some((b) => b in (row.pendencias ?? {}))) throw new Error('esta consulta não teve dossiê');
   const d = lerDossie({ data: { credcadastral: row.pendencias } });
   return comTransacao(async (cli) => {
-    const g = await aplicarDividasDaConsulta(cli, row.responsavel, d.dividas, ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico']);
+    const g = await aplicarDividasDaConsulta(cli, row.responsavel, d.dividas, BLOCOS_DO_DOSSIE);
     await cli.query(`UPDATE financas_consultas_credito SET dividas = $2, nao_lidas = $3, relida_em = now() WHERE id = $1`, [id, d.dividas.length, d.naoLidas]);
     return { responsavel: row.responsavel, dividas: d.dividas.length, naoLidas: d.naoLidas, ...g };
   });

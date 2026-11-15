@@ -1,9 +1,9 @@
 // Consulta de crédito sob demanda na API Brasil (14/11/2026, fase "nome limpo" da Trilha).
 // - Restrições de Crédito Serasa (`restricoes-serasa`, R$ 16,88): a do botão. Negativações na Serasa (PEFIN, REFIN…)
-//   e protestos, com credor, valor e datas, mais o score da Serasa. 14/11: o dossiê abaixo devolveu as pendências
-//   zeradas para um CPF com um PEFIN de cinco dígitos na Serasa — para "nome limpo", vale a Serasa.
+//   e protestos, com credor, valor e datas, mais o score da Serasa. O dossiê abaixo pode devolver as pendências
+//   zeradas mesmo havendo negativação na Serasa — para "nome limpo", vale a Serasa.
 // - Dossiê de Crédito PF (`dossie-credito-pf`) + Endividamento Bancário PF (`endividamento-pf`, SCR e score): a
-//   primeira versão; ficam para uso à mão (o SCR veio com o consolidado zerado na primeira consulta real).
+//   primeira versão; ficam para uso à mão (o SCR pode vir com o consolidado zerado).
 // A resposta traz dados cadastrais (nome, mãe, nascimento, endereço, telefone): nada disso sai daqui. Fica só o que é
 // dívida e o score. Em homologação (`homolog: true`) a resposta é fictícia e gratuita: nunca vira dívida.
 
@@ -16,14 +16,14 @@ const PREFIXOS_PROTESTO = ['protestos', 'protesto_sintetico'];
 /** Blocos do dossiê que são dívida; o resto (cadastro, telefones, ações cíveis, empresas) fica de fora. */
 const BLOCOS_DIVIDA = ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico', 'ch_sem_fundos_bacen', 'ch_sem_fundos_varejo'] as const;
 /**
- * Os que viram linha em "dívidas fora do banco" (cheque só entra no resumo). 14/11, primeira consulta real: o protesto
- * veio só no `protesto_sintetico` (o `protestos` detalhado vazio); o sintético vale quando o detalhado não trouxe nada.
+ * Os que viram linha em "dívidas fora do banco" (cheque só entra no resumo). O protesto pode
+ * vir só no `protesto_sintetico` (o `protestos` detalhado vazio); o sintético vale quando o detalhado não trouxe nada.
  */
 const BLOCOS_LINHA: Record<string, string> = { pend_financeiras: 'pendência', pend_refin: 'refin', protestos: 'protesto', protesto_sintetico: 'protesto' };
 
 // A documentação não publica os campos de cada ocorrência (o exemplo vem vazio): procura pelos nomes prováveis e,
 // sem credor ou valor legível, conta como "não lida" (o bloco cru fica guardado na consulta para ajustar depois).
-// Protesto costuma vir sem credor (14/11: credor e cedente vazios): aí o nome é o cartório.
+// Protesto costuma vir sem credor (credor e cedente vazios): aí o nome é o cartório.
 const CHAVES_CREDOR = ['credor', 'nome_credor', 'informante', 'empresa', 'razao_social', 'cedente', 'apresentante', 'instituicao', 'origem'];
 const CHAVES_VALOR = ['valor', 'valor_pendencia', 'valor_divida', 'valor_protesto', 'valor_ocorrencia', 'valor_total'];
 const CHAVES_CONTRATO = ['contrato', 'numero_contrato', 'num_contrato', 'documento_origem', 'titulo'];
@@ -160,7 +160,7 @@ export function lerEndividamento(json: any): { scr: ResumoScr; score: number | n
     prejuizo: r2(numBR(cons.prejuizo?.valor_total)), limite: r2(numBR(cons.limite_credito?.valor_total)),
     instituicoes: qtd(r.quantidade_instituicoes), operacoes: qtd(r.quantidade_operacoes), database: r.database_consultada || null,
   };
-  // 14/11, primeira consulta real: consolidado todo zerado com 11 operações em 4 instituições. Se as operações têm
+  // O consolidado pode vir todo zerado mesmo com operações listadas. Se as operações têm
   // total e o consolidado não, o total delas entra como "a vencer" (sem separar vencido e prejuízo, que o
   // consolidado é quem diz) e `porOperacao` marca que veio assim.
   const somaOps = r2((Array.isArray(r.operacoes) ? r.operacoes : []).reduce((s: number, o: any) => s + numBR(o?.total), 0));

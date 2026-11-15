@@ -1,11 +1,17 @@
-// Consulta de crédito sob demanda na API Brasil (14/11/2026, fase "nome limpo" da Trilha). Duas consultas por CPF:
-// - Dossiê de Crédito PF (`dossie-credito-pf`): pendências financeiras, refin, protestos e cheques, com credor e valor;
-// - Endividamento Bancário PF (`endividamento-pf`): SCR do Banco Central (a vencer, vencido, prejuízo) e score.
-// A resposta traz dados cadastrais (nome, mãe, endereço, telefone): nada disso sai daqui. Fica só o que é dívida e o
-// score. Valores vêm como texto brasileiro ("1.000,00"). Em homologação (`homolog: true`) a resposta é fictícia e
-// gratuita: serve para testar, nunca para gravar dívida.
+// Consulta de crédito sob demanda na API Brasil (14/11/2026, fase "nome limpo" da Trilha).
+// - Restrições de Crédito Serasa (`restricoes-serasa`, R$ 16,88): a do botão. Negativações na Serasa (PEFIN, REFIN…)
+//   e protestos, com credor, valor e datas, mais o score da Serasa. 14/11: o dossiê abaixo devolveu as pendências
+//   zeradas para um CPF com um PEFIN de cinco dígitos na Serasa — para "nome limpo", vale a Serasa.
+// - Dossiê de Crédito PF (`dossie-credito-pf`) + Endividamento Bancário PF (`endividamento-pf`, SCR e score): a
+//   primeira versão; ficam para uso à mão (o SCR veio com o consolidado zerado na primeira consulta real).
+// A resposta traz dados cadastrais (nome, mãe, nascimento, endereço, telefone): nada disso sai daqui. Fica só o que é
+// dívida e o score. Em homologação (`homolog: true`) a resposta é fictícia e gratuita: nunca vira dívida.
 
 export const URL_API_BRASIL = 'https://gateway.apibrasil.io/api/v2/consulta/cpf/credits';
+export const URL_SERASA = 'https://gateway.apibrasil.io/api/v2/consulta/restricoes-serasa/credits';
+/** prefixos de chave de cada fonte: a dívida que sumiu só é dada por limpa pela fonte que respondeu */
+const PREFIXOS_NEGATIVACAO = ['serasa', 'pend_financeiras', 'pend_refin'];
+const PREFIXOS_PROTESTO = ['protestos', 'protesto_sintetico'];
 
 /** Blocos do dossiê que são dívida; o resto (cadastro, telefones, ações cíveis, empresas) fica de fora. */
 const BLOCOS_DIVIDA = ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico', 'ch_sem_fundos_bacen', 'ch_sem_fundos_varejo'] as const;
@@ -54,8 +60,8 @@ export interface ResultadoConsulta {
   naoLidas: number;
   /** o que ficou de fora (ex.: o SCR falhou depois do dossiê já cobrado) */
   avisos: string[];
-  /** quais fontes responderam: a dívida que sumiu só é dada por limpa pela fonte que respondeu */
-  fontes: { dossie: boolean; scr: boolean };
+  /** prefixos de chave das fontes que responderam: a dívida que sumiu só é dada por limpa por elas */
+  fontes: string[];
   /** o relatório do SCR como veio, sem nome nem documento (null se não houve SCR) */
   scrBruto: Record<string, unknown> | null;
 }
@@ -188,11 +194,13 @@ function mensagemDoStatus(status: number, msg: string | undefined): string {
 }
 
 async function chamar(tipo: string, cpf: string, token: string, homolog: boolean, fetchFn: typeof fetch): Promise<any> {
-  const r = await fetchFn(URL_API_BRASIL, {
+  // a da Serasa tem endereço próprio e o CPF vai em `documento`
+  const serasa = tipo === 'restricoes-serasa';
+  const r = await fetchFn(serasa ? URL_SERASA : URL_API_BRASIL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ tipo, cpf, homolog }),
-    signal: AbortSignal.timeout(60_000),
+    body: JSON.stringify(serasa ? { tipo, documento: cpf, homolog } : { tipo, cpf, homolog }),
+    signal: AbortSignal.timeout(90_000),
   });
   const j = await r.json().catch(() => null);
   // erro pode vir com HTTP 200: vale o campo `error`
@@ -224,7 +232,7 @@ export async function consultarCredito(p: { cpf: string; token: string; homolog:
   if (e?.scr.porOperacao) avisos.push('O SCR veio sem o consolidado: "a vencer" é a soma das operações, sem separar vencido e prejuízo.');
   return {
     homolog: p.homolog,
-    fontes: { dossie: dossie !== null, scr: e !== null },
+    fontes: [...(dossie ? [...Object.keys(BLOCOS_LINHA)] : []), ...(e ? ['scr'] : [])],
     scrBruto: e?.bruto ?? null,
     custo: r2(numBR(dossie?.valor_consulta) + numBR(endiv?.valor_consulta)),
     score: e?.score ?? null, faixa: e?.faixa ?? null, scr: e?.scr ?? null,
@@ -233,4 +241,61 @@ export async function consultarCredito(p: { cpf: string; token: string; homolog:
     naoLidas: d.naoLidas,
     avisos,
   };
+}
+
+// ==================== Restrições de Crédito Serasa (14/11: a consulta do botão) ====================
+
+/** Uma ocorrência da Serasa → dívida. Base "serasa" (PEFIN, REFIN…) ou "protestos" (credor = o cartório). */
+export function ocorrenciaSerasa(o: any): DividaConsulta | null {
+  if (!o || typeof o !== 'object') return null;
+  const base = o.base === 'protestos' ? 'protestos' : 'serasa';
+  const credor = typeof o.credor === 'string' && o.credor.trim() ? o.credor.trim() : null;
+  const valor = numBR(o.valor);
+  if (!credor || valor <= 0) return null;
+  const contrato = typeof o.contrato === 'string' && o.contrato.trim() ? o.contrato.trim() : null;
+  const data = (typeof o.data_inclusao === 'string' && o.data_inclusao) || (typeof o.data_ocorrencia === 'string' && o.data_ocorrencia) || '';
+  const dataBR = /^\d{4}-\d{2}-\d{2}/.test(data) ? `${data.slice(8, 10)}/${data.slice(5, 7)}/${data.slice(0, 4)}` : data;
+  const tipo = [o.tipo, o.modalidade].filter((x) => typeof x === 'string' && x.trim()).map((x: string) => x.trim().toLowerCase()).join(', ');
+  return {
+    credor: credor.slice(0, 80), valor: r2(valor), negativada: true,
+    chave: [base, norm(credor), contrato ? norm(contrato) : '', data].join('|').slice(0, 200),
+    observacao: [base === 'protestos' ? 'protesto (Serasa)' : `Serasa${tipo ? `: ${tipo}` : ''}`, contrato && `contrato ${contrato}`,
+      dataBR && `desde ${dataBR}`, o.avalista === true && 'como avalista'].filter(Boolean).join(' · ').slice(0, 200),
+  };
+}
+
+/** Resposta da Serasa → dívidas, score e as fontes que responderam (sem titular nem documento). */
+export function lerSerasa(json: any): Omit<ResultadoConsulta, 'homolog' | 'custo'> {
+  const d = json?.data;
+  if (!d || typeof d !== 'object') throw new ErroConsulta('a Serasa respondeu sem dados', 502);
+  const semResposta: string[] = Array.isArray(d.bases_sem_resposta) ? d.bases_sem_resposta.map(String) : [];
+  const fontes = [
+    ...(semResposta.includes('serasa') ? [] : PREFIXOS_NEGATIVACAO),
+    ...(semResposta.includes('protestos') ? [] : PREFIXOS_PROTESTO),
+  ];
+  if (fontes.length === 0) throw new ErroConsulta('nem a Serasa nem a base de protestos responderam', 502);
+  const dividas: DividaConsulta[] = [];
+  let naoLidas = 0;
+  for (const o of Array.isArray(d.ocorrencias) ? d.ocorrencias : []) {
+    const x = ocorrenciaSerasa(o);
+    if (x) dividas.push(x); else naoLidas++;
+  }
+  const declaradas = numBR(d.resumo?.total_ocorrencias);
+  if (declaradas > dividas.length + naoLidas) naoLidas += declaradas - dividas.length - naoLidas;
+  const unicas = new Map<string, DividaConsulta>();
+  for (const x of dividas) unicas.set(x.chave, unicas.has(x.chave) ? { ...x, valor: r2(unicas.get(x.chave)!.valor + x.valor) } : x);
+  const sc = (Array.isArray(d.scores) ? d.scores : []).find((s: any) => s?.base === 'serasa') ?? (Array.isArray(d.scores) ? d.scores[0] : null);
+  const score = numBR(sc?.valor);
+  const { titular: _t, documento: _d, tipo_documento: _td, ...semCadastro } = d;
+  const avisos = semResposta.length ? [`sem resposta de: ${semResposta.join(', ')} (o que veio dela antes não foi dado por limpo)`] : [];
+  return {
+    score: score > 0 ? Math.round(score) : null, faixa: typeof d.classificacao_risco === 'string' && d.classificacao_risco.trim() ? d.classificacao_risco.trim() : null,
+    scr: null, scrBruto: null, pendencias: { serasa: semCadastro }, dividas: [...unicas.values()], naoLidas, avisos, fontes,
+  };
+}
+
+/** A consulta do botão: uma chamada à Serasa (negativações e protestos, com score). */
+export async function consultarSerasa(p: { cpf: string; token: string; homolog: boolean; fetchFn?: typeof fetch }): Promise<ResultadoConsulta> {
+  const j = await chamar('restricoes-serasa', p.cpf, p.token, p.homolog, p.fetchFn ?? fetch);
+  return { homolog: p.homolog, custo: r2(numBR(j.valor_consulta)), ...lerSerasa(j) };
 }

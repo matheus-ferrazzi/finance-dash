@@ -11,7 +11,7 @@ describe.skipIf(!url)('consulta de crédito (integração)', () => {
   let queries: typeof import('../../src/lib/queries');
   const res = (p: Partial<ResultadoConsulta>): ResultadoConsulta => ({
     homolog: false, custo: 9.2, score: 500, faixa: 'MEDIO', pendencias: { pend_financeiras: { ocorrencias: [] } }, naoLidas: 0, avisos: [],
-    fontes: { dossie: true, scr: true }, scrBruto: { consolidado: {} },
+    fontes: ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico', 'scr'], scrBruto: { consolidado: {} },
     scr: { aVencer: 100, vencido: 0, prejuizo: 300, limite: 0, instituicoes: 1, operacoes: 1, database: '9/2026' },
     dividas: [], ...p,
   });
@@ -53,7 +53,7 @@ describe.skipIf(!url)('consulta de crédito (integração)', () => {
   });
 
   it('segunda consulta com SCR fora do ar: atualiza o valor, limpa a pendência que sumiu, não toca no SCR', async () => {
-    const g = await queries.registrarConsulta('Matheus', res({ scr: null, scrBruto: null, fontes: { dossie: true, scr: false }, dividas: [div('protestos|cartorio b', 80)] }));
+    const g = await queries.registrarConsulta('Matheus', res({ scr: null, scrBruto: null, fontes: ['pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico'], dividas: [div('protestos|cartorio b', 80)] }));
     expect(g).toMatchObject({ novas: 1, limpas: 1 });
     expect(await abertas()).toEqual([
       { k: null, v: 50, aberta: true }, { k: 'pend_financeiras|loja a', v: 200, aberta: false },
@@ -70,7 +70,7 @@ describe.skipIf(!url)('consulta de crédito (integração)', () => {
   });
 
   it('consulta só do SCR não limpa as pendências; a contagem da tela vem do que está em aberto', async () => {
-    const g = await queries.registrarConsulta('Matheus', res({ pendencias: {}, fontes: { dossie: false, scr: true }, score: 610, dividas: [div('scr|prejuizo', 320, false)] }));
+    const g = await queries.registrarConsulta('Matheus', res({ pendencias: {}, fontes: ['scr'], score: 610, dividas: [div('scr|prejuizo', 320, false)] }));
     expect(g).toMatchObject({ novas: 0, limpas: 0 });
     const [u] = await queries.getUltimasConsultas();
     expect(u).toMatchObject({ score: 610, dividas: 3 });
@@ -89,6 +89,18 @@ describe.skipIf(!url)('consulta de crédito (integração)', () => {
     const [c] = (await pool.query(`SELECT dividas, relida_em IS NOT NULL AS relida FROM financas_consultas_credito WHERE id = $1`, [rows[0].id])).rows;
     expect(c).toEqual({ dividas: 1, relida: true });
     expect(await queries.relerConsulta(999999)).toBeNull();
+  });
+
+  it('consulta da Serasa cobre negativações e protestos: o protesto do dossiê (outra chave) sai, o SCR fica', async () => {
+    const SERASA = ['serasa', 'pend_financeiras', 'pend_refin', 'protestos', 'protesto_sintetico'];
+    const g = await queries.registrarConsulta('Matheus', res({ scr: null, scrBruto: null, fontes: SERASA, score: 480,
+      dividas: [div('protestos|cartorio 01 - cidade x/sp||2025-02-01', 99), div('serasa|fundo exemplo||2024-01-15', 1000)] }));
+    expect(g).toMatchObject({ novas: 2 });
+    expect((await abertas()).filter((x) => x.aberta).map((x) => x.k)).toEqual([
+      null, 'scr|prejuizo', 'protestos|cartorio 01 - cidade x/sp||2025-02-01', 'serasa|fundo exemplo||2024-01-15',
+    ]);
+    const [u] = await queries.getUltimasConsultas();
+    expect(u).toMatchObject({ score: 480, scr: { prejuizo: 300 }, dividas: 3 });
   });
 
   it('homologação nunca grava', async () => {

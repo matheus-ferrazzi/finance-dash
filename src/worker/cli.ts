@@ -8,7 +8,8 @@ export const AGENDA: readonly [string, NomeTarefa][] = [
   ['15 16,22 * * *', 'faturas'],
   ['25 16,22 * * *', 'investimentos'],
   ['35 16,22 * * *', 'saldos'],
-  ['9 14-22 * * *', 'itens'],
+  // 15/11: também às 12h09, antes do técnico das 12h30 (o Inter atualiza de madrugada e o aviso lia o estado da véspera)
+  ['9 12,14-22 * * *', 'itens'],
   // 14/11: 'tesouro' (12h e 23h) saiu; o Inter voltou pela segunda conta da Pluggy
 ];
 

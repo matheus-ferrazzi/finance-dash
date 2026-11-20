@@ -59,7 +59,8 @@ const SQL_BACKUP = `SELECT json_build_object(
   'h_desde_ok',      (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(feito_em)))/3600,1) FROM financas_backup WHERE ok),
   'h_desde_n8n',     (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(feito_em)))/3600,1) FROM financas_backup WHERE n8n_ok),
   'n8n_workflows',   (SELECT n8n_workflows FROM financas_backup WHERE n8n_ok ORDER BY feito_em DESC LIMIT 1),
-  'h_desde_offsite', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(puxado_em)))/3600,1) FROM financas_backup),
+  -- 20/11: cópia fora da máquina = último envio OK ao Cloudflare R2 (backup_r2.sh); era o PC puxando (puxado_em), desligado
+  'h_desde_offsite', (SELECT ROUND(EXTRACT(EPOCH FROM (NOW()-MAX(feito_em)))/3600,1) FROM financas_backup WHERE r2_ok),
   'tamanho',         (SELECT tamanho_bytes FROM financas_backup WHERE ok ORDER BY feito_em DESC LIMIT 1),
   'tabelas',         (SELECT tabelas FROM financas_backup WHERE ok ORDER BY feito_em DESC LIMIT 1),
   'falhas_24h',      (SELECT COUNT(*) FROM financas_backup WHERE (NOT ok OR n8n_ok = false) AND feito_em > NOW() - interval '24 hours'),

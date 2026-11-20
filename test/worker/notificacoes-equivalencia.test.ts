@@ -72,7 +72,12 @@ describe('paridade com o n8n', () => {
   it('backup', () => {
     const o = n8n('backup');
     const base = { h_desde_ok: 5, h_desde_n8n: 5, n8n_workflows: 20, h_desde_offsite: 10, tamanho: 2097152, tabelas: 30, falhas_24h: 0, ultimo_erro: null };
-    const casos = [base, { ...base, h_desde_ok: 31.2, h_desde_offsite: null }, { ...base, h_desde_n8n: null, falhas_24h: 2, ultimo_erro: 'pg_dump *falhou* [x]', tamanho: null, tabelas: null }];
-    for (const s of casos) expect(montarBackup(s as any)).toBe(o.rodar({ st: s }));
+    // 20/11: a linha da cópia fora da máquina divergiu de propósito do n8n (era o PC, virou o R2, coberta em
+    // notificacoes-textos); aqui ela fica dentro do prazo nos dois lados
+    const casos = [base, { ...base, h_desde_ok: 31.2 }, { ...base, h_desde_n8n: null, falhas_24h: 2, ultimo_erro: 'pg_dump *falhou* [x]', tamanho: null, tabelas: null }];
+    // 20/11: o rodapé deixou de citar o log no PC (a cópia no PC foi desligada)
+    // (no original, o "\b" de "\backups" vira o caractere backspace: casar por expressão, não por texto)
+    const semPC = (t: string | null) => t && t.replace(/, ou o log em 01-financas.*?no PC\./, '.');
+    for (const s of casos) expect(montarBackup(s as any)).toBe(semPC(o.rodar({ st: s })));
   });
 });

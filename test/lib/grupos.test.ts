@@ -31,6 +31,26 @@ describe('grupoDaCategoria', () => {
     expect(grupoDaCategoria('Transfer - PIX')).toBeNull();
     expect(grupoDaCategoria('Transfers')).toBeNull();
   });
+
+  // 18/11: categorias de despesa vistas no banco que ainda caíam no Resto
+  it('IPVA, cursos, brinquedos, viagem e afins têm grupo; "Outros" e transferência seguem no Resto', () => {
+    const esperado: Record<string, string> = {
+      'Vehicle ownership taxes and fees': 'Transporte', 'Car rental': 'Transporte',
+      'Kids and toys': 'Compras', 'Sports goods': 'Compras',
+      'Online Courses': 'Educação', School: 'Educação', Education: 'Educação',
+      Accomodation: 'Lazer e digital', 'Mileage programs': 'Lazer e digital',
+      'Wellness and fitness': 'Saúde', 'Taxes on investments': 'Dívida e seguro',
+    };
+    for (const [cat, grupo] of Object.entries(esperado)) expect(grupoDaCategoria(cat)?.nome, cat).toBe(grupo);
+    expect(grupoDaCategoria('Outros')).toBeNull();
+    expect(grupoDaCategoria('Third party transfer - Debit Card')).toBeNull();
+  });
+
+  it('toda categoria de um grupo tem nome em português', async () => {
+    const { traduzCategoria } = await import('../../src/lib/format');
+    const { GRUPOS_GASTO } = await import('../../src/lib/grupos');
+    expect(GRUPOS_GASTO.flatMap((g) => g.cats).filter((c) => traduzCategoria(c) === c && c !== 'Internet')).toEqual([]);
+  });
 });
 
 describe('agruparGastos', () => {

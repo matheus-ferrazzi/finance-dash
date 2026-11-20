@@ -77,6 +77,7 @@ const CAT_PT: Record<string, string> = {
   'Online shopping': 'Compras online', Optometry: 'Ótica', Outros: 'Outros', Parking: 'Estacionamento',
   'Pet supplies and vet': 'Pet e veterinário', Pharmacy: 'Farmácia', 'Proceeds interests and dividends': 'Juros e dividendos',
   'Public transportation': 'Transporte público', Salary: 'Salário', 'Same person transfer': 'Transferência própria',
+  School: 'Escola', Education: 'Educação', 'Sports goods': 'Artigos esportivos', Gambling: 'Apostas',
   Services: 'Serviços', Shopping: 'Compras', TV: 'TV', 'Tax on financial operations': 'IOF', Taxes: 'Impostos',
   'Taxes on investments': 'Impostos s/ investimentos', 'Taxi and ride-hailing': 'Táxi e apps',
   Telecommunications: 'Telecom', 'Third party transfer - Debit Card': 'Transferência (débito)', Tickets: 'Ingressos',

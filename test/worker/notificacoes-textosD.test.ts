@@ -170,6 +170,16 @@ describe('técnico', () => {
       '🔴 Consentimento do B2 (R) na Pluggy venceu',
     ].join('\n'));
   });
+  // 20/11: saldo pré-pago da Serverspace (sem saldo a VPS para); valores inventados
+  it('saldo da Serverspace: nada com folga; 🟡 abaixo do limite; 🔴 com menos de 3 dias ou sem conseguir ler', () => {
+    const tec = (servidor: object) => montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [], servidor: servidor as any });
+    expect(tec({ saldo: 80, dias: 48, limiteDias: 15 })).toBeNull();
+    const amarelo = tec({ saldo: 20, dias: 12, limiteDias: 15 })!;
+    expect(amarelo).toContain(`🟡 Saldo da Serverspace: ${brl(20)} (~12 dias), recarregar no painel antes que a máquina pare`);
+    expect(amarelo.split('\n')[0]).toBe(`🟡 *Aviso técnico* · Saldo da Serverspace: ${brl(20)} (~12 dias)`);
+    expect(tec({ saldo: 3.1, dias: 1.9, limiteDias: 15 })).toContain(`🔴 Saldo da Serverspace: ${brl(3.1)} (~1 dia), recarregar já: sem saldo a máquina para`);
+    expect(tec({ saldo: null, dias: null, limiteDias: 15, erro: 'HTTP 401' })).toContain('🔴 Saldo da Serverspace: não consegui ler (HTTP 401)');
+  });
   it('D-M3: consentimento que vence hoje ou amanhã diz isso (não "em 0 dias")', () => {
     const t = montarTecnico({ saude: saudeOk as any, backup: backupOk as any, consentimentos: [{ banco: 'B1', responsavel: 'R', dias: 0 }, { banco: 'B2', responsavel: 'R', dias: 1 }] })!;
     expect(t).toContain('🟡 Consentimento do B1 (R) na Pluggy vence hoje');

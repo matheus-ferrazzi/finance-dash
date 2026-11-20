@@ -84,6 +84,13 @@ describe('backup', () => {
     expect(t).toContain('• 1 falha(s) em 24h — ultima: disco cheio');
     expect(t).toContain('Ultimo bom: 2.00 MB / 30 tabelas, 20 workflows.');
   });
+  // 20/11: a cópia fora da máquina passou do PC (puxada, tarefa desligada) para o R2, enviada todo dia junto do backup
+  it('cópia fora da máquina é o R2: aviso depois de 30 h sem envio OK, "nunca" quando não há', () => {
+    expect(montarBackup({ ...ok, h_desde_offsite: 29 })).toBeNull();
+    expect(montarBackup({ ...ok, h_desde_offsite: 31 })).toContain('• Copia fora da maquina (R2): ultimo envio OK ha 31h');
+    expect(montarBackup({ ...ok, h_desde_offsite: null })).toContain('• Copia fora da maquina (R2): nenhum envio OK');
+    expect(montarBackup({ ...ok, h_desde_offsite: null })).not.toContain('PC');
+  });
 });
 
 // 20/10: mensagem em blocos (pedido do Matheus): linha em branco entre os blocos; lista junta; vazio some

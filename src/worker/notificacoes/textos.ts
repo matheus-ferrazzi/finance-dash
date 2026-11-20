@@ -155,9 +155,10 @@ export function linhasBackup(s: BackupDados): string[] {
   // o n8n guarda a lógica: os bots e a ingestão antiga
   const hN8n = s.h_desde_n8n ?? 9999;
   if (hN8n > 30) probs.push(`• n8n (os bots): ultimo OK ${hN8n === 9999 ? 'nunca' : 'ha ' + hN8n + 'h'}`);
-  // a cópia no PC depende dele estar ligado: 72h aguenta um fim de semana
+  // 20/11: a cópia fora da máquina é o R2, enviada junto do backup diário (era o PC, com 72h de folga para o fim
+  // de semana); mesma folga de 30h do backup local
   const hOff = s.h_desde_offsite ?? 9999;
-  if (hOff > 72) probs.push(`• Copia no PC: ${hOff === 9999 ? 'nunca foi puxada' : 'ultima ha ' + hOff + 'h'}`);
+  if (hOff > 30) probs.push(`• Copia fora da maquina (R2): ${hOff === 9999 ? 'nenhum envio OK' : 'ultimo envio OK ha ' + hOff + 'h'}`);
   if ((s.falhas_24h || 0) > 0) {
     probs.push(`• ${s.falhas_24h} falha(s) em 24h` + (s.ultimo_erro ? ` — ultima: ${clean(s.ultimo_erro)}` : ''));
   }
@@ -178,5 +179,5 @@ export function montarBackup(s: BackupDados): string | null {
   // barra) — corrigir no redesenho do D, não aqui
   return `🗄️ *Backup com problema*\n\n${probs.join('\n')}\n\n` +
     `Ultimo bom: ${mb} / ${s.tabelas || '?'} tabelas, ${s.n8n_workflows || '?'} workflows.\n` +
-    `_Conferir:_ \`tail /root/n8n-docker/backups/backup.log\` na VPS, ou o log em 01-financas\backups no PC.`;
+    `_Conferir:_ \`tail /root/n8n-docker/backups/backup.log\` na VPS.`;
 }

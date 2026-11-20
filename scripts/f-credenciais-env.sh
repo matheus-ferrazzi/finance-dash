@@ -2,6 +2,7 @@
 # F: credenciais novas, SEM mostrar valores. Rodar na VPS (ssh vps-financas), como root.
 #   bash f-credenciais-env.sh --pluggy-inter   chave da segunda conta da Pluggy (só o Inter) + item-id da conexão
 #   bash f-credenciais-env.sh --apibrasil      token da API Brasil + CPFs a consultar (o da Ariane é opcional)
+#   bash f-credenciais-env.sh --serverspace    chave da API da Serverspace (saldo da VPS no aviso técnico)
 # Cada parte grava o próprio arquivo em /root/n8n-docker (permissão 600) e confere o que dá para conferir:
 #   - Pluggy: autentica e lê a conexão (nome do banco e estado), de dentro do finance-worker; segredo vai pelo stdin
 #   - API Brasil: só formato do token e dígito verificador dos CPFs (consulta real custa crédito; o teste em
@@ -86,8 +87,32 @@ apibrasil() {
   fim "$ARQ"
 }
 
+# 20/11: chave da API da Serverspace (a VPS), para o aviso técnico avisar o saldo pré-pago. Testa nos dois
+# endereços da API (o do Brasil primeiro) e só grava se um deles devolver o saldo; mostra o saldo, nunca a chave.
+serverspace() {
+  local ARQ=$DIR/.env.worker-serverspace K U RES
+  read -r -s -p "Chave da API da Serverspace (Automação > API; não aparece): " K; echo
+  K=$(limpar "$K")
+  [[ ${#K} -ge 20 ]] || { echo "Chave curta demais (${#K} caracteres); nada gravado."; exit 1; }
+  for U in https://api.serverspace.com.br https://api.serverspace.io; do
+    # a chave vai por um descritor de arquivo, nunca na linha de comando (ps mostraria)
+    RES=$(curl -s -m 15 -w '\n%{http_code}' -H @<(printf 'X-API-KEY: %s\n' "$K") "$U/api/v1/project" || true)
+    if [[ "${RES##*$'\n'}" == 200 ]] && SALDO=$(printf '%s' "${RES%$'\n'*}" | grep -o '"balance":[-0-9.]*' | cut -d: -f2) && [[ -n "$SALDO" ]]; then
+      echo "Serverspace aceitou a chave em $U. Saldo do projeto: R\$ $SALDO"
+      troca "$ARQ" SERVERSPACE_API_KEY "$K"
+      troca "$ARQ" SERVERSPACE_API_URL "$U"
+      unset K
+      fim "$ARQ"
+      return
+    fi
+    echo "$U -> HTTP ${RES##*$'\n'}"
+  done
+  echo "Nenhum endereço aceitou a chave (401 = chave errada ou de outro projeto); nada gravado."; exit 1
+}
+
 case "${1:-}" in
   --pluggy-inter) pluggy_inter ;;
   --apibrasil) apibrasil ;;
-  *) echo "uso: bash $0 --pluggy-inter | --apibrasil"; exit 1 ;;
+  --serverspace) serverspace ;;
+  *) echo "uso: bash $0 --pluggy-inter | --apibrasil | --serverspace"; exit 1 ;;
 esac

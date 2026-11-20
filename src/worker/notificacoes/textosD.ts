@@ -47,6 +47,8 @@ export interface DadosTecnico {
   saude: SaudeDados; backup: BackupDados; consentimentos: { banco: string; responsavel: string; dias: number }[];
   /** E1: saúde do bot de perguntas */
   bot?: { falhas24h: number; modelosSumidos: string[] };
+  /** 20/11: saldo pré-pago da Serverspace (a VPS); `dias` = saldo ÷ custo diário; sem leitura, `saldo` nulo e `erro` */
+  servidor?: { saldo: number | null; dias: number | null; limiteDias: number; erro?: string };
 }
 
 const brl = (v: unknown) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -277,6 +279,18 @@ export function montarTecnico(d: DadosTecnico): string | null {
   ];
   if (d.bot?.falhas24h) linhas.push(`🔴 Bot: ${d.bot.falhas24h} pergunta(s) com falha nas últimas 24h`);
   for (const m of d.bot?.modelosSumidos ?? []) linhas.push(`🔴 Bot: modelo ${m} não existe mais na Groq`);
+  // 20/11: sem saldo na Serverspace a VPS para (cobrança por hora, pré-paga)
+  const s = d.servidor;
+  if (s) {
+    if (s.saldo === null || s.dias === null) linhas.push(`🔴 Saldo da Serverspace: não consegui ler (${s.erro ?? 'sem resposta'})`);
+    else if (s.dias < s.limiteDias) {
+      const n = Math.floor(s.dias);
+      const quanto = `${brl(s.saldo)} (~${n} dia${n === 1 ? '' : 's'})`;
+      linhas.push(s.dias < 3
+        ? `🔴 Saldo da Serverspace: ${quanto}, recarregar já: sem saldo a máquina para`
+        : `🟡 Saldo da Serverspace: ${quanto}, recarregar no painel antes que a máquina pare`);
+    }
+  }
   if (!linhas.length) return null;
   // 19/10: o primeiro problema no título, sem a instrução (o que vem depois da primeira vírgula)
   const primeiro = linhas[0].replace(/^\S+\s/, '').split(', ')[0];

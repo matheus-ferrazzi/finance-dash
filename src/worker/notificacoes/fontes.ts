@@ -84,7 +84,20 @@ export function criarFontes(
   bot?: () => Promise<{ falhas24h: number; modelosSumidos: string[] }>,
   /** auditoria 13/10: token das rotas internas do painel (/api/resumo/*); sem ele, sem cabeçalho */
   tokenInterno?: string,
+  /** 20/11: saldo pré-pago da Serverspace (a VPS); sem ele, o técnico não fala de saldo */
+  servidor?: { ler: () => Promise<{ saldo: number; moeda: string }>; custoMensal: number; limiteDias: number },
 ): Fontes {
+  const saldoServidor = async () => {
+    if (!servidor) return undefined;
+    const { custoMensal, limiteDias } = servidor;
+    try {
+      const { saldo } = await servidor.ler();
+      return { saldo, dias: Math.round((saldo / (custoMensal / 30)) * 10) / 10, limiteDias };
+    } catch (e) {
+      // ler o saldo nunca derruba o aviso técnico: vira uma linha dizendo que não conseguiu
+      return { saldo: null, dias: null, limiteDias, erro: e instanceof Error ? e.message : String(e) };
+    }
+  };
   const um = async (sql: string, campo: string) => (await pool.query(sql)).rows[0]?.[campo];
   const painel = async (caminho: string) => {
     const r = await fetcher(`${urlPainel}${caminho}`, { signal: AbortSignal.timeout(30000), headers: tokenInterno ? { 'x-interno': tokenInterno } : {} });
@@ -104,6 +117,7 @@ export function criarFontes(
       consentimentos: (await pool.query(SQL_CONSENT)).rows.map((x) => ({ banco: x.banco, responsavel: x.responsavel, dias: Number(x.dias) })),
       // checar o bot nunca derruba o aviso técnico
       bot: bot ? await bot().catch(() => ({ falhas24h: 0, modelosSumidos: [] })) : undefined,
+      servidor: await saldoServidor(),
     }),
     fatura: () => um(SQL_FATURA, 'faturas'),
     gasto: () => um(SQL_GASTO, 'txs'),

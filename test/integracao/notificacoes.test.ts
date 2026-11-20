@@ -84,6 +84,13 @@ describe.skipIf(!url)('notificações no worker (integração)', () => {
     expect(await f.saude()).toHaveProperty('h_lancamentos');
     // auditoria 11/11: o técnico lê o teste de restore mais recente (o de 25 h atrás, que falhou), não o do backup mais novo
     expect(await f.backup()).toMatchObject({ restore_ok: false, h_desde_restore: 25, h_desde_offsite: 50 });
+    // 20/11: saldo da Serverspace no técnico — dias = saldo ÷ (custo mensal ÷ 30); erro na leitura não derruba o aviso
+    const comSaldo = (ler: () => Promise<{ saldo: number; moeda: string }>) => criarFontes(pool, 'http://painel', undefined, undefined, undefined,
+      { ler, custoMensal: 60, limiteDias: 15 });
+    expect((await (comSaldo(async () => ({ saldo: 20, moeda: 'BRL' })) as any).tecnico()).servidor).toEqual({ saldo: 20, dias: 10, limiteDias: 15 });
+    expect((await (comSaldo(async () => { throw new Error('HTTP 401'); }) as any).tecnico()).servidor)
+      .toEqual({ saldo: null, dias: null, limiteDias: 15, erro: 'HTTP 401' });
+    expect((await (f as any).tecnico()).servidor).toBeUndefined();
     // 22/10: a saúde traz qual tarefa falhou, quando e o erro (o aviso dizia só "Ingestão (worker)")
     await pool.query(`INSERT INTO pluggy_execucoes (tarefa, modo, inicio, fim, ok, erro) VALUES
       ('tesouro', 'real', now() - interval '2 hours', now() - interval '2 hours', false, 'fetch failed'),

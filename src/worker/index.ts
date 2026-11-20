@@ -16,6 +16,7 @@ import { CanalTelegram } from './notificacoes/canal';
 import { CanalWhatsApp } from './notificacoes/whatsapp';
 import { estadoDaSessao, vigiarWhatsApp } from './notificacoes/vigia';
 import { criarFontes } from './notificacoes/fontes';
+import { lerSaldoServerspace } from './serverspace';
 import { destinoDe, modoDoBot, rodarNotificacao } from './notificacoes/motor';
 import { paraPng } from './notificacoes/png';
 import { PgRegistroNotif } from './notificacoes/registro';
@@ -79,10 +80,18 @@ async function main() {
   // auditoria 13/10: rotas /api/bot/* e /api/resumo/* do painel exigem este token quando ele está configurado
   const tokenInterno = process.env.PAINEL_TOKEN_INTERNO || undefined;
   const cabInterno: Record<string, string> = tokenInterno ? { 'x-interno': tokenInterno } : {};
+  // 20/11: saldo pré-pago da Serverspace no aviso técnico (.env.worker-serverspace, gravado por f-credenciais-env.sh)
+  const ssChave = process.env.SERVERSPACE_API_KEY;
+  const ssUrl = process.env.SERVERSPACE_API_URL ?? 'https://api.serverspace.com.br';
+  const servidor = ssChave ? {
+    ler: () => lerSaldoServerspace({ url: ssUrl, chave: ssChave }),
+    custoMensal: Number(process.env.SERVERSPACE_CUSTO_MENSAL ?? 49.87),
+    limiteDias: Number(process.env.SERVERSPACE_LIMITE_DIAS ?? 15),
+  } : undefined;
   const notif = {
     fontes: criarFontes(pool, process.env.PAINEL_INTERNO ?? 'http://finance-dashboard:3000', undefined,
       groq ? async () => ({ falhas24h: await registroBot.falhas24h(), modelosSumidos: await groq.modelosSumidos() }) : undefined,
-      tokenInterno),
+      tokenInterno, servidor),
     registro: new PgRegistroNotif(pool), canais, painelUrl: process.env.PAINEL_URL ?? '',
   };
   const notificar = async (bot: Bot, dryRun: boolean) => {

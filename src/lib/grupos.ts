@@ -6,23 +6,33 @@ export const GRUPOS_GASTO: DefGrupo[] = [
   {
     nome: 'Dívida e seguro', emoji: '🏦', travado: true,
     cats: ['Loans and financing', 'Loans', 'Consortium', 'Insurance', 'Taxes', 'Bank fees', 'Interests charged',
-      'Late payment and overdraft costs', 'Tax on financial operations'],
+      'Late payment and overdraft costs', 'Tax on financial operations', 'Taxes on investments'],
   },
   { nome: 'Mercado', emoji: '🛒', travado: false, cats: ['Groceries'] },
   { nome: 'Comer fora', emoji: '🍔', travado: false, cats: ['Food delivery', 'Eating out', 'Food and drinks'] },
   {
     nome: 'Lazer e digital', emoji: '🎮', travado: false,
     // 'Internet' na Pluggy é TikTok/ByteDance, não provedor (a internet de casa está em Telecommunications)
-    cats: ['Digital services', 'Gaming', 'Cinema, theater and concerts', 'Tickets', 'Travel', 'Internet', 'Bookstore', 'Gambling'],
+    // 18/11: hospedagem e milhas são viagem
+    cats: ['Digital services', 'Gaming', 'Cinema, theater and concerts', 'Tickets', 'Travel', 'Internet', 'Bookstore', 'Gambling',
+      'Accomodation', 'Mileage programs'],
   },
-  { nome: 'Saúde', emoji: '💊', travado: false, cats: ['Healthcare', 'Pharmacy', 'Hospital clinics and labs', 'Optometry', 'Wellness'] },
+  {
+    nome: 'Saúde', emoji: '💊', travado: false,
+    cats: ['Healthcare', 'Pharmacy', 'Hospital clinics and labs', 'Optometry', 'Wellness', 'Wellness and fitness'],
+  },
   { nome: 'Pet', emoji: '🐾', travado: false, cats: ['Pet supplies and vet'] },
   {
     nome: 'Transporte', emoji: '🚗', travado: false,
     cats: ['Gas stations', 'Automotive', 'Taxi and ride-hailing', 'Public transportation', 'Parking',
-      'Tolls and in vehicle payment', 'Vehicle maintenance', 'Transportation'],
+      'Tolls and in vehicle payment', 'Vehicle maintenance', 'Transportation', 'Vehicle ownership taxes and fees', 'Car rental'],
   },
-  { nome: 'Compras', emoji: '🛍️', travado: false, cats: ['Shopping', 'Clothing', 'Online shopping', 'Electronics', 'Houseware', 'Services', 'Gifts'] },
+  {
+    nome: 'Compras', emoji: '🛍️', travado: false,
+    cats: ['Shopping', 'Clothing', 'Online shopping', 'Electronics', 'Houseware', 'Services', 'Gifts', 'Kids and toys', 'Sports goods'],
+  },
+  // 18/11: cursos e escola caíam no Resto (cursos online somam R$ 1,5 mil no histórico)
+  { nome: 'Educação', emoji: '📚', travado: false, cats: ['Online Courses', 'School', 'Education'] },
 ];
 
 const POR_CATEGORIA = new Map(GRUPOS_GASTO.flatMap((g) => g.cats.map((c) => [c, g] as const)));
